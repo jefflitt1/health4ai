@@ -40,27 +40,32 @@ WEIGHT = "HKQuantityTypeIdentifierBodyMass"
 WORKOUT = "HKWorkoutTypeIdentifier"
 
 
-def _get(metric_type: str, user_id: str, since: str, limit: int = 500) -> list[dict]:
+def _get(metric_type: str, user_id: str, since: str, limit: int = 500,
+         source_filter: str | None = None) -> list[dict]:
     # PostgREST enforces max-rows ~5000 per page. Paginate to collect all rows
     # up to `limit`. For raw queries (not tiered), callers pass explicit limits
     # (e.g. 50 for workouts, 500 for recent HRV) that stay under the cap.
     # _get_tiered_daily passes limit=100000 — paginate those.
+    # source_filter: optional substring match on source_device (e.g. "Oura" for sleep).
     PAGE = 5000
     all_rows: list[dict] = []
     offset = 0
     while len(all_rows) < limit:
         fetch = min(PAGE, limit - len(all_rows))
+        params: dict = {
+            "user_id": f"eq.{user_id}",
+            "metric_type": f"eq.{metric_type}",
+            "started_at": f"gte.{since}",
+            "order": "started_at.desc",
+            "limit": fetch,
+            "offset": offset,
+        }
+        if source_filter:
+            params["source_device"] = f"ilike.*{source_filter}*"
         resp = httpx.get(
             f"{POSTGREST}/{TABLE}",
             headers=HEADERS,
-            params={
-                "user_id": f"eq.{user_id}",
-                "metric_type": f"eq.{metric_type}",
-                "started_at": f"gte.{since}",
-                "order": "started_at.desc",
-                "limit": fetch,
-                "offset": offset,
-            },
+            params=params,
             timeout=30,
         )
         resp.raise_for_status()
@@ -237,15 +242,23 @@ def get_sleep(days: int = 7, user_id: str = "") -> dict:
     """
     uid = user_id or DEFAULT_USER_ID
     since = _since(days)
-    rows = _get(SLEEP, uid, since, limit=500)
+    # Oura Ring syncs sleep stages to Apple Health — use as the single sleep source.
+    # Apple Watch also writes stages; summing both would double-count every night.
+    rows = _get(SLEEP, uid, since, limit=500, source_filter="Oura")
 
     nights: dict[str, dict] = {}
 
+    # HKCategoryValueSleepAnalysis: 0=InBed, 1=AsleepUnspecified, 2=Awake,
+    # 3=AsleepCore, 4=AsleepDeep, 5=AsleepREM. Only count 3/4/5 (true sleep stages).
+    _STAGE_NAMES = {3.0: "core", 4.0: "deep", 5.0: "rem"}
+
     for row in rows:
+        val = row.get("value")
+        if val not in _STAGE_NAMES:
+            continue
+
         started = row["started_at"]
         ended = row.get("ended_at")
-        metadata = row.get("metadata") or {}
-
         if not ended:
             continue
 
@@ -260,7 +273,7 @@ def get_sleep(days: int = 7, user_id: str = "") -> dict:
         if night_key not in nights:
             nights[night_key] = {"date": night_key, "stages": {}, "total_minutes": 0, "segments": []}
 
-        stage = metadata.get("sleep_stage", "unknown")
+        stage = _STAGE_NAMES[val]
         nights[night_key]["stages"].setdefault(stage, 0)
         nights[night_key]["stages"][stage] += duration_min
         nights[night_key]["total_minutes"] += duration_min
@@ -569,7 +582,7 @@ def get_coaching_brief(user_id: str = "") -> dict:
 
     hrv_14d = _get(HRV, uid, since_14d, limit=200)
     rhr_14d = _get(RESTING_HR, uid, since_14d, limit=50)
-    sleep_14d = _get(SLEEP, uid, since_14d, limit=500)
+    sleep_14d = _get(SLEEP, uid, since_14d, limit=500, source_filter="Oura")
     workouts_30d = _get(WORKOUT, uid, since_30d, limit=50)
     steps_7d = _get(STEPS, uid, since_7d, limit=500)
     vo2_rows = _get(VO2MAX, uid, _since(365), limit=50)
@@ -596,9 +609,13 @@ def get_coaching_brief(user_id: str = "") -> dict:
         hrv_delta = delta
         hrv_status = "improving" if delta > 2 else "declining" if delta < -2 else "stable"
 
-    # Sleep: avg duration last 7 nights
+    # Sleep: sum Core+Deep+REM segments only (value 3/4/5).
+    # Excluding InBed (0), AsleepUnspecified (1), and Awake (2) prevents double-counting
+    # when both Apple Watch and iPhone write overlapping parent records for the same night.
     nights: dict[str, float] = {}
     for row in sleep_14d:
+        if row.get("value") not in (3.0, 4.0, 5.0):
+            continue
         if not row.get("ended_at"):
             continue
         start = datetime.fromisoformat(row["started_at"].replace("Z", "+00:00"))
