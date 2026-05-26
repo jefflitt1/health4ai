@@ -23,50 +23,72 @@ WHERE metric_type NOT LIKE 'HKCategoryTypeIdentifier%'
   AND metric_type NOT LIKE 'HKWorkoutTypeIdentifier%'
 GROUP BY user_id, (started_at AT TIME ZONE 'America/New_York')::date, metric_type;
 
+-- jeff_health.daily_metrics schema additions (Oura columns added May 2026).
+-- oura_steps and oura_active_cal added when workflow was corrected to include activity data.
+ALTER TABLE jeff_health.daily_metrics
+  ADD COLUMN IF NOT EXISTS oura_steps integer,
+  ADD COLUMN IF NOT EXISTS oura_active_cal integer;
+
 -- Combined Oura + Apple Watch biometrics view (rolling 90 days).
--- Apple Health side pivots from v_healthkit_daily_quantity.
--- Sleep columns intentionally omitted: Apple Watch vs Oura sleep requires
--- source-device filtering on raw category data (separate feature).
--- SpO2 stored as fraction (0-1) in healthkit_metrics/summaries, multiplied by 100 here.
--- AppleStandTime stored in minutes, divided by 60 for stand_hours.
+-- Oura side reads from jeff_health.daily_metrics (canonical unified daily table).
+-- Apple side pivots from v_healthkit_daily_quantity (summaries + recent raw).
+-- Notes:
+--   oura_rhr = lowest_heart_rate from Oura sleep session (actual BPM, not contributor score)
+--   oura_hrv_rmssd = average_hrv from Oura long_sleep session (ms)
+--   apple SpO2 stored as fraction (0-1), multiplied by 100 here
+--   AppleStandTime stored in minutes, divided by 60 for stand_hours
+--   Sleep columns omitted: Apple Watch vs Oura sleep requires source-device filtering
 CREATE OR REPLACE VIEW public.v_jeff_biometrics_combined AS
-WITH apple AS (
+WITH
+oura AS (
+    SELECT
+        date                         AS day,
+        oura_readiness_score         AS readiness_score,
+        oura_hrv_avg                 AS average_hrv,
+        oura_resting_hr              AS resting_heart_rate,
+        oura_sleep_score             AS sleep_score,
+        oura_sleep_duration_min * 60 AS total_sleep_duration,
+        oura_sleep_efficiency        AS sleep_efficiency,
+        oura_activity_score          AS activity_score,
+        oura_steps                   AS steps,
+        oura_active_cal              AS active_calories
+    FROM jeff_health.daily_metrics
+),
+apple AS (
     SELECT
         day,
-        MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN' THEN avg_value END)        AS hrv_sdnn,
-        MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierRestingHeartRate'          THEN avg_value END)        AS resting_heart_rate,
-        MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierOxygenSaturation'          THEN avg_value * 100 END)  AS spo2_avg,
-        MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierOxygenSaturation'          THEN min_value * 100 END)  AS spo2_min,
-        MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierStepCount'                 THEN sum_value END)        AS steps,
-        MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierActiveEnergyBurned'        THEN sum_value END)        AS active_energy,
-        MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierAppleExerciseTime'         THEN sum_value END)        AS exercise_minutes,
+        MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN' THEN avg_value END)       AS hrv_sdnn,
+        MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierRestingHeartRate'          THEN avg_value END)       AS resting_heart_rate,
+        MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierOxygenSaturation'          THEN avg_value * 100 END) AS spo2_avg,
+        MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierOxygenSaturation'          THEN min_value * 100 END) AS spo2_min,
+        MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierStepCount'                 THEN sum_value END)       AS steps,
+        MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierActiveEnergyBurned'        THEN sum_value END)       AS active_energy,
+        MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierAppleExerciseTime'         THEN sum_value END)       AS exercise_minutes,
         ROUND((MAX(CASE WHEN metric_type = 'HKQuantityTypeIdentifierAppleStandTime' THEN sum_value END) / 60.0)::numeric, 1) AS stand_hours
     FROM public.v_healthkit_daily_quantity
     WHERE day >= CURRENT_DATE - INTERVAL '90 days'
     GROUP BY day
 )
 SELECT
-    COALESCE(o.day, a.day)                                 AS day,
+    COALESCE(o.day, a.day)                                AS day,
     o.readiness_score,
-    o.average_hrv                                          AS oura_hrv_rmssd,
-    a.hrv_sdnn                                             AS apple_hrv_sdnn,
-    o.resting_heart_rate                                   AS oura_rhr,
-    a.resting_heart_rate                                   AS apple_rhr,
-    o.temperature_deviation,
-    o.spo2_average                                         AS oura_spo2,
-    a.spo2_avg                                             AS apple_spo2,
-    a.spo2_min                                             AS apple_spo2_min,
+    o.average_hrv                                         AS oura_hrv_rmssd,
+    a.hrv_sdnn                                            AS apple_hrv_sdnn,
+    o.resting_heart_rate                                  AS oura_rhr,
+    a.resting_heart_rate                                  AS apple_rhr,
     o.sleep_score,
-    ROUND(o.total_sleep_duration::numeric / 3600.0, 1)    AS oura_sleep_hours,
+    ROUND(o.total_sleep_duration::numeric / 3600.0, 1)   AS oura_sleep_hours,
     o.sleep_efficiency,
     o.activity_score,
-    o.steps                                                AS oura_steps,
-    a.steps                                                AS apple_steps,
-    o.active_calories                                      AS oura_active_cal,
-    a.active_energy                                        AS apple_active_cal,
+    o.steps                                               AS oura_steps,
+    a.steps                                               AS apple_steps,
+    o.active_calories                                     AS oura_active_cal,
+    a.active_energy                                       AS apple_active_cal,
+    a.spo2_avg                                            AS apple_spo2,
+    a.spo2_min                                            AS apple_spo2_min,
     a.exercise_minutes,
     a.stand_hours
-FROM public.jeff_oura_daily o
+FROM oura o
 FULL JOIN apple a ON o.day = a.day
 WHERE COALESCE(o.day, a.day) >= CURRENT_DATE - INTERVAL '90 days'
 ORDER BY COALESCE(o.day, a.day) DESC;
