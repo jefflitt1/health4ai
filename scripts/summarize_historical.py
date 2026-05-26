@@ -37,7 +37,7 @@ USER_ID = os.environ["HEALTHKIT_USER_ID"]
 PROJECT_REF = SUPABASE_URL.replace("https://", "").replace(".supabase.co", "")
 MGMT_URL = f"https://api.supabase.com/v1/projects/{PROJECT_REF}/database/query"
 MGMT_HEADERS = {"Authorization": f"Bearer {SUPABASE_PAT}", "Content-Type": "application/json"}
-CUTOFF_MONTHS = 6
+CUTOFF_MONTHS = 2
 
 HEADERS = {
     "apikey": SERVICE_ROLE_KEY,
