@@ -25,6 +25,39 @@ const {
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
+    <!-- Structured data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "health4.ai",
+      "url": "https://health4.ai",
+      "description": "Open-source iOS app and MCP server that syncs Apple HealthKit data to Supabase and gives Claude Code, ChatGPT, and any AI agent native access to your health data.",
+      "applicationCategory": "HealthApplication",
+      "operatingSystem": "iOS",
+      "softwareVersion": "1.0",
+      "license": "https://opensource.org/licenses/MIT",
+      "codeRepository": "https://github.com/jefflitt1/health4ai",
+      "offers": [
+        {
+          "@type": "Offer",
+          "name": "Self-hosted",
+          "price": "0",
+          "priceCurrency": "USD",
+          "description": "MIT open source — self-host with your own Supabase"
+        },
+        {
+          "@type": "Offer",
+          "name": "Hosted Pro",
+          "price": "3",
+          "priceCurrency": "USD",
+          "description": "Managed cloud Supabase and remote MCP endpoint"
+        }
+      ],
+      "sameAs": "https://github.com/jefflitt1/health4ai"
+    }
+    </script>
+
     <!-- CSP — analytics hosts day one (playbook §4.1) -->
     <meta
       http-equiv="Content-Security-Policy"
