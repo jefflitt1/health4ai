@@ -28,6 +28,30 @@ TABLE = "healthkit_metrics"
 SUMMARY_TABLE = "healthkit_daily_summaries"
 RAW_CUTOFF_DAYS = 30  # beyond this, queries hit daily summaries
 
+# Query parameter bounds — reject/clamp caller input before any DB read so a
+# mistaken or hostile MCP client can't trigger unbounded PostgREST scans.
+MAX_DAYS = 1825       # 5 years
+MAX_MONTHS = 120      # 10 years
+MAX_LIMIT = 1000
+
+
+def _clamp_days(days: int) -> int:
+    """Clamp a day-window parameter to [1, MAX_DAYS]. Non-positive → 1."""
+    try:
+        days = int(days)
+    except (TypeError, ValueError):
+        return 1
+    return max(1, min(days, MAX_DAYS))
+
+
+def _clamp_limit(limit: int) -> int:
+    """Clamp a row-limit parameter to [1, MAX_LIMIT]. Non-positive → 1."""
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        return 1
+    return max(1, min(limit, MAX_LIMIT))
+
 # Common HealthKit metric type identifiers
 STEPS = "HKQuantityTypeIdentifierStepCount"
 HEART_RATE = "HKQuantityTypeIdentifierHeartRate"
@@ -179,12 +203,12 @@ def _avg_daily_total_from_raw(rows: list[dict]) -> float | None:
     return round(sum(totals) / len(totals), 1) if totals else None
 
 
-def get_health_summary(days: int = 7, user_id: str = "") -> dict:
+def get_health_summary(days: int = 7) -> dict:
     """
     Overview of key health metrics for the past N days.
     Returns avg steps, avg sleep, avg HRV, avg resting HR, workout count.
     """
-    uid = user_id or DEFAULT_USER_ID
+    uid = DEFAULT_USER_ID
     since = _since(days)
 
     steps_rows = _get(STEPS, uid, since)
@@ -235,12 +259,12 @@ def get_health_summary(days: int = 7, user_id: str = "") -> dict:
     }
 
 
-def get_sleep(days: int = 7, user_id: str = "") -> dict:
+def get_sleep(days: int = 7) -> dict:
     """
     Sleep analysis for the past N days.
     Returns per-night breakdown with stage durations (REM, Deep/Core, Light, Awake).
     """
-    uid = user_id or DEFAULT_USER_ID
+    uid = DEFAULT_USER_ID
     since = _since(days)
     # Oura Ring syncs sleep stages to Apple Health — use as the single sleep source.
     # Apple Watch also writes stages; summing both would double-count every night.
@@ -297,13 +321,13 @@ def get_sleep(days: int = 7, user_id: str = "") -> dict:
     }
 
 
-def get_hrv_trend(days: int = 30, user_id: str = "") -> dict:
+def get_hrv_trend(days: int = 30) -> dict:
     """
     HRV (SDNN) trend over the past N days.
     Returns daily averages, 7-day rolling comparison, and trend direction.
     Tier-aware: windows beyond 30 days transparently use daily summaries.
     """
-    uid = user_id or DEFAULT_USER_ID
+    uid = DEFAULT_USER_ID
     points = _get_tiered_daily(HRV, uid, days)
 
     daily_avgs = [
@@ -332,7 +356,6 @@ def get_hrv_trend(days: int = 30, user_id: str = "") -> dict:
 def query_metric(
     metric_type: str,
     days: int = 7,
-    user_id: str = "",
     limit: int = 200,
 ) -> dict:
     """
@@ -341,7 +364,7 @@ def query_metric(
     Windows <= 30 days return raw samples; longer windows return daily aggregates
     (raw samples beyond 30 days are summarized and no longer stored individually).
     """
-    uid = user_id or DEFAULT_USER_ID
+    uid = DEFAULT_USER_ID
 
     if days > RAW_CUTOFF_DAYS:
         points = _get_tiered_daily(metric_type, uid, days)
@@ -388,11 +411,11 @@ def query_metric(
     }
 
 
-def get_workouts(days: int = 30, limit: int = 20, user_id: str = "") -> dict:
+def get_workouts(days: int = 30, limit: int = 20) -> dict:
     """
     Recent workouts with type, duration, distance, and calories.
     """
-    uid = user_id or DEFAULT_USER_ID
+    uid = DEFAULT_USER_ID
     since = _since(days)
     rows = _get(WORKOUT, uid, since, limit=limit)
 
@@ -423,12 +446,12 @@ def get_workouts(days: int = 30, limit: int = 20, user_id: str = "") -> dict:
     }
 
 
-def get_daily_snapshot(date: str = "", user_id: str = "") -> dict:
+def get_daily_snapshot(date: str = "") -> dict:
     """
     Everything recorded for a specific date (YYYY-MM-DD). Defaults to today.
     Returns steps, sleep, workouts, HRV, resting HR, active energy, and all other metrics.
     """
-    uid = user_id or DEFAULT_USER_ID
+    uid = DEFAULT_USER_ID
     if not date:
         date = datetime.now(NY).strftime("%Y-%m-%d")
 
@@ -497,6 +520,88 @@ def get_daily_snapshot(date: str = "", user_id: str = "") -> dict:
     }
 
 
+def _get_raw_range(metric_type: str, user_id: str, start_iso: str, end_iso: str) -> list[dict]:
+    """Raw samples in [start_iso, end_iso) with pagination."""
+    PAGE = 5000
+    all_rows: list[dict] = []
+    offset = 0
+    while True:
+        resp = httpx.get(
+            f"{POSTGREST}/{TABLE}",
+            headers=HEADERS,
+            params=[
+                ("user_id", f"eq.{user_id}"),
+                ("metric_type", f"eq.{metric_type}"),
+                ("started_at", f"gte.{start_iso}"),
+                ("started_at", f"lt.{end_iso}"),
+                ("order", "started_at.asc"),
+                ("limit", PAGE),
+                ("offset", offset),
+            ],
+            timeout=30,
+        )
+        resp.raise_for_status()
+        page = resp.json()
+        if not page:
+            break
+        all_rows.extend(page)
+        if len(page) < PAGE:
+            break
+        offset += PAGE
+    return all_rows
+
+
+def _get_summaries_range(metric_type: str, user_id: str, start_date: str, end_date: str) -> list[dict]:
+    """Daily summaries in [start_date, end_date]."""
+    resp = httpx.get(
+        f"{POSTGREST}/{SUMMARY_TABLE}",
+        headers=HEADERS,
+        params=[
+            ("user_id", f"eq.{user_id}"),
+            ("metric_type", f"eq.{metric_type}"),
+            ("date", f"gte.{start_date}"),
+            ("date", f"lte.{end_date}"),
+            ("order", "date.asc"),
+            ("limit", 10000),
+        ],
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _daily_series_for_range(metric_type: str, user_id: str, start_date: str, end_date: str) -> list[dict]:
+    """Daily-aggregated series for [start_date, end_date], tier-aware.
+    Dates before the raw cutoff come from daily summaries; recent dates from raw samples."""
+    cutoff = (datetime.now(timezone.utc).date() - timedelta(days=RAW_CUTOFF_DAYS)).isoformat()
+    daily: dict[str, dict] = {}
+
+    summary_end = min(end_date, cutoff)
+    if start_date <= summary_end:
+        for s in _get_summaries_range(metric_type, user_id, start_date, summary_end):
+            daily[s["date"]] = {**s, "source": "summary"}
+
+    raw_start = max(start_date, cutoff)
+    if raw_start <= end_date:
+        start_iso = datetime.strptime(raw_start, "%Y-%m-%d").replace(tzinfo=NY).astimezone(timezone.utc).isoformat()
+        end_iso = (datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=NY) + timedelta(days=1)).astimezone(timezone.utc).isoformat()
+        for d in _daily_from_raw(_get_raw_range(metric_type, user_id, start_iso, end_iso)):
+            daily[d["date"]] = d
+
+    return sorted(daily.values(), key=lambda x: x["date"])
+
+
+def _percentile(sorted_vals: list[float], p: float) -> float:
+    """p-th percentile via linear interpolation. sorted_vals must be pre-sorted."""
+    n = len(sorted_vals)
+    if n == 0:
+        return 0.0
+    idx = (p / 100) * (n - 1)
+    lo = int(idx)
+    hi = min(lo + 1, n - 1)
+    return round(sorted_vals[lo] + (idx - lo) * (sorted_vals[hi] - sorted_vals[lo]), 2)
+
+
 def _get_summaries(metric_type: str, user_id: str, since_date: str, limit: int = 500) -> list[dict]:
     """Query daily summaries table for historical data."""
     resp = httpx.get(
@@ -518,7 +623,6 @@ def _get_summaries(metric_type: str, user_id: str, since_date: str, limit: int =
 def get_long_term_trend(
     metric_type: str,
     months: int = 24,
-    user_id: str = "",
 ) -> dict:
     """
     Long-term trend for any metric. Tier-aware: merges recent raw data (last 30 days,
@@ -530,7 +634,7 @@ def get_long_term_trend(
                           HKQuantityTypeIdentifierStepCount
     months: how many months of history to return (default 24)
     """
-    uid = user_id or DEFAULT_USER_ID
+    uid = DEFAULT_USER_ID
     points = _get_tiered_daily(metric_type, uid, months * 30)
     if not points:
         return {"metric_type": metric_type, "months": months, "data": [],
@@ -566,14 +670,14 @@ def get_long_term_trend(
     }
 
 
-def get_coaching_brief(user_id: str = "") -> dict:
+def get_coaching_brief() -> dict:
     """
     Pre-session coaching brief for Brett — combines recent trends across all key metrics.
     Returns a structured summary optimized for performance coaching context:
     recovery status, sleep quality, training load, and fitness trajectory.
     Call this at the start of every coaching session.
     """
-    uid = user_id or DEFAULT_USER_ID
+    uid = DEFAULT_USER_ID
 
     # Recent raw data (last 14 days)
     since_14d = _since(14)
@@ -674,5 +778,206 @@ def get_coaching_brief(user_id: str = "") -> dict:
             "vo2max_latest": latest(vo2_rows),
             "weight_kg_latest": latest(weight_rows),
             "weight_kg_30d_ago": weight_rows[-1]["value"] if len(weight_rows) > 1 else None,
+        },
+    }
+
+
+def search_records(
+    metric_type: str,
+    days: int = 90,
+    min_value: float | None = None,
+    max_value: float | None = None,
+    limit: int = 100,
+) -> dict:
+    """
+    Find days where a health metric crossed a threshold.
+    For cumulative metrics (steps, calories) filters on daily total.
+    For rate metrics (HRV, heart rate) filters on daily average.
+
+    Examples:
+      - All days with HRV below 40ms:
+          metric_type='HKQuantityTypeIdentifierHeartRateVariabilitySDNN', max_value=40
+      - Days with 10k+ steps:
+          metric_type='HKQuantityTypeIdentifierStepCount', min_value=10000
+      - Nights under 6 hours sleep (360 min):
+          metric_type='HKCategoryTypeIdentifierSleepAnalysis', max_value=360
+
+    Results sorted highest-to-lowest so outliers surface first.
+    """
+    uid = DEFAULT_USER_ID
+    days = _clamp_days(days)
+    limit = _clamp_limit(limit)
+    today = datetime.now(NY).strftime("%Y-%m-%d")
+    start_date = (datetime.now(NY) - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    points = _daily_series_for_range(metric_type, uid, start_date, today)
+    is_cumulative = metric_type in _CUMULATIVE_METRICS
+    value_key = "sum_value" if is_cumulative else "avg_value"
+
+    matching = []
+    for p in points:
+        v = p.get(value_key)
+        if v is None:
+            continue
+        if min_value is not None and v < min_value:
+            continue
+        if max_value is not None and v > max_value:
+            continue
+        matching.append({"date": p["date"], "value": round(v, 2), "source": p["source"]})
+
+    matching.sort(key=lambda x: x["value"], reverse=True)
+
+    return {
+        "metric_type": metric_type,
+        "period_days": days,
+        "days_searched": len(points),
+        "days_matched": len(matching),
+        "filters": {"min_value": min_value, "max_value": max_value},
+        "value_type": "daily_total" if is_cumulative else "daily_avg",
+        "results": matching[:limit],
+    }
+
+
+def get_metric_stats(
+    metric_type: str,
+    days: int = 90,
+) -> dict:
+    """
+    Personal baseline statistics for any health metric.
+    Returns min, max, mean, std dev, and percentile distribution (p10–p90).
+
+    Use to answer: 'Is today's reading good or bad for me personally?'
+    Pair with get_daily_snapshot to compare today's value against your baseline.
+
+    The 'thresholds' field translates percentiles into plain English:
+      good_day_above = your 75th percentile (a genuinely above-average day)
+      poor_day_below = your 25th percentile (a below-average day worth noting)
+    """
+    uid = DEFAULT_USER_ID
+    days = _clamp_days(days)
+    today = datetime.now(NY).strftime("%Y-%m-%d")
+    start_date = (datetime.now(NY) - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    points = _daily_series_for_range(metric_type, uid, start_date, today)
+    is_cumulative = metric_type in _CUMULATIVE_METRICS
+    value_key = "sum_value" if is_cumulative else "avg_value"
+
+    values = sorted([p[value_key] for p in points if p.get(value_key) is not None])
+    n = len(values)
+
+    if n == 0:
+        return {
+            "metric_type": metric_type,
+            "period_days": days,
+            "data_points": 0,
+            "note": "No data found for this metric in the requested window",
+        }
+
+    mean = sum(values) / n
+    variance = sum((v - mean) ** 2 for v in values) / n
+
+    return {
+        "metric_type": metric_type,
+        "period_days": days,
+        "data_points": n,
+        "value_type": "daily_total" if is_cumulative else "daily_avg",
+        "min": round(values[0], 2),
+        "max": round(values[-1], 2),
+        "mean": round(mean, 2),
+        "std_dev": round(variance ** 0.5, 2),
+        "percentiles": {
+            "p10": _percentile(values, 10),
+            "p25": _percentile(values, 25),
+            "p50": _percentile(values, 50),
+            "p75": _percentile(values, 75),
+            "p90": _percentile(values, 90),
+        },
+        "thresholds": {
+            "good_day_above": _percentile(values, 75),
+            "poor_day_below": _percentile(values, 25),
+        },
+    }
+
+
+def compare_periods(
+    metric_type: str,
+    period_a_start: str,
+    period_a_end: str,
+    period_b_start: str,
+    period_b_end: str,
+    label_a: str = "Period A",
+    label_b: str = "Period B",
+) -> dict:
+    """
+    Compare a health metric between two date ranges. Dates: YYYY-MM-DD.
+
+    Examples:
+      - Sleep before vs after starting magnesium:
+          period_a = two weeks before, period_b = two weeks after
+      - HRV this month vs last month:
+          period_a_start='2026-05-01', period_a_end='2026-05-31',
+          period_b_start='2026-06-01', period_b_end='2026-06-18'
+      - Steps during a work trip vs home baseline
+
+    Returns per-period stats and a delta showing which period was better.
+    """
+    uid = DEFAULT_USER_ID
+    is_cumulative = metric_type in _CUMULATIVE_METRICS
+    value_key = "sum_value" if is_cumulative else "avg_value"
+    _avg_fn = _daily_total_avg if is_cumulative else _weighted_mean
+
+    # Validate dates up front: bad format or inverted/oversized ranges would
+    # otherwise reach the DB as a huge or empty scan. Fail fast with a clear error.
+    def _valid(start: str, end: str) -> str | None:
+        try:
+            s = datetime.strptime(start, "%Y-%m-%d")
+            e = datetime.strptime(end, "%Y-%m-%d")
+        except (TypeError, ValueError):
+            return f"Dates must be YYYY-MM-DD (got '{start}', '{end}')"
+        if s > e:
+            return f"Start ({start}) is after end ({end})"
+        if (e - s).days > MAX_DAYS:
+            return f"Range exceeds {MAX_DAYS} days; narrow the window"
+        return None
+
+    for s, e in ((period_a_start, period_a_end), (period_b_start, period_b_end)):
+        err = _valid(s, e)
+        if err:
+            return {"metric_type": metric_type, "error": err}
+
+    def _period_stats(start: str, end: str) -> dict:
+        pts = _daily_series_for_range(metric_type, uid, start, end)
+        values = sorted([p[value_key] for p in pts if p.get(value_key) is not None])
+        avg = _avg_fn(pts) if pts else None
+        return {
+            "start": start,
+            "end": end,
+            "data_points": len(values),
+            "avg": avg,
+            "min": round(values[0], 2) if values else None,
+            "max": round(values[-1], 2) if values else None,
+        }
+
+    a = _period_stats(period_a_start, period_a_end)
+    b = _period_stats(period_b_start, period_b_end)
+
+    delta = None
+    pct_change = None
+    verdict = "insufficient data"
+    if a["avg"] is not None and b["avg"] is not None:
+        delta = round(b["avg"] - a["avg"], 2)
+        pct_change = round((delta / a["avg"]) * 100, 1) if a["avg"] else None
+        direction = "higher" if delta > 0 else "lower" if delta < 0 else "the same"
+        verdict = f"{label_b} is {direction} than {label_a}"
+
+    return {
+        "metric_type": metric_type,
+        "value_type": "daily_total" if is_cumulative else "daily_avg",
+        label_a: a,
+        label_b: b,
+        "comparison": {
+            "delta": delta,
+            "pct_change": pct_change,
+            "verdict": verdict,
         },
     }

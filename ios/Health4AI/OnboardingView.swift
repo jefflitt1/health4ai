@@ -36,10 +36,10 @@ private struct WelcomeStep: View {
                 .font(.system(size: 80))
                 .foregroundStyle(.pink)
             VStack(spacing: 12) {
-                Text("Your health.\nYour endpoint.")
+                Text("Your health data.\nAny AI. Your rules.")
                     .font(.largeTitle.bold())
                     .multilineTextAlignment(.center)
-                Text("Health Bridge syncs your Apple Health data to a destination you control. No middleman. No data collection. No subscriptions.")
+                Text("No export files. No middleman. health4ai syncs live from HealthKit — ready for any AI you trust, local or cloud.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -75,7 +75,7 @@ private struct PrivacyStep: View {
             VStack(spacing: 12) {
                 Text("Privacy by design")
                     .font(.largeTitle.bold())
-                Text("Your health data travels in one direction: from your iPhone to your endpoint. Nothing else.")
+                Text("Your health data travels in one direction: from your device to your backend. No export files. No cloud intermediaries.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -92,11 +92,12 @@ private struct PrivacyStep: View {
                         .foregroundStyle(.green)
                         .padding(.leading, 8)
                 }
-                DataFlowRow(icon: "server.rack", label: "Your endpoint only", color: .green)
+                DataFlowRow(icon: "server.rack", label: "Your backend only", color: .green)
             }
             .padding(.horizontal, 48)
             VStack(alignment: .leading, spacing: 10) {
-                PrivacyBullet(text: "No third-party servers, ever")
+                PrivacyBullet(text: "No export files — ever")
+                PrivacyBullet(text: "No third-party servers")
                 PrivacyBullet(text: "No analytics or crash reporting")
                 PrivacyBullet(text: "Open source — audit every line")
                 PrivacyBullet(text: "App Store privacy label: Data Not Collected")
@@ -205,7 +206,7 @@ private struct HealthKitStep: View {
             VStack(spacing: 12) {
                 Text("Grant Health access")
                     .font(.largeTitle.bold())
-                Text("Health Bridge needs read access to sync your data. You control which types are shared.")
+                Text("health4ai needs read access to sync your data. You control which types are shared.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

@@ -71,6 +71,16 @@ HEALTHKIT_USER_ID=your_supabase_user_id_here
 
 Restart Claude Code. You're done.
 
+### Other MCP clients
+
+The server speaks standard MCP (stdio) — it works with any MCP-compatible client. The command and args are identical; only the config file location differs.
+
+- **Cursor** — add the same `mcpServers` block to `~/.cursor/mcp.json`.
+- **Continue** — add it under `experimental.modelContextProtocolServers` in `~/.continue/config.json`.
+- **Ollama (fully local)** — pair the server with an MCP bridge such as [`mcphost`](https://github.com/mark3labs/mcphost) or [`mcp-client-for-ollama`](https://github.com/jonigl/mcp-client-for-ollama), pointing it at a locally served model (e.g. `ollama run llama3.1`). Your health data and the model both stay on your machine — nothing leaves your hardware.
+
+In every case the `command`/`args`/`env` are the same three lines shown above; only the host config file changes.
+
 ## MCP tools
 
 | Tool | Description | Example prompt |
@@ -83,18 +93,21 @@ Restart Claude Code. You're done.
 | `query_metric` | Raw time-series for any HealthKit metric type by identifier | "Show me my VO2 max readings for the last 90 days" |
 | `get_long_term_trend` | Monthly aggregates for any metric over years; tier-aware (merges raw + summary) | "What's my resting HR trend over the past 2 years?" |
 | `get_coaching_brief` | Pre-session coaching brief: recovery status, sleep quality, training load, fitness markers | "Pull up my coaching brief for today" |
+| `search_records` | Find days where a metric crossed a threshold (daily total for cumulative metrics, daily avg for rate metrics) | "Show me my worst HRV days this year" / "Find all days with 10k+ steps" |
+| `get_metric_stats` | Personal baseline for any metric: min/max/mean/std-dev plus p10–p90 percentiles and good/poor-day thresholds | "Is 42ms HRV good or bad for me?" |
+| `compare_periods` | Compare a metric between two date ranges with delta, % change, and a plain-English verdict | "Did my sleep improve after I started lifting?" / "Steps this month vs last month" |
 
-All tools accept an optional `user_id` parameter for multi-tenant deployments.
+All tools operate on the single user configured via `HEALTHKIT_USER_ID` in `.env`. The server is single-user by design — it uses the Supabase service-role key server-side and does not accept a caller-supplied user id. Multi-tenant/hosted use would require per-user JWT auth with row-level security (not yet implemented).
 
 ## Architecture
 
 ```
-iPhone (HKObserverQuery) → Supabase Edge Function → healthkit schema → FastMCP server → Claude Code
+iPhone (HKObserverQuery) → Supabase Edge Function → healthkit schema → FastMCP server → any MCP client (Claude, Cursor, Continue, local Ollama)
 ```
 
 The iOS app uses `HKObserverQuery` for background delivery and `BGTaskScheduler` for periodic sync. Data lands in a long/EAV schema (`healthkit_metrics` table) with one row per `HKSample`. The MCP server reads directly from Supabase using the service role key — server-side only, never exposed to the iOS app.
 
-For queries within the last 180 days, tools return raw samples. Beyond 180 days, they transparently switch to pre-aggregated daily summaries (`healthkit_daily_summaries`), so long-term trend queries stay fast.
+For queries within the last 30 days, tools return raw samples. Beyond 30 days, they transparently switch to pre-aggregated daily summaries (`healthkit_daily_summaries`), so long-term trend queries stay fast.
 
 ## Repo structure
 
@@ -108,7 +121,7 @@ health4ai/
 │       └── healthkit-ingest/   # Deno edge function (JWT validation + upsert)
 ├── mcp-server/
 │   ├── main.py                 # FastMCP server entry point
-│   ├── tools.py                # All 8 tool implementations
+│   ├── tools.py                # All 11 tool implementations
 │   └── .env.example            # Required environment variables
 ├── scripts/
 │   ├── import_health_export.py # One-time XML backfill from Apple Health export

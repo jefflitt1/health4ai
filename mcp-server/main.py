@@ -14,6 +14,9 @@ from tools import (
     get_daily_snapshot,
     get_long_term_trend,
     get_coaching_brief,
+    search_records,
+    get_metric_stats,
+    compare_periods,
 )
 
 mcp = FastMCP(
@@ -29,6 +32,9 @@ mcp.tool()(get_workouts)
 mcp.tool()(get_daily_snapshot)
 mcp.tool()(get_long_term_trend)
 mcp.tool()(get_coaching_brief)
+mcp.tool()(search_records)
+mcp.tool()(get_metric_stats)
+mcp.tool()(compare_periods)
 
 if __name__ == "__main__":
     mcp.run()

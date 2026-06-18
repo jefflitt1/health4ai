@@ -35,7 +35,7 @@ struct PrivacyView: View {
                 FlowNode(icon: "brain", label: "Your AI agent (Claude, etc.)", color: .blue)
             }
 
-            Text("Health Bridge is not in this chain. It is the transport layer — nothing more.")
+            Text("health4ai is not in this chain. It is the transport layer — nothing more.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -57,7 +57,7 @@ struct PrivacyView: View {
                 icon: "xmark.shield.fill",
                 color: .red,
                 title: "No data collection",
-                detail: "Health Bridge has no backend servers. Your health data is never transmitted to us — it only goes where you direct it."
+                detail: "health4ai has no backend servers. Your health data is never transmitted to us — it only goes where you direct it."
             )
             GuaranteeRow(
                 icon: "eye.slash.fill",
@@ -75,7 +75,7 @@ struct PrivacyView: View {
                 icon: "moon.fill",
                 color: .indigo,
                 title: "Background sync even when locked",
-                detail: "Uses HKObserverQuery background delivery — the correct iOS API. Unlike apps that require your phone to be unlocked, Health Bridge syncs while your phone sleeps."
+                detail: "Uses HKObserverQuery background delivery — the correct iOS API. Unlike apps that require your phone to be unlocked, health4ai syncs while your phone sleeps."
             )
         }
         .padding()
@@ -89,10 +89,10 @@ struct PrivacyView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Open source")
                 .font(.headline)
-            Text("Health Bridge is MIT-licensed. Fork it, audit it, self-host it.")
+            Text("health4ai is MIT-licensed. Fork it, audit it, self-host it.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Link(destination: URL(string: "https://github.com/jglittell/healthkit-bridge")!) {
+            Link(destination: URL(string: "https://github.com/jefflitt1/health4ai")!) {
                 HStack {
                     Image(systemName: "arrow.up.right.square")
                     Text("View on GitHub")

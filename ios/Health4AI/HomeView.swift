@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject var syncState: SyncState
+    @State private var showMCPSetup = false
 
     var body: some View {
         NavigationStack {
@@ -9,6 +10,7 @@ struct HomeView: View {
                 VStack(spacing: 20) {
                     statusCard
                     metricsGrid
+                    mcpCard
                     backfillCard
                     actionsCard
                 }
@@ -16,6 +18,10 @@ struct HomeView: View {
             }
             .navigationTitle("health4ai")
             .navigationBarTitleDisplayMode(.large)
+            .sheet(isPresented: $showMCPSetup) {
+                MCPSetupView()
+                    .environmentObject(syncState)
+            }
         }
     }
 
@@ -107,6 +113,35 @@ struct HomeView: View {
                 value: syncState.lifetimeSyncedRecords.formatted()
             )
         }
+    }
+
+    // MARK: - MCP / Claude card
+
+    private var mcpCard: some View {
+        Button { showMCPSetup = true } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label("Ask any AI", systemImage: "brain")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                Text(syncState.lifetimeSyncedRecords > 0
+                     ? "\(syncState.lifetimeSyncedRecords.formatted()) records ready — query with Claude, Ollama, ChatGPT, or any MCP-compatible AI"
+                     : "Sync your data, then ask any AI natural-language questions about any metric")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Backfill card
@@ -227,5 +262,241 @@ private struct MetricTile: View {
         .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+// MARK: - MCP Setup Sheet
+
+struct MCPSetupView: View {
+    @EnvironmentObject var syncState: SyncState
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    howItWorksCard
+                    privacyNoteCard
+                    stepsCard
+                    exampleQuestionsCard
+                    githubCard
+                }
+                .padding()
+            }
+            .navigationTitle("Ask Any AI")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    // MARK: How it works
+
+    private var howItWorksCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("How it works")
+                .font(.headline)
+            Text("Your synced health data lives in your own database. The health4ai MCP server connects it to any AI you choose — local models like Ollama stay fully on-device. No SQL required.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 0) {
+                MCPFlowRow(icon: "iphone", label: "This app", sublabel: "syncs HealthKit → your database", color: .pink)
+                MCPFlowArrow()
+                MCPFlowRow(icon: "server.rack", label: "Your Supabase DB",
+                           sublabel: syncState.lifetimeSyncedRecords > 0
+                               ? "\(syncState.lifetimeSyncedRecords.formatted()) records"
+                               : "your health records",
+                           color: .green)
+                MCPFlowArrow()
+                MCPFlowRow(icon: "hammer", label: "health4ai MCP server", sublabel: "runs on your Mac (open source)", color: .orange)
+                MCPFlowArrow()
+                MCPFlowRow(icon: "brain", label: "Your AI", sublabel: "Claude, Ollama, ChatGPT, Gemini — your choice", color: .blue)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    // MARK: Steps
+
+    private var stepsCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("One-time setup")
+                .font(.headline)
+
+            MCPStep(
+                number: 1,
+                title: "Clone the repo",
+                detail: "github.com/jefflitt1/health4ai — the MCP server is in the mcp-server/ folder."
+            )
+            Divider().padding(.leading, 36)
+            MCPStep(
+                number: 2,
+                title: "Add your Supabase credentials",
+                detail: "Copy SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from your Supabase project settings into mcp-server/.env"
+            )
+            Divider().padding(.leading, 36)
+            MCPStep(
+                number: 3,
+                title: "Connect your AI client",
+                detail: "Works with any MCP-compatible client — Claude Desktop, Cursor, Continue, or a local Ollama setup. Config snippets for each in the README."
+            )
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    // MARK: Privacy note
+
+    private var privacyNoteCard: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "lock.shield.fill")
+                .font(.title3)
+                .foregroundStyle(.green)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Fully private with a local model")
+                    .font(.subheadline.weight(.semibold))
+                Text("Run Ollama locally and your health data never leaves your Mac — the app syncs to your own database, and the AI runs on your own hardware.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(Color.green.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Color.green.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    // MARK: Example questions
+
+    private var exampleQuestionsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Ask your AI things like…")
+                .font(.headline)
+            VStack(alignment: .leading, spacing: 8) {
+                ExampleQuestion(text: "\"Show me my worst HRV days this year\"")
+                ExampleQuestion(text: "\"Is my resting HR unusually high today?\"")
+                ExampleQuestion(text: "\"Did my sleep improve after I started lifting?\"")
+                ExampleQuestion(text: "\"Compare my steps this month vs last month\"")
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    // MARK: GitHub
+
+    private var githubCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Source & docs")
+                .font(.headline)
+            Text("Open source under the MIT License. Full setup guide, MCP tool reference, and troubleshooting in the README.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Link(destination: URL(string: "https://github.com/jefflitt1/health4ai")!) {
+                HStack {
+                    Image(systemName: "arrow.up.right.square")
+                    Text("health4ai on GitHub")
+                        .fontWeight(.medium)
+                }
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+// MARK: - MCPSetupView sub-components
+
+private struct MCPFlowRow: View {
+    let icon: String
+    let label: String
+    let sublabel: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.subheadline)
+                .foregroundStyle(color)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.subheadline.weight(.medium))
+                Text(sublabel)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background(color.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct MCPFlowArrow: View {
+    var body: some View {
+        HStack {
+            Rectangle()
+                .fill(Color.secondary.opacity(0.25))
+                .frame(width: 1.5, height: 16)
+                .padding(.leading, 23)
+            Spacer()
+        }
+    }
+}
+
+private struct MCPStep: View {
+    let number: Int
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Text("\(number)")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background(Color.pink)
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct ExampleQuestion: View {
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.caption)
+                .foregroundStyle(.pink)
+                .padding(.top, 2)
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .italic()
+        }
     }
 }

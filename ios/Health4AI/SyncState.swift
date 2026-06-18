@@ -115,8 +115,7 @@ final class SyncState: ObservableObject {
         let typeRaw = defaults.string(forKey: Keys.connectionType) ?? ConnectionType.supabase.rawValue
         self.connectionType = ConnectionType(rawValue: typeRaw) ?? .supabase
         self.supabaseProjectURL = defaults.string(forKey: Keys.supabaseProjectURL) ?? ""
-        self.serverURL = defaults.string(forKey: Keys.serverURL)
-            ?? "https://donnmhbwhpjlmpnwgdqr.supabase.co/functions/v1/healthkit-ingest"
+        self.serverURL = defaults.string(forKey: Keys.serverURL) ?? ""
         let authRaw = defaults.string(forKey: Keys.restAuthType) ?? RestAuthType.bearer.rawValue
         self.restAuthType = RestAuthType(rawValue: authRaw) ?? .bearer
         self.restApiKeyHeader = defaults.string(forKey: Keys.restApiKeyHeader) ?? "X-API-Key"
