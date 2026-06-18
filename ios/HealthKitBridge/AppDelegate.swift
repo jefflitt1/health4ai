@@ -8,48 +8,58 @@ import HealthKit
 /// - BGTaskScheduler setup (must happen before applicationDidFinishLaunching returns)
 /// - Foreground sync on launch and app-foreground transitions
 /// - HealthKit observer startup after auth check
-@MainActor
+///
+/// NOT marked @MainActor — UIKit guarantees delegate callbacks are on the main thread,
+/// but wrapping with @MainActor creates a Swift actor isolation layer that conflicts with
+/// iOS 18's GCD/Mach port dispatch internals (triggers OS_dispatch_mach_msg _setContext: crash).
+/// Use MainActor.assumeIsolated {} at call sites instead.
 class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        // Register BGTask handlers BEFORE the app finishes launching.
-        // The system silently ignores registrations that happen after the app launch completes.
-        SyncEngine.shared.registerBackgroundTasks()
-        BulkExportManager.shared.registerBackgroundBackfillTask()
+        // UIKit guarantees main thread here — safe to assume main actor isolation
+        MainActor.assumeIsolated {
+            // Register BGTask handlers BEFORE the app finishes launching.
+            // The system silently ignores registrations that happen after launch completes.
+            SyncEngine.shared.registerBackgroundTasks()
+            BulkExportManager.shared.registerBackgroundBackfillTask()
 
-        // Check if we have a stored auth token and re-connect observers
-        reconnectIfAuthenticated()
-
+            // Check if we have a stored auth token and re-connect observers
+            reconnectIfAuthenticated()
+        }
         return true
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Trigger foreground sync every time the app comes to the foreground
-        if AuthManager().isSignedIn {
-            SyncEngine.shared.performForegroundSync()
+        MainActor.assumeIsolated {
+            let authManager = SyncEngine.sharedAuthManager
+            if authManager.isSignedIn {
+                SyncEngine.shared.performForegroundSync()
+            }
         }
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
-        // Schedule the next background sync task
-        SyncEngine.shared.scheduleBackgroundSync()
-        // Request ~30s grace time to finish the current backfill chunk, and schedule
-        // a charging-only BGProcessingTask to run the backfill overnight
-        BulkExportManager.shared.requestBackgroundTime()
-        BulkExportManager.shared.scheduleBackgroundBackfill()
+        MainActor.assumeIsolated {
+            SyncEngine.shared.scheduleBackgroundSync()
+            BulkExportManager.shared.requestBackgroundTime()
+            BulkExportManager.shared.scheduleBackgroundBackfill()
+        }
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
-        BulkExportManager.shared.endBackgroundTime()
+        MainActor.assumeIsolated {
+            BulkExportManager.shared.endBackgroundTime()
+        }
     }
 
     // MARK: - Private helpers
 
+    @MainActor
     private func reconnectIfAuthenticated() {
-        let authManager = AuthManager()
+        let authManager = SyncEngine.sharedAuthManager
         guard authManager.isSignedIn else { return }
 
         // Restore auth state to SyncState (shared singleton)
@@ -57,11 +67,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         syncState.isAuthenticated = true
         syncState.userEmail = authManager.storedEmail
 
-        // Re-register HealthKit observers so we don't miss data while the app was closed
-        // requestAuthorization() must be user-initiated; calling it at launch causes
-        // "Unable to acquire legacy assertion on com.apple.HealthPrivacyService".
-        // startObserving() is a no-op when no permissions are granted; performForegroundSync()
-        // fails gracefully per-type if the user hasn't authorized yet.
         guard HKHealthStore.isHealthDataAvailable() else { return }
         Task { @MainActor in
             SyncEngine.shared.startObserving()
