@@ -496,6 +496,7 @@ def get_daily_snapshot(date: str = "") -> dict:
     return {
         "date": date,
         "total_records": len(rows),
+        "truncated": len(rows) >= 1000,
         "metrics_present": sorted(by_type.keys()),
         "highlights": {
             "steps": sum_val(STEPS),
