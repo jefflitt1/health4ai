@@ -1,0 +1,106 @@
+---
+import Layout from '../layouts/Layout.astro';
+const lastUpdated = '2026-06-18';
+---
+<Layout
+  title="Privacy Policy — health4.ai"
+  description="How health4.ai handles your Apple Health data."
+>
+  <nav class="flex items-center justify-between px-6 py-5 max-w-3xl mx-auto">
+    <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
+  </nav>
+
+  <main class="px-6 py-12 max-w-3xl mx-auto prose prose-invert prose-sm">
+    <h1 class="text-2xl font-bold text-white mb-2">Privacy Policy</h1>
+    <p class="text-neutral-500 text-xs mb-10">Last updated: {lastUpdated}</p>
+
+    <p class="text-neutral-300 leading-relaxed mb-8">
+      health4.ai ("we", "us") builds tools that sync Apple HealthKit data to a cloud database and expose it to AI agents via MCP. This policy explains what we collect, how we use it, and your rights.
+    </p>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">1. What data we collect</h2>
+      <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
+        <li><strong class="text-neutral-200">Health data</strong> — HealthKit metrics you authorize (sleep, HRV, steps, workouts, heart rate, etc.). This data is uploaded to Supabase.</li>
+        <li><strong class="text-neutral-200">Account data</strong> — email address (waitlist sign-ups and hosted-tier accounts), auth tokens.</li>
+        <li><strong class="text-neutral-200">Usage data</strong> — MCP API call counts, error logs (no health payload in logs). We use PostHog for analytics; it does not receive health data.</li>
+        <li><strong class="text-neutral-200">Self-hosted users</strong> — If you self-host using your own Supabase project, we never see your health data. You control the database.</li>
+      </ul>
+    </section>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">2. How we use it</h2>
+      <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
+        <li>To deliver the service — sync HealthKit data so AI agents can query it.</li>
+        <li>To notify you at App Store launch (waitlist only).</li>
+        <li>To improve reliability — aggregated, non-identifiable usage metrics.</li>
+      </ul>
+      <p class="text-neutral-400 text-sm mt-3">
+        <strong class="text-neutral-200">We do not</strong> use your health data for advertising, sell it to third parties, or share it with any party not required to operate the service. Per Apple's HealthKit guidelines, health data will never be used for advertising or sold to data brokers.
+      </p>
+    </section>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">3. Where data is stored</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        Hosted-tier health data is stored in Supabase (hosted on AWS us-east-1). Data is encrypted at rest and in transit (TLS 1.2+). Self-hosted users store data in their own Supabase instance — we have no access.
+      </p>
+    </section>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">4. HIPAA</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        health4.ai is not a covered entity under HIPAA and does not operate as a HIPAA Business Associate unless a Business Associate Agreement (BAA) is separately executed in writing. If you require HIPAA compliance, self-host using your own Supabase project and your own infrastructure.
+      </p>
+    </section>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">5. Your rights</h2>
+      <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
+        <li><strong class="text-neutral-200">Access & export</strong> — request a copy of your stored data at any time.</li>
+        <li><strong class="text-neutral-200">Deletion</strong> — request deletion of your account and all associated health data. We will complete deletion within 30 days.</li>
+        <li><strong class="text-neutral-200">GDPR / CCPA</strong> — EU and California residents have additional rights (portability, rectification, opt-out of sale). We do not sell personal data. Contact us to exercise any right.</li>
+        <li><strong class="text-neutral-200">Apple HealthKit data</strong> — you can revoke HealthKit permission at any time in iPhone Settings → Privacy & Security → Health → health4.ai.</li>
+      </ul>
+    </section>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">6. Breach notification</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        In the event of a breach involving your health data, we will notify affected users within 60 days as required by the FTC Health Breach Notification Rule, and as soon as practicable.
+      </p>
+    </section>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">7. Analytics & cookies</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        We use PostHog (US-hosted) for product analytics. PostHog receives page views and feature interaction events — no health data. We do not use advertising cookies or trackers.
+      </p>
+    </section>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">8. Changes to this policy</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        We will update the "Last updated" date and notify hosted-tier users by email of any material changes.
+      </p>
+    </section>
+
+    <section>
+      <h2 class="text-white font-semibold text-base mb-3">9. Contact</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        Questions or data requests: <a href="mailto:privacy@health4.ai" class="text-green-400 hover:underline">privacy@health4.ai</a>
+      </p>
+    </section>
+  </main>
+
+  <footer class="border-t border-neutral-800/60 px-6 py-8 mt-12">
+    <div class="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
+      <span>© 2026 health4.ai · MIT License</span>
+      <div class="flex gap-6">
+        <a href="/privacy" class="hover:text-neutral-400 transition-colors">Privacy</a>
+        <a href="/terms" class="hover:text-neutral-400 transition-colors">Terms</a>
+        <a href="https://github.com/jefflitt1/health4ai" target="_blank" rel="noopener" class="hover:text-neutral-400 transition-colors">GitHub →</a>
+      </div>
+    </div>
+  </footer>
+</Layout>
