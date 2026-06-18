@@ -1,7 +1,7 @@
 """
 MCP tool implementations — reads from Supabase.
-Routing: queries within 180 days use raw healthkit_metrics;
-queries beyond 180 days use healthkit_daily_summaries (aggregated).
+Routing: queries within 30 days use raw healthkit_metrics;
+queries beyond 30 days use healthkit_daily_summaries (aggregated).
 """
 
 from datetime import datetime, date, timedelta, timezone
@@ -26,7 +26,7 @@ HEADERS = {
 }
 TABLE = "healthkit_metrics"
 SUMMARY_TABLE = "healthkit_daily_summaries"
-RAW_CUTOFF_DAYS = 180  # beyond this, queries hit daily summaries
+RAW_CUTOFF_DAYS = 30  # beyond this, queries hit daily summaries
 
 # Common HealthKit metric type identifiers
 STEPS = "HKQuantityTypeIdentifierStepCount"
@@ -301,7 +301,7 @@ def get_hrv_trend(days: int = 30, user_id: str = "") -> dict:
     """
     HRV (SDNN) trend over the past N days.
     Returns daily averages, 7-day rolling comparison, and trend direction.
-    Tier-aware: windows beyond 180 days transparently use daily summaries.
+    Tier-aware: windows beyond 30 days transparently use daily summaries.
     """
     uid = user_id or DEFAULT_USER_ID
     points = _get_tiered_daily(HRV, uid, days)
@@ -338,8 +338,8 @@ def query_metric(
     """
     Time-series for any HealthKit metric type.
     metric_type: e.g. 'HKQuantityTypeIdentifierStepCount', 'HKQuantityTypeIdentifierHeartRate'
-    Windows <= 180 days return raw samples; longer windows return daily aggregates
-    (raw samples beyond 180 days are summarized and no longer stored individually).
+    Windows <= 30 days return raw samples; longer windows return daily aggregates
+    (raw samples beyond 30 days are summarized and no longer stored individually).
     """
     uid = user_id or DEFAULT_USER_ID
 
@@ -521,7 +521,7 @@ def get_long_term_trend(
     user_id: str = "",
 ) -> dict:
     """
-    Long-term trend for any metric. Tier-aware: merges recent raw data (last 180 days,
+    Long-term trend for any metric. Tier-aware: merges recent raw data (last 30 days,
     aggregated to daily) with historical daily summaries, so the trend has no recency gap.
     Best for multi-year / seasonal analysis.
     metric_type examples: HKQuantityTypeIdentifierHeartRateVariabilitySDNN,
