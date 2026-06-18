@@ -1,0 +1,42 @@
+---
+interface Props {
+  title?: string;
+  description?: string;
+}
+const {
+  title = 'health4.ai — Apple Health data for AI',
+  description = 'Open-source iOS app + cloud MCP server. Give Claude, n8n, and any AI agent native access to your Apple Health data.',
+} = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+
+    <!-- OG -->
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content="https://health4.ai" />
+    <meta property="og:type" content="website" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- CSP — analytics hosts day one (playbook §4.1) -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://donnmhbwhpjlmpnwgdqr.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://www.clarity.ms https://*.clarity.ms https://r.clarity.ms; img-src 'self' data:; font-src 'self';"
+    />
+  </head>
+  <body class="bg-[#0d0d0d] text-white font-mono antialiased">
+    <slot />
+  </body>
+</html>
+
+<style is:global>
+  @import 'tailwindcss';
+  * { box-sizing: border-box; }
+</style>
