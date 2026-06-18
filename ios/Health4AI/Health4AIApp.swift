@@ -1,9 +1,9 @@
 import SwiftUI
 
-// MARK: - HealthKitBridgeApp
+// MARK: - Health4AIApp
 
 @main
-struct HealthKitBridgeApp: App {
+struct Health4AIApp: App {
     // UIApplicationDelegate adapter — required for BGTaskScheduler and lifecycle hooks
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 

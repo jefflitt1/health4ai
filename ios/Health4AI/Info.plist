@@ -4,16 +4,16 @@
 <dict>
 	<!-- HealthKit usage descriptions (required for App Store and Health access) -->
 	<key>NSHealthShareUsageDescription</key>
-	<string>HealthKit Bridge reads all your health and fitness data to sync it to your personal Supabase database for analysis and archival.</string>
+	<string>health4ai reads all your health and fitness data to sync it to your personal Supabase database for analysis and archival.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>HealthKit Bridge does not write health data.</string>
+	<string>health4ai does not write health data.</string>
 
 	<!-- UIBackgroundModes omitted: 'fetch' triggers XPC service registration crash on iOS 27 Beta -->
 	<!-- Re-add when iOS 27 fixes the libxpc _xpc_init_service bug: -->
 	<!-- <key>UIBackgroundModes</key><array><string>fetch</string></array> -->
 
 	<!-- BGTaskSchedulerPermittedIdentifiers omitted: triggers same XPC crash -->
-	<!-- Re-add com.healthkitbridge.sync + com.healthkitbridge.backfill when iOS 27 fixes XPC -->
+	<!-- Re-add com.health4ai.sync + com.health4ai.backfill when iOS 27 fixes XPC -->
 
 	<!-- iOS 27 Beta 1 requires UIApplicationSceneManifest even for apps built with older SDKs.
 	     Without it, iOS 27 uses a legacy XPC launch path that crashes in _xpc_init_service.
@@ -30,7 +30,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>HKBridge</string>
+	<string>health4ai</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
