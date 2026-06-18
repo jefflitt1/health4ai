@@ -47,7 +47,7 @@ import Layout from '../layouts/Layout.astro';
 
           <tr class="hover:bg-neutral-900/30 transition-colors">
             <td class="py-3 px-4 text-neutral-400 font-medium">Works remotely (no home WiFi needed)</td>
-            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓ Cloud Supabase</td>
+            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓ Your own Postgres</td>
             <td class="py-3 px-4 text-center text-neutral-500">✗ Same-WiFi TCP only</td>
             <td class="py-3 px-4 text-center text-neutral-400">✓ Web only</td>
             <td class="py-3 px-4 text-center text-neutral-400">✓</td>
@@ -110,7 +110,7 @@ import Layout from '../layouts/Layout.astro';
         Health Auto Export's MCP server opens a local TCP port on your iPhone and expects Claude Code (or another MCP client) to connect directly across your LAN. That works fine when your Mac and your phone are on the same home network — but Claude Code runs on your laptop, your laptop travels, and your phone doesn't always follow. The moment you open a terminal at a coffee shop or in the office, the MCP server is unreachable and your agent loses all health context.
       </p>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        health4.ai routes all data through a Supabase backend. The iOS app syncs via <code class="text-green-400 bg-neutral-900 px-1 rounded text-xs">HKObserverQuery</code> whenever new samples arrive, regardless of where your Mac is. The MCP server connects to Supabase over HTTPS — so your agent has the same access from anywhere with an internet connection.
+        health4.ai syncs your Apple Health data to a Postgres database you control — Supabase, Neon, or a local Docker container. The MCP server connects to your database over HTTPS from anywhere with an internet connection.
       </p>
     </section>
 

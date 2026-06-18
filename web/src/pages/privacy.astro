@@ -15,13 +15,13 @@ const lastUpdated = '2026-06-18';
     <p class="text-neutral-500 text-xs mb-10">Last updated: {lastUpdated}</p>
 
     <p class="text-neutral-300 leading-relaxed mb-8">
-      health4.ai ("we", "us") builds tools that sync Apple HealthKit data to a cloud database and expose it to AI agents via MCP. This policy explains what we collect, how we use it, and your rights.
+      health4.ai ("we", "us") builds tools that sync Apple HealthKit data to a Postgres database you control and expose it to AI agents via MCP. This policy explains what we collect, how we use it, and your rights.
     </p>
 
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">1. What data we collect</h2>
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
-        <li><strong class="text-neutral-200">Health data</strong> — HealthKit metrics you authorize (sleep, HRV, steps, workouts, heart rate, etc.). This data is uploaded to Supabase.</li>
+        <li><strong class="text-neutral-200">Health data</strong> — HealthKit metrics you authorize (sleep, HRV, steps, workouts, heart rate, etc.). This data is uploaded to the Postgres database you configure in the iOS app.</li>
         <li><strong class="text-neutral-200">Account data</strong> — email address (waitlist sign-ups and app accounts), auth tokens.</li>
         <li><strong class="text-neutral-200">Usage data</strong> — MCP API call counts, error logs (no health payload in logs). We use PostHog for analytics; it does not receive health data.</li>
         <li><strong class="text-neutral-200">No third-party access</strong> — Your health data is stored in a private database. We do not share it with third parties, advertisers, or data brokers.</li>
@@ -43,7 +43,7 @@ const lastUpdated = '2026-06-18';
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">3. Where data is stored</h2>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        Your health data is stored in a private Supabase database (hosted on AWS us-east-1). Data is encrypted at rest and in transit (TLS 1.2+). Only you can query your data.
+        Your health data is stored in the Postgres database you configure — Supabase, Neon, or self-hosted. Data is encrypted at rest and in transit (TLS 1.2+). Only you can query your data.
       </p>
     </section>
 

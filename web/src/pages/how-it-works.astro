@@ -2,8 +2,8 @@
 import Layout from '../layouts/Layout.astro';
 ---
 <Layout
-  title="How health4.ai works — HealthKit to Supabase to MCP architecture"
-  description="Technical deep-dive: how health4.ai bridges Apple's no-API constraint via on-device sync, Supabase, and a FastMCP server."
+  title="How health4.ai works — HealthKit to Postgres to MCP architecture"
+  description="Technical deep-dive: how health4.ai bridges Apple's no-API constraint via on-device sync, your own Postgres database, and a FastMCP server."
 >
   <nav class="flex items-center justify-between px-6 py-5 max-w-3xl mx-auto">
     <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
@@ -19,7 +19,7 @@ import Layout from '../layouts/Layout.astro';
     <!-- Hero -->
     <h1 class="text-2xl font-bold text-white mb-4">How health4.ai works</h1>
     <p class="text-neutral-300 leading-relaxed mb-2">
-      Apple locks HealthKit behind on-device iOS APIs — there is no server-side REST endpoint, no webhook, no way to pull your health data from a cloud service directly. health4.ai works within that constraint by running a sync engine inside an iOS app, writing to a Supabase database you control, and exposing that database through a standard MCP server.
+      Apple locks HealthKit behind on-device iOS APIs — there is no server-side REST endpoint, no webhook, no way to pull your health data from a cloud service directly. health4.ai works within that constraint by running a sync engine inside an iOS app, writing to a Postgres database you control, and exposing that database through a standard MCP server.
     </p>
     <p class="text-neutral-400 text-sm leading-relaxed mb-12">
       The result: any MCP-compatible AI agent — Claude Code, ChatGPT, Cursor, n8n — can query your Apple Health data using the same tool-call pattern it uses to query anything else.
@@ -35,7 +35,7 @@ import Layout from '../layouts/Layout.astro';
         This is a deliberate privacy design decision by Apple: health data never leaves the device without explicit user action inside an app the user installed and authorized. The <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">HKHealthStore</code> authorization sheet the user sees is the only path in.
       </p>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        health4.ai complies with this model fully. The iOS app is the only component that ever reads HealthKit data. Everything downstream — Supabase, the MCP server, AI agents — only sees data that the app chose to upload, under the user's explicit authorization.
+        health4.ai complies with this model fully. The iOS app is the only component that ever reads HealthKit data. Everything downstream — your Postgres database, the MCP server, AI agents — only sees data that the app chose to upload, under the user's explicit authorization.
       </p>
     </section>
 
@@ -48,11 +48,11 @@ iPhone (iOS app)
   └─ BGProcessingTask ──► fires during charging/background
          │
          ▼
-  Supabase Edge Function
+  Postgres (Supabase / Neon / local)
   (validates JWT, deduplicates, batches inserts)
          │
          ▼
-  Supabase / Postgres
+  Your Postgres database
   schema: healthkit
   ├── health_samples       (EAV: metric_type, timestamp, value, unit)
   └── health_daily_summaries  (pre-aggregated, covers >180 days)
@@ -116,7 +116,7 @@ iPhone (iOS app)
             The MCP layer selects the right tier automatically based on the requested time range. A caller asking for last week's HRV gets raw samples. A caller asking for HRV trend over the last two years gets daily aggregates. Neither caller needs to know this distinction exists.
           </p>
           <p class="text-neutral-400 text-sm leading-relaxed">
-            This keeps Supabase storage costs reasonable while enabling long-horizon queries that are often the most useful for AI-assisted health analysis.
+            This keeps database storage costs reasonable while enabling long-horizon queries that are often the most useful for AI-assisted health analysis.
           </p>
         </div>
 
@@ -126,7 +126,7 @@ iPhone (iOS app)
             d. JWT per-user auth + row-level security
           </h3>
           <p class="text-neutral-400 text-sm leading-relaxed mb-2">
-            Each iOS user authenticates with their own Supabase JWT. The iOS app includes this token in every upload request to the Edge Function, which validates it before writing. The MCP server uses the Supabase service role key — server-side only, never exposed to clients.
+            The iOS app includes an auth token in every upload request, which is validated before writing. The MCP server uses a server-side credential — never exposed to clients.
           </p>
           <p class="text-neutral-400 text-sm leading-relaxed mb-2">
             Row-level security on <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">health_samples</code> enforces data isolation at the Postgres level: <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">user_id = auth.uid()</code>. The database rejects cross-user reads regardless of what the application layer does.

@@ -1,4 +1,5 @@
 ---
+import PostHog from '../components/posthog.astro';
 interface Props {
   title?: string;
   description?: string;
@@ -7,6 +8,9 @@ const {
   title = 'health4.ai — Apple Health data for AI',
   description = 'Free iOS app that connects Apple Health to Claude, ChatGPT, Cursor, and any AI. Ask about your sleep, recovery, and fitness in plain language.',
 } = Astro.props;
+
+const clarityId   = import.meta.env.PUBLIC_CLARITY_PROJECT_ID as string | undefined;
+const metaPixelId = import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined;
 ---
 <!doctype html>
 <html lang="en">
@@ -21,6 +25,7 @@ const {
     <meta property="og:description" content={description} />
     <meta property="og:url" content="https://health4.ai" />
     <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://health4.ai/logo.png" />
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -36,23 +41,30 @@ const {
       "applicationCategory": "HealthApplication",
       "operatingSystem": "iOS",
       "softwareVersion": "1.0",
-      "offers": [
-        {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "USD",
-          "description": "Free download on the App Store"
-        }
-      ],
+      "offers": [{ "@type": "Offer", "price": "0", "priceCurrency": "USD" }],
       "sameAs": "https://github.com/jefflitt1/health4ai"
     }
     </script>
 
-    <!-- CSP — analytics hosts day one (playbook §4.1) -->
+    <!-- CSP -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://donnmhbwhpjlmpnwgdqr.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://www.clarity.ms https://*.clarity.ms https://r.clarity.ms; img-src 'self' data:; font-src 'self';"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' https://us.i.posthog.com https://us-assets.i.posthog.com https://www.clarity.ms https://connect.facebook.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://donnmhbwhpjlmpnwgdqr.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://www.clarity.ms https://*.clarity.ms https://r.clarity.ms https://www.facebook.com https://connect.facebook.net; img-src 'self' data: https://www.facebook.com; font-src 'self';"
     />
+
+    <!-- PostHog -->
+    <PostHog />
+
+    <!-- Microsoft Clarity -->
+    {clarityId && (
+      <script is:inline set:html={`(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y)})(window,document,"clarity","script","${clarityId}");`}></script>
+    )}
+
+    <!-- Meta Pixel -->
+    {metaPixelId && (
+      <script is:inline set:html={`!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','${metaPixelId}');fbq('track','PageView');`}></script>
+    )}
+    {metaPixelId && <noscript><img height="1" width="1" style="display:none" src={`https://www.facebook.com/tr?id=${metaPixelId}&ev=PageView&noscript=1`}/></noscript>}
   </head>
   <body class="bg-[#0a0c1a] text-white antialiased" style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
     <slot />
