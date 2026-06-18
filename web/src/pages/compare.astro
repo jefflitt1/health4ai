@@ -7,6 +7,11 @@ import Layout from '../layouts/Layout.astro';
 >
   <nav class="flex items-center justify-between px-6 py-5 max-w-5xl mx-auto">
     <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
+    <div class="flex gap-6 text-sm text-neutral-500">
+      <a href="/how-it-works" class="hover:text-neutral-300 transition-colors">How it works</a>
+      <a href="/mcp-tools" class="hover:text-neutral-300 transition-colors hidden sm:inline">MCP tools</a>
+      <a href="/" class="hover:text-neutral-300 transition-colors">Home</a>
+    </div>
   </nav>
 
   <main class="px-6 py-12 max-w-5xl mx-auto">
@@ -116,7 +121,7 @@ import Layout from '../layouts/Layout.astro';
         We don't have Android support yet — HealthKit is Apple-only and we haven't built a Google Fit or Health Connect bridge. If your health data lives on an Android device, none of the iOS-native options here apply; manual CSV export from your wearable's app is currently your most practical path to an AI agent.
       </p>
       <p class="text-neutral-400 text-sm leading-relaxed mb-3">
-        health4.ai has no built-in dashboard or visualization layer. The product is a data pipeline — iOS app syncs to Supabase, MCP server exposes it to agents. If you want charts, trends, and a consumer-grade UI, VitalTrends or the claude.ai native connector will feel more polished out of the box.
+        health4.ai is a connector, not a dashboard — you use it through Claude, ChatGPT, or Cursor rather than a built-in app screen. If you want charts, trends, and a polished visual UI, VitalTrends or the claude.ai native connector will feel more complete out of the box.
       </p>
     </section>
 
@@ -138,7 +143,7 @@ import Layout from '../layouts/Layout.astro';
 
   <footer class="border-t border-neutral-800/60 px-6 py-8 mt-12">
     <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
-      <span>© 2026 health4.ai</span>
+      <span>© 2026 health4.ai · Not a medical device</span>
       <div class="flex gap-6">
         <a href="/privacy" class="hover:text-neutral-400 transition-colors">Privacy</a>
         <a href="/terms" class="hover:text-neutral-400 transition-colors">Terms</a>

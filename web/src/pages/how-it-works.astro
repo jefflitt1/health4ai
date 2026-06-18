@@ -7,6 +7,11 @@ import Layout from '../layouts/Layout.astro';
 >
   <nav class="flex items-center justify-between px-6 py-5 max-w-3xl mx-auto">
     <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
+    <div class="flex gap-6 text-sm text-neutral-500">
+      <a href="/compare" class="hover:text-neutral-300 transition-colors">Compare</a>
+      <a href="/mcp-tools" class="hover:text-neutral-300 transition-colors hidden sm:inline">MCP tools</a>
+      <a href="/" class="hover:text-neutral-300 transition-colors">Home</a>
+    </div>
   </nav>
 
   <main class="px-6 py-12 max-w-3xl mx-auto">
@@ -200,7 +205,6 @@ iPhone (iOS app)
       </p>
     </section>
 
-    <!-- Self-host vs hosted -->
     <!-- CTA -->
     <section class="border-t border-neutral-800/60 pt-10">
       <p class="text-neutral-300 text-sm leading-relaxed mb-6">
@@ -228,7 +232,7 @@ iPhone (iOS app)
 
   <footer class="border-t border-neutral-800/60 px-6 py-8 mt-12">
     <div class="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
-      <span>© 2026 health4.ai</span>
+      <span>© 2026 health4.ai · Not a medical device</span>
       <div class="flex gap-6">
         <a href="/privacy" class="hover:text-neutral-400 transition-colors">Privacy</a>
         <a href="/terms" class="hover:text-neutral-400 transition-colors">Terms</a>

@@ -7,15 +7,19 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
   <!-- Nav -->
   <nav class="flex items-center justify-between px-6 py-5 max-w-5xl mx-auto">
     <span class="text-green-400 font-bold text-lg tracking-tight">health4.ai</span>
+    <div class="flex items-center gap-6 text-sm text-neutral-400">
+      <a href="/how-it-works" class="hover:text-white transition-colors hidden sm:inline">How it works</a>
+      <a href="/compare" class="hover:text-white transition-colors hidden sm:inline">Compare</a>
     <a
       href="https://github.com/jefflitt1/health4ai"
       target="_blank"
       rel="noopener"
-      class="text-sm text-neutral-400 hover:text-white transition-colors flex items-center gap-2"
+      class="hover:text-white transition-colors flex items-center gap-2"
     >
       <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"/></svg>
       GitHub
     </a>
+    </div>
   </nav>
 
   <!-- Hero -->
@@ -57,7 +61,7 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
   <!-- Code snippet -->
   <section id="demo" class="px-6 py-16 border-t border-neutral-800/60">
     <div class="max-w-5xl mx-auto">
-      <h2 class="text-xs text-neutral-500 uppercase tracking-widest mb-6">What it looks like in Claude Code</h2>
+      <h2 class="text-xs text-neutral-500 uppercase tracking-widest mb-6">For developers · What it looks like in Claude Code</h2>
       <div aria-label="MCP configuration code example" class="bg-neutral-900 rounded-xl border border-neutral-800 p-4 sm:p-6 overflow-x-auto">
         <pre class="text-sm text-neutral-300 leading-relaxed"><code><span class="text-neutral-500"># claude_desktop_config.json</span>
 <span class="text-neutral-400">{</span>
@@ -95,8 +99,8 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
         },
         {
           step: '03',
-          title: 'AI reads your health',
-          body: 'Connect the MCP server to Claude Code, n8n, or any MCP client. Your agent now has native health tool calls.',
+          title: 'Ask your AI anything',
+          body: 'Open Claude, ChatGPT, or Cursor and ask about your sleep, recovery, or workouts in plain language. health4.ai handles the connection.',
         },
       ].map(({ step, title, body }) => (
         <div class="border border-neutral-800 rounded-xl p-6">
@@ -115,20 +119,20 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
         {[
           {
-            label: 'Works with Claude Code',
-            detail: "Anthropic's native Apple Health connector only works on claude.ai web. Claude Code, Codex, Cursor, and API-based agents get nothing. We fix that.",
-          },
-          {
-            label: 'Reliable background sync',
-            detail: 'Health Auto Export requires your phone to be awake. We use the correct iOS architecture (HKObserverQuery) — sync happens whether you open the app or not.',
-          },
-          {
             label: 'Nothing to set up',
             detail: 'Download from the App Store, tap to connect HealthKit, and you\'re done. No server, no config files, no developer account required.',
           },
           {
-            label: 'Privacy-first',
-            detail: "Big tech health AI is opaque about data use. health4.ai routes your data to your own endpoint. We can't read it.",
+            label: 'Works with any AI app',
+            detail: "Claude's native Apple Health connector only works on claude.ai web. health4.ai also works with Claude Code, ChatGPT, Cursor, and any AI that supports MCP.",
+          },
+          {
+            label: 'Always up to date',
+            detail: 'Your health data stays current automatically in the background — you don\'t have to open the app or export anything by hand.',
+          },
+          {
+            label: 'Private by design',
+            detail: "Your health data syncs to a private database only you can query. We don't sell it, share it, or use it for advertising.",
           },
         ].map(({ label, detail }) => (
           <div class="flex gap-4">
@@ -196,8 +200,8 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
       <dl class="space-y-8">
         {[
           {
-            q: 'How do I give Claude Code access to my Apple Health data?',
-            a: 'Install the health4.ai iOS app to sync your HealthKit data to Supabase, then run the health4.ai MCP server locally. Add it to your claude_desktop_config.json and Claude gets native tool calls for sleep, HRV, steps, workouts, and any other HealthKit metric. No local network required — works from anywhere.',
+            q: 'How do I give my AI access to my Apple Health data?',
+            a: 'Download the health4.ai app and tap to connect HealthKit. The app gives you a token you add to Claude, ChatGPT, or Cursor once — then you can ask about your sleep, HRV, steps, workouts, and any other health metric in plain language. Works from anywhere, no local network required.',
           },
           {
             q: 'Does Apple HealthKit have a server-side API?',

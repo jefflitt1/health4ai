@@ -20,9 +20,9 @@ import Layout from '../layouts/Layout.astro';
       <div class="text-green-500 text-xs font-mono mb-3 tracking-widest uppercase">MCP Server Reference</div>
       <h1 class="text-3xl font-bold text-white mb-4">MCP Tools Reference</h1>
       <p class="text-neutral-400 text-sm leading-relaxed max-w-2xl">
-        health4.ai exposes 8 MCP tools via FastMCP (Python). Add the server to
+        For developers: once you install the health4.ai app and connect HealthKit, these are the 8 MCP tools your AI can call. Add the server to
         <code class="text-amber-400 bg-neutral-900 px-1 rounded text-xs">claude_desktop_config.json</code>
-        and Claude Code can query your Apple Health data natively.
+        with the token from the app — no repo clone, no service keys.
       </p>
     </div>
 
@@ -32,17 +32,13 @@ import Layout from '../layouts/Layout.astro';
       <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-5 overflow-x-auto text-xs leading-relaxed text-neutral-300"><code>{`{
   "mcpServers": {
     "health4ai": {
-      "command": "python",
-      "args": ["main.py"],
-      "cwd": "/path/to/health4ai/mcp-server",
-      "env": {
-        "SUPABASE_URL": "your-supabase-url",
-        "SUPABASE_SERVICE_ROLE_KEY": "your-service-role-key",
-        "HEALTHKIT_USER_ID": "your-user-id"
-      }
+      "command": "npx",
+      "args": ["health4ai-mcp"],
+      "env": { "HEALTH4AI_TOKEN": "your-token-from-the-app" }
     }
   }
 }`}</code></pre>
+      <p class="text-neutral-500 text-xs mt-3">The app generates your token after you connect HealthKit. One command — nothing else to set up.</p>
     </section>
 
     <!-- Tool cards -->
@@ -346,7 +342,7 @@ import Layout from '../layouts/Layout.astro';
 
   <footer class="border-t border-neutral-800/60 px-6 py-8 mt-12">
     <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
-      <span>© 2026 health4.ai</span>
+      <span>© 2026 health4.ai · Not a medical device</span>
       <div class="flex gap-6">
         <a href="/privacy" class="hover:text-neutral-400 transition-colors">Privacy</a>
         <a href="/terms" class="hover:text-neutral-400 transition-colors">Terms</a>
