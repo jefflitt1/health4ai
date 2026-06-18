@@ -1,0 +1,170 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout
+  title="health4.ai vs Health Auto Export, VitalTrends & claude.ai — Apple Health MCP comparison"
+  description="Honest comparison of every way to give an AI agent access to Apple Health data: health4.ai, Health Auto Export, VitalTrends, claude.ai connector, and manual XML export."
+>
+  <nav class="flex items-center justify-between px-6 py-5 max-w-5xl mx-auto">
+    <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
+  </nav>
+
+  <main class="px-6 py-12 max-w-5xl mx-auto">
+
+    <!-- ─── Hero ─── -->
+    <section id="hero" class="mb-16 max-w-3xl">
+      <h1 class="text-2xl sm:text-3xl font-bold text-white mb-4 leading-tight">
+        health4.ai vs alternatives — Apple Health MCP &amp; HealthKit AI agent access compared
+      </h1>
+      <p class="text-neutral-400 text-sm leading-relaxed mb-4">
+        Apple has no server-side HealthKit API. There is no webhook, no OAuth flow, no REST endpoint that lets a remote server pull your Health data. Every sync must originate from your iPhone — which means the tool you choose to bridge that gap determines whether your AI agent can reach your health data at all.
+      </p>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        This page compares the realistic options available today: health4.ai, Health Auto Export, the claude.ai native connector, VitalTrends, and manual XML export. We've tried to be honest about where each tool wins and where it doesn't.
+      </p>
+    </section>
+
+    <!-- ─── Comparison table ─── -->
+    <section id="comparison-table" class="mb-16 overflow-x-auto">
+      <h2 class="text-white font-semibold text-base mb-5">Full feature comparison</h2>
+      <table class="w-full text-xs border-collapse min-w-[680px]">
+        <thead>
+          <tr class="border-b border-neutral-700">
+            <th class="text-left py-3 px-4 text-neutral-500 font-medium w-48">Feature</th>
+            <th class="text-center py-3 px-4 text-green-400 font-bold bg-green-950/30 border border-green-900/40 rounded-t-sm">health4.ai</th>
+            <th class="text-center py-3 px-4 text-neutral-300 font-medium">Health Auto Export</th>
+            <th class="text-center py-3 px-4 text-neutral-300 font-medium">claude.ai connector</th>
+            <th class="text-center py-3 px-4 text-neutral-300 font-medium">VitalTrends</th>
+            <th class="text-center py-3 px-4 text-neutral-300 font-medium">Manual XML export</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-800/60">
+
+          <tr class="hover:bg-neutral-900/30 transition-colors">
+            <td class="py-3 px-4 text-neutral-400 font-medium">Open source</td>
+            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">MIT</td>
+            <td class="py-3 px-4 text-center text-neutral-400">Closed ($30 one-time)</td>
+            <td class="py-3 px-4 text-center text-neutral-400">Closed</td>
+            <td class="py-3 px-4 text-center text-neutral-400">Closed</td>
+            <td class="py-3 px-4 text-center text-neutral-500">N/A</td>
+          </tr>
+
+          <tr class="hover:bg-neutral-900/30 transition-colors">
+            <td class="py-3 px-4 text-neutral-400 font-medium">Works remotely (no home WiFi needed)</td>
+            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓ Cloud Supabase</td>
+            <td class="py-3 px-4 text-center text-neutral-500">✗ Same-WiFi TCP only</td>
+            <td class="py-3 px-4 text-center text-neutral-400">✓ Web only</td>
+            <td class="py-3 px-4 text-center text-neutral-400">✓</td>
+            <td class="py-3 px-4 text-center text-neutral-500">✗ Manual</td>
+          </tr>
+
+          <tr class="hover:bg-neutral-900/30 transition-colors">
+            <td class="py-3 px-4 text-neutral-400 font-medium">Claude Code / API agents</td>
+            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓</td>
+            <td class="py-3 px-4 text-center text-neutral-500">✗</td>
+            <td class="py-3 px-4 text-center text-neutral-500">✗</td>
+            <td class="py-3 px-4 text-center text-neutral-400">Partial (REST, not MCP)</td>
+            <td class="py-3 px-4 text-center text-neutral-500">✗</td>
+          </tr>
+
+          <tr class="hover:bg-neutral-900/30 transition-colors">
+            <td class="py-3 px-4 text-neutral-400 font-medium">MCP server</td>
+            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓ FastMCP</td>
+            <td class="py-3 px-4 text-center text-neutral-400">✓ local only</td>
+            <td class="py-3 px-4 text-center text-neutral-500">✗</td>
+            <td class="py-3 px-4 text-center text-neutral-500">✗</td>
+            <td class="py-3 px-4 text-center text-neutral-500">✗</td>
+          </tr>
+
+          <tr class="hover:bg-neutral-900/30 transition-colors">
+            <td class="py-3 px-4 text-neutral-400 font-medium">Self-hostable</td>
+            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓</td>
+            <td class="py-3 px-4 text-center text-neutral-500">✗</td>
+            <td class="py-3 px-4 text-center text-neutral-500">✗</td>
+            <td class="py-3 px-4 text-center text-neutral-500">✗</td>
+            <td class="py-3 px-4 text-center text-neutral-500">N/A</td>
+          </tr>
+
+          <tr class="hover:bg-neutral-900/30 transition-colors">
+            <td class="py-3 px-4 text-neutral-400 font-medium">Continuous background sync</td>
+            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓ HKObserverQuery</td>
+            <td class="py-3 px-4 text-center text-neutral-400">Unreliable</td>
+            <td class="py-3 px-4 text-center text-neutral-400">✓</td>
+            <td class="py-3 px-4 text-center text-neutral-400">✓</td>
+            <td class="py-3 px-4 text-center text-neutral-500">✗</td>
+          </tr>
+
+          <tr class="hover:bg-neutral-900/30 transition-colors">
+            <td class="py-3 px-4 text-neutral-400 font-medium">All HealthKit types</td>
+            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓ Dynamic enum</td>
+            <td class="py-3 px-4 text-center text-neutral-400">Most</td>
+            <td class="py-3 px-4 text-center text-neutral-400">Most</td>
+            <td class="py-3 px-4 text-center text-neutral-400">Select metrics</td>
+            <td class="py-3 px-4 text-center text-neutral-400">✓</td>
+          </tr>
+
+          <tr class="hover:bg-neutral-900/30 transition-colors">
+            <td class="py-3 px-4 text-neutral-400 font-medium">Price</td>
+            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">Free self-host / $3/mo hosted</td>
+            <td class="py-3 px-4 text-center text-neutral-400">$30 one-time</td>
+            <td class="py-3 px-4 text-center text-neutral-400">Plus required</td>
+            <td class="py-3 px-4 text-center text-neutral-400">$5/mo</td>
+            <td class="py-3 px-4 text-center text-neutral-400">Free</td>
+          </tr>
+
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ─── Why same-WiFi MCP matters ─── -->
+    <section id="same-wifi-problem" class="mb-14 max-w-3xl">
+      <h2 class="text-white font-semibold text-base mb-4">Why same-WiFi MCP is a real limitation</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed mb-3">
+        Health Auto Export's MCP server opens a local TCP port on your iPhone and expects Claude Code (or another MCP client) to connect directly across your LAN. That works fine when your Mac and your phone are on the same home network — but Claude Code runs on your laptop, your laptop travels, and your phone doesn't always follow. The moment you open a terminal at a coffee shop or in the office, the MCP server is unreachable and your agent loses all health context.
+      </p>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        health4.ai routes all data through a Supabase backend. The iOS app syncs via <code class="text-green-400 bg-neutral-900 px-1 rounded text-xs">HKObserverQuery</code> whenever new samples arrive, regardless of where your Mac is. The MCP server connects to Supabase over HTTPS — so your agent has the same access from anywhere with an internet connection.
+      </p>
+    </section>
+
+    <!-- ─── Honest trade-offs ─── -->
+    <section id="limitations" class="mb-14 max-w-3xl">
+      <h2 class="text-white font-semibold text-base mb-4">Where health4.ai isn't the right choice</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed mb-3">
+        We don't have Android support yet — HealthKit is Apple-only and we haven't built a Google Fit or Health Connect bridge. If your health data lives on an Android device, none of the iOS-native options here apply; manual CSV export from your wearable's app is currently your most practical path to an AI agent.
+      </p>
+      <p class="text-neutral-400 text-sm leading-relaxed mb-3">
+        health4.ai has no built-in dashboard or visualization layer. The product is a data pipeline — iOS app syncs to Supabase, MCP server exposes it to agents. If you want charts, trends, and a consumer-grade UI, VitalTrends or the claude.ai native connector will feel more polished out of the box.
+      </p>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        Self-hosted tier requires provisioning your own Supabase project, running the schema migration, and pointing the iOS app at your instance. That's about 15 minutes of setup if you're comfortable with Supabase, but it's a real step that the hosted tier eliminates at the cost of $3/month.
+      </p>
+    </section>
+
+    <!-- ─── CTA ─── -->
+    <section id="cta" class="max-w-3xl">
+      <div class="border border-neutral-800 rounded-lg px-8 py-8 bg-neutral-900/30 text-center">
+        <p class="text-neutral-300 text-sm mb-2 font-medium">Ready to give your AI agent real-time Apple Health access?</p>
+        <p class="text-neutral-500 text-xs mb-6">iOS app + cloud MCP — works anywhere, open source, free to self-host.</p>
+        <a
+          href="/"
+          class="inline-block bg-green-600 hover:bg-green-500 transition-colors text-white text-sm font-semibold px-7 py-3 rounded-md"
+        >
+          Join the waitlist →
+        </a>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="border-t border-neutral-800/60 px-6 py-8 mt-12">
+    <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
+      <span>© 2026 health4.ai · MIT License</span>
+      <div class="flex gap-6">
+        <a href="/privacy" class="hover:text-neutral-400 transition-colors">Privacy</a>
+        <a href="/terms" class="hover:text-neutral-400 transition-colors">Terms</a>
+        <a href="https://github.com/jefflitt1/health4ai" target="_blank" rel="noopener" class="hover:text-neutral-400 transition-colors">GitHub →</a>
+      </div>
+    </div>
+  </footer>
+</Layout>

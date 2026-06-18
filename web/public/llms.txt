@@ -56,7 +56,9 @@ Raw samples retained 180 days. Beyond 180 days, get_long_term_trend transparentl
 ## Pages
 
 - Home: https://health4.ai/
-- Compare: https://health4.ai/compare (vs. alternatives)
+- Compare: https://health4.ai/compare (vs. Health Auto Export, claude.ai, VitalTrends)
+- MCP Tools Reference: https://health4.ai/mcp-tools (all 8 tools with signatures and examples)
+- How It Works: https://health4.ai/how-it-works (architecture, data model, sync mechanism)
 - Privacy Policy: https://health4.ai/privacy
 - Terms of Service: https://health4.ai/terms
 - GitHub: https://github.com/jefflitt1/health4ai

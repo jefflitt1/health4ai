@@ -1,0 +1,274 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout
+  title="How health4.ai works — HealthKit to Supabase to MCP architecture"
+  description="Technical deep-dive: how health4.ai bridges Apple's no-API constraint via on-device sync, Supabase, and a FastMCP server."
+>
+  <nav class="flex items-center justify-between px-6 py-5 max-w-3xl mx-auto">
+    <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
+  </nav>
+
+  <main class="px-6 py-12 max-w-3xl mx-auto">
+
+    <!-- Hero -->
+    <h1 class="text-2xl font-bold text-white mb-4">How health4.ai works</h1>
+    <p class="text-neutral-300 leading-relaxed mb-2">
+      Apple locks HealthKit behind on-device iOS APIs — there is no server-side REST endpoint, no webhook, no way to pull your health data from a cloud service directly. health4.ai works within that constraint by running a sync engine inside an iOS app, writing to a Supabase database you control, and exposing that database through a standard MCP server.
+    </p>
+    <p class="text-neutral-400 text-sm leading-relaxed mb-12">
+      The result: any MCP-compatible AI agent — Claude Code, ChatGPT, Cursor, n8n — can query your Apple Health data using the same tool-call pattern it uses to query anything else.
+    </p>
+
+    <!-- Why Apple has no server-side API -->
+    <section class="mb-12">
+      <h2 class="text-white font-semibold text-base mb-3 text-green-400">Why Apple has no server-side HealthKit API</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed mb-3">
+        Apple requires all HealthKit access to go through on-device iOS code — specifically, through the <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">HealthKit</code> framework APIs that run in your app's process on your phone. There is no REST API, no cloud webhook, no OAuth flow that lets a remote server pull your health records directly.
+      </p>
+      <p class="text-neutral-400 text-sm leading-relaxed mb-3">
+        This is a deliberate privacy design decision by Apple: health data never leaves the device without explicit user action inside an app the user installed and authorized. The <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">HKHealthStore</code> authorization sheet the user sees is the only path in.
+      </p>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        health4.ai complies with this model fully. The iOS app is the only component that ever reads HealthKit data. Everything downstream — Supabase, the MCP server, AI agents — only sees data that the app chose to upload, under the user's explicit authorization.
+      </p>
+    </section>
+
+    <!-- Architecture diagram -->
+    <section class="mb-12">
+      <h2 class="text-white font-semibold text-base mb-4 text-green-400">Architecture</h2>
+      <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-5 text-xs text-green-300 leading-relaxed overflow-x-auto">
+iPhone (iOS app)
+  └─ HKObserverQuery ──► receives new HealthKit samples
+  └─ BGProcessingTask ──► fires during charging/background
+         │
+         ▼
+  Supabase Edge Function
+  (validates JWT, deduplicates, batches inserts)
+         │
+         ▼
+  Supabase / Postgres
+  schema: healthkit
+  ├── health_samples       (EAV: metric_type, timestamp, value, unit)
+  └── health_daily_summaries  (pre-aggregated, covers >180 days)
+         │
+         ▼
+  MCP Server (FastMCP, Python)
+  8 tools: get_sleep, get_hrv_trend, get_workouts,
+           get_daily_snapshot, query_metric, ...
+         │
+         ▼
+  Claude Code / ChatGPT / Cursor / n8n</pre>
+    </section>
+
+    <!-- Four architecture decisions -->
+    <section class="mb-12">
+      <h2 class="text-white font-semibold text-base mb-6 text-green-400">Four architecture decisions</h2>
+
+      <div class="space-y-8">
+
+        <!-- EAV -->
+        <div class="border-l-2 border-neutral-700 pl-5">
+          <h3 class="text-white text-sm font-semibold mb-2">
+            a. EAV schema — not N metric tables
+          </h3>
+          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
+            HealthKit exposes 100+ distinct sample types — steps, HRV, VO2 max, sleep stages, blood glucose, respiratory rate, and more. Apple adds new types with each iOS release.
+          </p>
+          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
+            A single <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">health_samples(metric_type, timestamp, value, unit)</code> table handles all of them without schema migrations. When Apple ships a new HKQuantityType, the app starts syncing it automatically — no column to add, no migration to run.
+          </p>
+          <p class="text-neutral-400 text-sm leading-relaxed">
+            The trade-off is slightly more complex queries (filter by <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">metric_type</code> rather than table name) versus zero schema churn over the product's lifetime. That's an easy trade.
+          </p>
+        </div>
+
+        <!-- HKObserverQuery + BGProcessingTask -->
+        <div class="border-l-2 border-neutral-700 pl-5">
+          <h3 class="text-white text-sm font-semibold mb-2">
+            b. HKObserverQuery + BGProcessingTask — not manual export
+          </h3>
+          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
+            <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">HKObserverQuery</code> fires a background callback whenever the Health app writes a new sample. The app registers this query once; iOS delivers updates continuously. No polling, no user interaction required.
+          </p>
+          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
+            <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">BGProcessingTask</code> is the iOS background processing API designed for exactly this use case — it runs while the device is charging and connected to power, with no strict time limit. It's the right primitive for a reliable, periodic database sync.
+          </p>
+          <p class="text-neutral-400 text-sm leading-relaxed">
+            Manual export approaches (like Health Auto Export's shortcut-based flow) require the user to be active and the app to be in the foreground. That's fine for occasional snapshots but not for "always current" data an AI agent can query at any moment.
+          </p>
+        </div>
+
+        <!-- Raw + summary tier -->
+        <div class="border-l-2 border-neutral-700 pl-5">
+          <h3 class="text-white text-sm font-semibold mb-2">
+            c. Raw + summary tier — transparent to callers
+          </h3>
+          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
+            Raw samples are retained in <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">health_samples</code> for 180 days. Beyond that window, pre-aggregated daily summaries in <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">health_daily_summaries</code> cover multi-year queries without the storage cost of every individual sample.
+          </p>
+          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
+            The MCP layer selects the right tier automatically based on the requested time range. A caller asking for last week's HRV gets raw samples. A caller asking for HRV trend over the last two years gets daily aggregates. Neither caller needs to know this distinction exists.
+          </p>
+          <p class="text-neutral-400 text-sm leading-relaxed">
+            This keeps Supabase storage costs reasonable while enabling long-horizon queries that are often the most useful for AI-assisted health analysis.
+          </p>
+        </div>
+
+        <!-- JWT per-user auth -->
+        <div class="border-l-2 border-neutral-700 pl-5">
+          <h3 class="text-white text-sm font-semibold mb-2">
+            d. JWT per-user auth + row-level security
+          </h3>
+          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
+            Each iOS user authenticates with their own Supabase JWT. The iOS app includes this token in every upload request to the Edge Function, which validates it before writing. The MCP server uses the Supabase service role key — server-side only, never exposed to clients.
+          </p>
+          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
+            Row-level security on <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">health_samples</code> enforces data isolation at the Postgres level: <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">user_id = auth.uid()</code>. The database rejects cross-user reads regardless of what the application layer does.
+          </p>
+          <p class="text-neutral-400 text-sm leading-relaxed">
+            For self-hosted deployments, users own the Supabase project entirely — the service role key never leaves their infrastructure.
+          </p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Data model -->
+    <section class="mb-12">
+      <h2 class="text-white font-semibold text-base mb-4 text-green-400">Data model — <code class="text-green-300 text-sm font-normal">health_samples</code></h2>
+      <p class="text-neutral-400 text-sm leading-relaxed mb-4">
+        The core table. Every metric Apple Health tracks lands here.
+      </p>
+      <div class="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
+        <table class="w-full text-xs text-left">
+          <thead>
+            <tr class="border-b border-neutral-800">
+              <th class="px-4 py-3 text-neutral-500 font-normal w-2/5">column</th>
+              <th class="px-4 py-3 text-neutral-500 font-normal w-1/5">type</th>
+              <th class="px-4 py-3 text-neutral-500 font-normal">notes</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-neutral-800/60">
+            <tr>
+              <td class="px-4 py-3 text-green-300"><code>id</code></td>
+              <td class="px-4 py-3 text-neutral-500">uuid</td>
+              <td class="px-4 py-3 text-neutral-400">PK, gen_random_uuid()</td>
+            </tr>
+            <tr>
+              <td class="px-4 py-3 text-green-300"><code>user_id</code></td>
+              <td class="px-4 py-3 text-neutral-500">uuid</td>
+              <td class="px-4 py-3 text-neutral-400">FK → auth.users, RLS enforced</td>
+            </tr>
+            <tr>
+              <td class="px-4 py-3 text-green-300"><code>metric_type</code></td>
+              <td class="px-4 py-3 text-neutral-500">text</td>
+              <td class="px-4 py-3 text-neutral-400">HKQuantityType identifier, e.g. <code class="text-neutral-300">HKQuantityTypeIdentifierHeartRateVariabilitySDNN</code></td>
+            </tr>
+            <tr>
+              <td class="px-4 py-3 text-green-300"><code>value</code></td>
+              <td class="px-4 py-3 text-neutral-500">float8</td>
+              <td class="px-4 py-3 text-neutral-400">numeric value in the given unit</td>
+            </tr>
+            <tr>
+              <td class="px-4 py-3 text-green-300"><code>unit</code></td>
+              <td class="px-4 py-3 text-neutral-500">text</td>
+              <td class="px-4 py-3 text-neutral-400">e.g. <code class="text-neutral-300">ms</code>, <code class="text-neutral-300">count/min</code>, <code class="text-neutral-300">kcal</code></td>
+            </tr>
+            <tr>
+              <td class="px-4 py-3 text-green-300"><code>start_date</code></td>
+              <td class="px-4 py-3 text-neutral-500">timestamptz</td>
+              <td class="px-4 py-3 text-neutral-400">HKSample startDate</td>
+            </tr>
+            <tr>
+              <td class="px-4 py-3 text-green-300"><code>end_date</code></td>
+              <td class="px-4 py-3 text-neutral-500">timestamptz</td>
+              <td class="px-4 py-3 text-neutral-400">HKSample endDate (equals start_date for point samples)</td>
+            </tr>
+            <tr>
+              <td class="px-4 py-3 text-green-300"><code>source_name</code></td>
+              <td class="px-4 py-3 text-neutral-500">text</td>
+              <td class="px-4 py-3 text-neutral-400">which app wrote this to HealthKit (e.g. "Apple Watch", "Oura")</td>
+            </tr>
+            <tr>
+              <td class="px-4 py-3 text-green-300"><code>created_at</code></td>
+              <td class="px-4 py-3 text-neutral-500">timestamptz</td>
+              <td class="px-4 py-3 text-neutral-400">row insert time, not sample time</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-neutral-500 text-xs mt-3">
+        A unique index on <code class="text-neutral-400">(user_id, metric_type, start_date, source_name)</code> prevents duplicate inserts when the sync job re-processes an overlapping time window.
+      </p>
+    </section>
+
+    <!-- Self-host vs hosted -->
+    <section class="mb-12">
+      <h2 class="text-white font-semibold text-base mb-4 text-green-400">Self-host vs. hosted</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed mb-5">
+        The iOS app and the MCP server support both deployment modes. The only differences are who runs the database and who runs the MCP server process.
+      </p>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <div class="bg-neutral-900 border border-neutral-800 rounded-lg p-5">
+          <p class="text-white text-sm font-semibold mb-3">Self-hosted <span class="text-neutral-500 font-normal text-xs ml-1">free / MIT</span></p>
+          <ul class="text-neutral-400 text-xs leading-relaxed space-y-2">
+            <li>— You provision your own Supabase project</li>
+            <li>— You run the MCP server locally (<code class="text-green-300">uvx health4ai-mcp</code>) or on any server</li>
+            <li>— Health data never touches our infrastructure</li>
+            <li>— You manage schema migrations and Supabase billing</li>
+            <li>— Suitable for HIPAA-sensitive deployments (your controls, your BAA with Supabase)</li>
+          </ul>
+        </div>
+        <div class="bg-neutral-900 border border-neutral-800 rounded-lg p-5">
+          <p class="text-white text-sm font-semibold mb-3">Hosted <span class="text-neutral-500 font-normal text-xs ml-1">$3/mo</span></p>
+          <ul class="text-neutral-400 text-xs leading-relaxed space-y-2">
+            <li>— We manage the Supabase project and Edge Functions</li>
+            <li>— Remote MCP endpoint — no local server process needed</li>
+            <li>— Add the endpoint URL to your Claude config and done</li>
+            <li>— Schema migrations happen automatically on app updates</li>
+            <li>— Governed by the <a href="/privacy" class="text-green-400 hover:underline">privacy policy</a></li>
+          </ul>
+        </div>
+      </div>
+      <p class="text-neutral-500 text-xs mt-4">
+        The iOS app detects which mode you're using based on the Supabase URL you configure at setup. Switching from hosted to self-hosted is a re-configuration — data export available on request.
+      </p>
+    </section>
+
+    <!-- CTA -->
+    <section class="border-t border-neutral-800/60 pt-10">
+      <p class="text-neutral-300 text-sm leading-relaxed mb-6">
+        The full source — iOS app, Edge Functions, MCP server, and schema migrations — is on GitHub under MIT.
+      </p>
+      <div class="flex flex-wrap gap-4">
+        <a
+          href="https://github.com/jefflitt1/health4ai"
+          target="_blank"
+          rel="noopener"
+          class="inline-flex items-center gap-2 bg-neutral-900 border border-neutral-700 text-white text-sm px-5 py-2.5 rounded-lg hover:border-green-500/50 hover:text-green-300 transition-colors"
+        >
+          GitHub →
+        </a>
+        <a
+          href="/"
+          class="inline-flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white text-sm px-5 py-2.5 rounded-lg transition-colors"
+        >
+          Join the waitlist
+        </a>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="border-t border-neutral-800/60 px-6 py-8 mt-12">
+    <div class="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
+      <span>© 2026 health4.ai · MIT License</span>
+      <div class="flex gap-6">
+        <a href="/privacy" class="hover:text-neutral-400 transition-colors">Privacy</a>
+        <a href="/terms" class="hover:text-neutral-400 transition-colors">Terms</a>
+        <a href="https://github.com/jefflitt1/health4ai" target="_blank" rel="noopener" class="hover:text-neutral-400 transition-colors">GitHub →</a>
+      </div>
+    </div>
+  </footer>
+</Layout>

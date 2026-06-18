@@ -1,0 +1,357 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout
+  title="health4.ai MCP Tools Reference — Apple Health MCP Server"
+  description="Complete reference for the 8 MCP tools exposed by the health4.ai FastMCP server. Tool signatures, parameters, return shapes, and example Claude prompts."
+>
+  <nav class="flex items-center justify-between px-6 py-5 max-w-5xl mx-auto">
+    <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
+    <div class="flex gap-6 text-sm text-neutral-500">
+      <a href="/" class="hover:text-neutral-300 transition-colors">Home</a>
+      <a href="https://github.com/jefflitt1/health4ai" target="_blank" rel="noopener" class="hover:text-neutral-300 transition-colors">GitHub →</a>
+    </div>
+  </nav>
+
+  <main class="px-6 py-12 max-w-5xl mx-auto">
+
+    <!-- Hero -->
+    <div class="mb-14">
+      <div class="text-green-500 text-xs font-mono mb-3 tracking-widest uppercase">MCP Server Reference</div>
+      <h1 class="text-3xl font-bold text-white mb-4">MCP Tools Reference</h1>
+      <p class="text-neutral-400 text-sm leading-relaxed max-w-2xl">
+        health4.ai exposes 8 MCP tools via FastMCP (Python). Add the server to
+        <code class="text-amber-400 bg-neutral-900 px-1 rounded text-xs">claude_desktop_config.json</code>
+        and Claude Code can query your Apple Health data natively.
+      </p>
+    </div>
+
+    <!-- Quick install -->
+    <section class="mb-16">
+      <h2 class="text-white font-semibold text-sm mb-4 uppercase tracking-widest">Quick Install</h2>
+      <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-5 overflow-x-auto text-xs leading-relaxed text-neutral-300"><code>{`{
+  "mcpServers": {
+    "health4ai": {
+      "command": "python",
+      "args": ["main.py"],
+      "cwd": "/path/to/health4ai/mcp-server",
+      "env": {
+        "SUPABASE_URL": "your-supabase-url",
+        "SUPABASE_SERVICE_ROLE_KEY": "your-service-role-key",
+        "HEALTHKIT_USER_ID": "your-user-id"
+      }
+    }
+  }
+}`}</code></pre>
+    </section>
+
+    <!-- Tool cards -->
+    <section class="mb-16">
+      <h2 class="text-white font-semibold text-sm mb-8 uppercase tracking-widest">8 Tools</h2>
+
+      <div class="space-y-6">
+
+        <!-- get_health_summary -->
+        <div class="border border-neutral-800 rounded-lg p-6 bg-neutral-900/40">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
+            <code class="text-green-400 font-mono font-bold text-base">get_health_summary</code>
+            <span class="text-neutral-600 text-xs font-mono">Overview · key metrics</span>
+          </div>
+          <p class="text-amber-400 font-mono text-xs mb-3">
+            get_health_summary(days: int) → &#123;steps, hrv_sdnn_ms, resting_heart_rate_bpm, sleep_hours, workout_count&#125;
+          </p>
+          <p class="text-neutral-400 text-sm mb-4">Overview of key metrics across a date range.</p>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Example prompt</div>
+              <div class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs italic">"What's my health summary for the last 7 days?"</div>
+            </div>
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Return shape</div>
+              <pre class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs overflow-x-auto"><code>{`{
+  "steps": 8432,
+  "hrv_sdnn_ms": 52.1,
+  "resting_heart_rate_bpm": 58,
+  "sleep_hours": 7.3,
+  "workout_count": 4
+}`}</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- get_sleep -->
+        <div class="border border-neutral-800 rounded-lg p-6 bg-neutral-900/40">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
+            <code class="text-green-400 font-mono font-bold text-base">get_sleep</code>
+            <span class="text-neutral-600 text-xs font-mono">Sleep stages · per night</span>
+          </div>
+          <p class="text-amber-400 font-mono text-xs mb-3">
+            get_sleep(days: int) → [&#123;date, duration_hours, rem_hours, core_hours, deep_hours, awake_hours, efficiency_pct&#125;]
+          </p>
+          <p class="text-neutral-400 text-sm mb-4">Per-night sleep stage breakdown.</p>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Example prompt</div>
+              <div class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs italic">"How was my sleep last week?"</div>
+            </div>
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Return shape</div>
+              <pre class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs overflow-x-auto"><code>{`[{
+  "date": "2026-06-17",
+  "duration_hours": 7.5,
+  "rem_hours": 1.8,
+  "core_hours": 4.2,
+  "deep_hours": 1.1,
+  "awake_hours": 0.4,
+  "efficiency_pct": 94.7
+}]`}</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- get_hrv_trend -->
+        <div class="border border-neutral-800 rounded-lg p-6 bg-neutral-900/40">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
+            <code class="text-green-400 font-mono font-bold text-base">get_hrv_trend</code>
+            <span class="text-neutral-600 text-xs font-mono">HRV · trend delta</span>
+          </div>
+          <p class="text-amber-400 font-mono text-xs mb-3">
+            get_hrv_trend(days: int) → &#123;daily: [&#123;date, hrv_sdnn_ms&#125;], trend_vs_prior_week_pct&#125;
+          </p>
+          <p class="text-neutral-400 text-sm mb-4">Daily HRV (SDNN) with trend delta vs prior period.</p>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Example prompt</div>
+              <div class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs italic">"Is my HRV improving?"</div>
+            </div>
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Return shape</div>
+              <pre class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs overflow-x-auto"><code>{`{
+  "daily": [
+    {"date": "2026-06-17", "hrv_sdnn_ms": 54.2},
+    {"date": "2026-06-16", "hrv_sdnn_ms": 49.8}
+  ],
+  "trend_vs_prior_week_pct": 6.3
+}`}</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- get_daily_snapshot -->
+        <div class="border border-neutral-800 rounded-lg p-6 bg-neutral-900/40">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
+            <code class="text-green-400 font-mono font-bold text-base">get_daily_snapshot</code>
+            <span class="text-neutral-600 text-xs font-mono">All metrics · single date</span>
+          </div>
+          <p class="text-amber-400 font-mono text-xs mb-3">
+            get_daily_snapshot(date: str) → &#123;date, ...all metrics recorded that day&#125;
+          </p>
+          <p class="text-neutral-400 text-sm mb-4">All HealthKit samples recorded for a specific date.</p>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Example prompt</div>
+              <div class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs italic">"What does my health data look like for June 15?"</div>
+            </div>
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Return shape</div>
+              <pre class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs overflow-x-auto"><code>{`{
+  "date": "2026-06-15",
+  "steps": 9241,
+  "hrv_sdnn_ms": 51.4,
+  "resting_hr_bpm": 57,
+  "sleep_hours": 7.8,
+  "active_calories": 612
+}`}</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- get_workouts -->
+        <div class="border border-neutral-800 rounded-lg p-6 bg-neutral-900/40">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
+            <code class="text-green-400 font-mono font-bold text-base">get_workouts</code>
+            <span class="text-neutral-600 text-xs font-mono">Workout log · type &amp; intensity</span>
+          </div>
+          <p class="text-amber-400 font-mono text-xs mb-3">
+            get_workouts(days: int) → [&#123;date, type, duration_min, distance_km, active_calories&#125;]
+          </p>
+          <p class="text-neutral-400 text-sm mb-4">Workout log with type and intensity metrics.</p>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Example prompt</div>
+              <div class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs italic">"How many workouts did I do this month?"</div>
+            </div>
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Return shape</div>
+              <pre class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs overflow-x-auto"><code>{`[{
+  "date": "2026-06-17",
+  "type": "Running",
+  "duration_min": 42,
+  "distance_km": 6.8,
+  "active_calories": 487
+}]`}</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- query_metric -->
+        <div class="border border-neutral-800 rounded-lg p-6 bg-neutral-900/40">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
+            <code class="text-green-400 font-mono font-bold text-base">query_metric</code>
+            <span class="text-neutral-600 text-xs font-mono">Raw time series · any HKQuantityType</span>
+          </div>
+          <p class="text-amber-400 font-mono text-xs mb-3">
+            query_metric(metric_type: str, days: int) → [&#123;timestamp, value, unit&#125;]
+          </p>
+          <p class="text-neutral-400 text-sm mb-4">Raw time series for any HKQuantityType identifier. See identifier table below.</p>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Example prompt</div>
+              <div class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs italic">"Show me my VO2 max readings for the last 90 days"</div>
+            </div>
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Return shape</div>
+              <pre class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs overflow-x-auto"><code>{`[{
+  "timestamp": "2026-06-17T07:14:22Z",
+  "value": 48.3,
+  "unit": "mL/kg/min"
+}]`}</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- get_long_term_trend -->
+        <div class="border border-neutral-800 rounded-lg p-6 bg-neutral-900/40">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
+            <code class="text-green-400 font-mono font-bold text-base">get_long_term_trend</code>
+            <span class="text-neutral-600 text-xs font-mono">Monthly aggregates · multi-year</span>
+          </div>
+          <p class="text-amber-400 font-mono text-xs mb-3">
+            get_long_term_trend(metric_type: str, months: int) → [&#123;month, avg_value, sample_count&#125;]
+          </p>
+          <p class="text-neutral-400 text-sm mb-4">
+            Multi-year monthly aggregates. Automatically uses the summary data tier beyond 180 days for query efficiency.
+          </p>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Example prompt</div>
+              <div class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs italic">"What's my HRV trend for the last 2 years?"</div>
+            </div>
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Return shape</div>
+              <pre class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs overflow-x-auto"><code>{`[{
+  "month": "2026-06",
+  "avg_value": 51.8,
+  "sample_count": 17
+}]`}</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- get_coaching_brief -->
+        <div class="border border-neutral-800 rounded-lg p-6 bg-neutral-900/40">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
+            <code class="text-green-400 font-mono font-bold text-base">get_coaching_brief</code>
+            <span class="text-neutral-600 text-xs font-mono">Structured context · AI agents</span>
+          </div>
+          <p class="text-amber-400 font-mono text-xs mb-3">
+            get_coaching_brief() → &#123;recovery_score, sleep_quality, training_load, recommendation&#125;
+          </p>
+          <p class="text-neutral-400 text-sm mb-4">Structured coaching context for AI agents. Suitable as a system prompt prefix or daily brief.</p>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Example prompt</div>
+              <div class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs italic">"Give me a training readiness brief"</div>
+            </div>
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Return shape</div>
+              <pre class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs overflow-x-auto"><code>{`{
+  "recovery_score": 78,
+  "sleep_quality": "good",
+  "training_load": "moderate",
+  "recommendation": "Ready for intensity. HRV elevated vs baseline."
+}`}</code></pre>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- HKQuantityType identifier table -->
+    <section class="mb-16">
+      <h2 class="text-white font-semibold text-sm mb-2 uppercase tracking-widest">HKQuantityType Identifiers</h2>
+      <p class="text-neutral-500 text-xs mb-6">
+        Pass these strings as <code class="text-amber-400">metric_type</code> to
+        <code class="text-green-400">query_metric</code> or <code class="text-green-400">get_long_term_trend</code>.
+      </p>
+      <div class="border border-neutral-800 rounded-lg overflow-hidden">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="border-b border-neutral-800 bg-neutral-900">
+              <th class="text-left px-4 py-3 text-neutral-500 font-normal uppercase tracking-wider">Identifier</th>
+              <th class="text-left px-4 py-3 text-neutral-500 font-normal uppercase tracking-wider">Metric</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-neutral-800/60">
+            <tr class="hover:bg-neutral-900/40 transition-colors">
+              <td class="px-4 py-3 font-mono text-amber-400 text-xs">HKQuantityTypeIdentifierHeartRateVariabilitySDNN</td>
+              <td class="px-4 py-3 text-neutral-400">HRV</td>
+            </tr>
+            <tr class="hover:bg-neutral-900/40 transition-colors">
+              <td class="px-4 py-3 font-mono text-amber-400 text-xs">HKQuantityTypeIdentifierRestingHeartRate</td>
+              <td class="px-4 py-3 text-neutral-400">Resting HR</td>
+            </tr>
+            <tr class="hover:bg-neutral-900/40 transition-colors">
+              <td class="px-4 py-3 font-mono text-amber-400 text-xs">HKQuantityTypeIdentifierVO2Max</td>
+              <td class="px-4 py-3 text-neutral-400">VO2 max</td>
+            </tr>
+            <tr class="hover:bg-neutral-900/40 transition-colors">
+              <td class="px-4 py-3 font-mono text-amber-400 text-xs">HKQuantityTypeIdentifierStepCount</td>
+              <td class="px-4 py-3 text-neutral-400">Steps</td>
+            </tr>
+            <tr class="hover:bg-neutral-900/40 transition-colors">
+              <td class="px-4 py-3 font-mono text-amber-400 text-xs">HKQuantityTypeIdentifierActiveEnergyBurned</td>
+              <td class="px-4 py-3 text-neutral-400">Active calories</td>
+            </tr>
+            <tr class="hover:bg-neutral-900/40 transition-colors">
+              <td class="px-4 py-3 font-mono text-amber-400 text-xs">HKQuantityTypeIdentifierBodyMass</td>
+              <td class="px-4 py-3 text-neutral-400">Weight</td>
+            </tr>
+            <tr class="hover:bg-neutral-900/40 transition-colors">
+              <td class="px-4 py-3 font-mono text-amber-400 text-xs">HKQuantityTypeIdentifierOxygenSaturation</td>
+              <td class="px-4 py-3 text-neutral-400">Blood oxygen</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Footer CTA -->
+    <section class="border border-neutral-800 rounded-lg p-8 text-center bg-neutral-900/30">
+      <div class="text-green-500 text-xs font-mono mb-3 tracking-widest uppercase">Early Access</div>
+      <h2 class="text-white font-bold text-xl mb-3">Connect your Apple Health data to Claude</h2>
+      <p class="text-neutral-400 text-sm mb-6 max-w-md mx-auto">
+        Join the waitlist. iOS app in TestFlight, MCP server MIT-licensed on GitHub.
+      </p>
+      <a
+        href="/"
+        class="inline-block bg-green-600 hover:bg-green-500 text-white text-sm font-semibold px-6 py-3 rounded-lg transition-colors"
+      >
+        Join the waitlist
+      </a>
+    </section>
+
+  </main>
+
+  <footer class="border-t border-neutral-800/60 px-6 py-8 mt-12">
+    <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
+      <span>© 2026 health4.ai · MIT License</span>
+      <div class="flex gap-6">
+        <a href="/privacy" class="hover:text-neutral-400 transition-colors">Privacy</a>
+        <a href="/terms" class="hover:text-neutral-400 transition-colors">Terms</a>
+        <a href="https://github.com/jefflitt1/health4ai" target="_blank" rel="noopener" class="hover:text-neutral-400 transition-colors">GitHub →</a>
+      </div>
+    </div>
+  </footer>
+</Layout>
