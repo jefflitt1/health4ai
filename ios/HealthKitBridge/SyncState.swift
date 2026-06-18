@@ -1,9 +1,37 @@
 import Foundation
 import Combine
 
+// MARK: - Connection configuration
+
+enum ConnectionType: String, CaseIterable {
+    case supabase = "supabase"
+    case rest = "rest"
+
+    var displayName: String {
+        switch self {
+        case .supabase: return "Supabase"
+        case .rest:     return "REST / Webhook"
+        }
+    }
+}
+
+enum RestAuthType: String, CaseIterable {
+    case none    = "none"
+    case bearer  = "bearer"
+    case apiKey  = "apiKey"
+
+    var displayName: String {
+        switch self {
+        case .none:   return "No Auth"
+        case .bearer: return "Bearer Token"
+        case .apiKey: return "API Key Header"
+        }
+    }
+}
+
 // MARK: - SyncState
 
-/// Central ObservableObject driving all SwiftUI state for the settings screen.
+/// Central ObservableObject driving all SwiftUI state.
 @MainActor
 final class SyncState: ObservableObject {
 
@@ -33,16 +61,46 @@ final class SyncState: ObservableObject {
     @Published var backfillEarliestDate: Date? = nil
     @Published var backfillLatestDate: Date? = nil
 
-    // MARK: - Configuration
+    // MARK: - Connection configuration
 
+    @Published var connectionType: ConnectionType {
+        didSet { UserDefaults.standard.set(connectionType.rawValue, forKey: Keys.connectionType) }
+    }
+
+    /// Supabase: base project URL, e.g. https://abc123.supabase.co
+    @Published var supabaseProjectURL: String {
+        didSet { UserDefaults.standard.set(supabaseProjectURL, forKey: Keys.supabaseProjectURL) }
+    }
+
+    /// Generic REST: full endpoint URL
     @Published var serverURL: String {
         didSet { UserDefaults.standard.set(serverURL, forKey: Keys.serverURL) }
+    }
+
+    @Published var restAuthType: RestAuthType {
+        didSet { UserDefaults.standard.set(restAuthType.rawValue, forKey: Keys.restAuthType) }
+    }
+
+    @Published var restApiKeyHeader: String {
+        didSet { UserDefaults.standard.set(restApiKeyHeader, forKey: Keys.restApiKeyHeader) }
     }
 
     // MARK: - Auth
 
     @Published var isAuthenticated: Bool = false
     @Published var userEmail: String? = nil
+
+    // MARK: - Computed endpoint
+
+    var resolvedEndpointURL: String {
+        switch connectionType {
+        case .supabase:
+            let base = supabaseProjectURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            return base.isEmpty ? serverURL : "\(base)/functions/v1/healthkit-ingest"
+        case .rest:
+            return serverURL
+        }
+    }
 
     // MARK: - Lifetime record count
 
@@ -54,8 +112,14 @@ final class SyncState: ObservableObject {
 
     init() {
         let defaults = UserDefaults.standard
+        let typeRaw = defaults.string(forKey: Keys.connectionType) ?? ConnectionType.supabase.rawValue
+        self.connectionType = ConnectionType(rawValue: typeRaw) ?? .supabase
+        self.supabaseProjectURL = defaults.string(forKey: Keys.supabaseProjectURL) ?? ""
         self.serverURL = defaults.string(forKey: Keys.serverURL)
             ?? "https://donnmhbwhpjlmpnwgdqr.supabase.co/functions/v1/healthkit-ingest"
+        let authRaw = defaults.string(forKey: Keys.restAuthType) ?? RestAuthType.bearer.rawValue
+        self.restAuthType = RestAuthType(rawValue: authRaw) ?? .bearer
+        self.restApiKeyHeader = defaults.string(forKey: Keys.restApiKeyHeader) ?? "X-API-Key"
         self.lastSyncDate = defaults.object(forKey: Keys.lastSyncDate) as? Date
         self.lastSyncRecordCount = defaults.integer(forKey: Keys.lastSyncRecordCount)
         self.backfillCompleted = defaults.bool(forKey: Keys.backfillCompleted)
@@ -123,10 +187,14 @@ final class SyncState: ObservableObject {
 // MARK: - UserDefaults Keys
 
 private enum Keys {
-    static let serverURL          = "hkb.serverURL"
-    static let lastSyncDate       = "hkb.lastSyncDate"
-    static let lastSyncRecordCount = "hkb.lastSyncRecordCount"
-    static let backfillCompleted  = "hkb.backfillCompleted"
-    static let backfillProgress   = "hkb.backfillProgress"
+    static let connectionType       = "hkb.connectionType"
+    static let supabaseProjectURL   = "hkb.supabaseProjectURL"
+    static let serverURL            = "hkb.serverURL"
+    static let restAuthType         = "hkb.restAuthType"
+    static let restApiKeyHeader     = "hkb.restApiKeyHeader"
+    static let lastSyncDate         = "hkb.lastSyncDate"
+    static let lastSyncRecordCount  = "hkb.lastSyncRecordCount"
+    static let backfillCompleted    = "hkb.backfillCompleted"
+    static let backfillProgress     = "hkb.backfillProgress"
     static let lifetimeSyncedRecords = "hkb.lifetimeSyncedRecords"
 }
