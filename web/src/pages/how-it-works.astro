@@ -126,9 +126,6 @@ iPhone (iOS app)
           <p class="text-neutral-400 text-sm leading-relaxed mb-2">
             Row-level security on <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">health_samples</code> enforces data isolation at the Postgres level: <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">user_id = auth.uid()</code>. The database rejects cross-user reads regardless of what the application layer does.
           </p>
-          <p class="text-neutral-400 text-sm leading-relaxed">
-            For self-hosted deployments, users own the Supabase project entirely — the service role key never leaves their infrastructure.
-          </p>
         </div>
 
       </div>
@@ -204,42 +201,10 @@ iPhone (iOS app)
     </section>
 
     <!-- Self-host vs hosted -->
-    <section class="mb-12">
-      <h2 class="text-white font-semibold text-base mb-4 text-green-400">Self-host vs. hosted</h2>
-      <p class="text-neutral-400 text-sm leading-relaxed mb-5">
-        The iOS app and the MCP server support both deployment modes. The only differences are who runs the database and who runs the MCP server process.
-      </p>
-      <div class="grid sm:grid-cols-2 gap-4">
-        <div class="bg-neutral-900 border border-neutral-800 rounded-lg p-5">
-          <p class="text-white text-sm font-semibold mb-3">Self-hosted <span class="text-neutral-500 font-normal text-xs ml-1">free / MIT</span></p>
-          <ul class="text-neutral-400 text-xs leading-relaxed space-y-2">
-            <li>— You provision your own Supabase project</li>
-            <li>— You run the MCP server locally (<code class="text-green-300">uvx health4ai-mcp</code>) or on any server</li>
-            <li>— Health data never touches our infrastructure</li>
-            <li>— You manage schema migrations and Supabase billing</li>
-            <li>— Suitable for HIPAA-sensitive deployments (your controls, your BAA with Supabase)</li>
-          </ul>
-        </div>
-        <div class="bg-neutral-900 border border-neutral-800 rounded-lg p-5">
-          <p class="text-white text-sm font-semibold mb-3">Hosted <span class="text-neutral-500 font-normal text-xs ml-1">$3/mo</span></p>
-          <ul class="text-neutral-400 text-xs leading-relaxed space-y-2">
-            <li>— We manage the Supabase project and Edge Functions</li>
-            <li>— Remote MCP endpoint — no local server process needed</li>
-            <li>— Add the endpoint URL to your Claude config and done</li>
-            <li>— Schema migrations happen automatically on app updates</li>
-            <li>— Governed by the <a href="/privacy" class="text-green-400 hover:underline">privacy policy</a></li>
-          </ul>
-        </div>
-      </div>
-      <p class="text-neutral-500 text-xs mt-4">
-        The iOS app detects which mode you're using based on the Supabase URL you configure at setup. Switching from hosted to self-hosted is a re-configuration — data export available on request.
-      </p>
-    </section>
-
     <!-- CTA -->
     <section class="border-t border-neutral-800/60 pt-10">
       <p class="text-neutral-300 text-sm leading-relaxed mb-6">
-        The full source — iOS app, Edge Functions, MCP server, and schema migrations — is on GitHub under MIT.
+        Download the app, authorize HealthKit, and start asking your AI questions about your health.
       </p>
       <div class="flex flex-wrap gap-4">
         <a
@@ -263,7 +228,7 @@ iPhone (iOS app)
 
   <footer class="border-t border-neutral-800/60 px-6 py-8 mt-12">
     <div class="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
-      <span>© 2026 health4.ai · MIT License</span>
+      <span>© 2026 health4.ai</span>
       <div class="flex gap-6">
         <a href="/privacy" class="hover:text-neutral-400 transition-colors">Privacy</a>
         <a href="/terms" class="hover:text-neutral-400 transition-colors">Terms</a>

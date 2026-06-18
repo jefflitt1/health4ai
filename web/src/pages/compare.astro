@@ -41,15 +41,6 @@ import Layout from '../layouts/Layout.astro';
         <tbody class="divide-y divide-neutral-800/60">
 
           <tr class="hover:bg-neutral-900/30 transition-colors">
-            <td class="py-3 px-4 text-neutral-400 font-medium">Open source</td>
-            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">MIT</td>
-            <td class="py-3 px-4 text-center text-neutral-400">Closed ($30 one-time)</td>
-            <td class="py-3 px-4 text-center text-neutral-400">Closed</td>
-            <td class="py-3 px-4 text-center text-neutral-400">Closed</td>
-            <td class="py-3 px-4 text-center text-neutral-500">N/A</td>
-          </tr>
-
-          <tr class="hover:bg-neutral-900/30 transition-colors">
             <td class="py-3 px-4 text-neutral-400 font-medium">Works remotely (no home WiFi needed)</td>
             <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓ Cloud Supabase</td>
             <td class="py-3 px-4 text-center text-neutral-500">✗ Same-WiFi TCP only</td>
@@ -77,15 +68,6 @@ import Layout from '../layouts/Layout.astro';
           </tr>
 
           <tr class="hover:bg-neutral-900/30 transition-colors">
-            <td class="py-3 px-4 text-neutral-400 font-medium">Self-hostable</td>
-            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓</td>
-            <td class="py-3 px-4 text-center text-neutral-500">✗</td>
-            <td class="py-3 px-4 text-center text-neutral-500">✗</td>
-            <td class="py-3 px-4 text-center text-neutral-500">✗</td>
-            <td class="py-3 px-4 text-center text-neutral-500">N/A</td>
-          </tr>
-
-          <tr class="hover:bg-neutral-900/30 transition-colors">
             <td class="py-3 px-4 text-neutral-400 font-medium">Continuous background sync</td>
             <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓ HKObserverQuery</td>
             <td class="py-3 px-4 text-center text-neutral-400">Unreliable</td>
@@ -105,7 +87,7 @@ import Layout from '../layouts/Layout.astro';
 
           <tr class="hover:bg-neutral-900/30 transition-colors">
             <td class="py-3 px-4 text-neutral-400 font-medium">Price</td>
-            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">Free self-host / $3/mo hosted</td>
+            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">Free</td>
             <td class="py-3 px-4 text-center text-neutral-400">$30 one-time</td>
             <td class="py-3 px-4 text-center text-neutral-400">Plus required</td>
             <td class="py-3 px-4 text-center text-neutral-400">$5/mo</td>
@@ -136,16 +118,13 @@ import Layout from '../layouts/Layout.astro';
       <p class="text-neutral-400 text-sm leading-relaxed mb-3">
         health4.ai has no built-in dashboard or visualization layer. The product is a data pipeline — iOS app syncs to Supabase, MCP server exposes it to agents. If you want charts, trends, and a consumer-grade UI, VitalTrends or the claude.ai native connector will feel more polished out of the box.
       </p>
-      <p class="text-neutral-400 text-sm leading-relaxed">
-        Self-hosted tier requires provisioning your own Supabase project, running the schema migration, and pointing the iOS app at your instance. That's about 15 minutes of setup if you're comfortable with Supabase, but it's a real step that the hosted tier eliminates at the cost of $3/month.
-      </p>
     </section>
 
     <!-- ─── CTA ─── -->
     <section id="cta" class="max-w-3xl">
       <div class="border border-neutral-800 rounded-lg px-8 py-8 bg-neutral-900/30 text-center">
         <p class="text-neutral-300 text-sm mb-2 font-medium">Ready to give your AI agent real-time Apple Health access?</p>
-        <p class="text-neutral-500 text-xs mb-6">iOS app + cloud MCP — works anywhere, open source, free to self-host.</p>
+        <p class="text-neutral-500 text-xs mb-6">Free iOS app — works with Claude, ChatGPT, Cursor, and any AI.</p>
         <a
           href="/"
           class="inline-block bg-green-600 hover:bg-green-500 transition-colors text-white text-sm font-semibold px-7 py-3 rounded-md"
@@ -159,7 +138,7 @@ import Layout from '../layouts/Layout.astro';
 
   <footer class="border-t border-neutral-800/60 px-6 py-8 mt-12">
     <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
-      <span>© 2026 health4.ai · MIT License</span>
+      <span>© 2026 health4.ai</span>
       <div class="flex gap-6">
         <a href="/privacy" class="hover:text-neutral-400 transition-colors">Privacy</a>
         <a href="/terms" class="hover:text-neutral-400 transition-colors">Terms</a>

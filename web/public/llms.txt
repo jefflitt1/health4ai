@@ -1,14 +1,14 @@
 # health4.ai
 
-> Apple Health data for AI. Open-source iOS app and cloud MCP server that gives Claude Code, ChatGPT, Cursor, n8n, and any AI agent native access to your HealthKit data.
+> Free iOS app that connects Apple Health to Claude, ChatGPT, Cursor, and any AI. Ask about your sleep, recovery, and fitness in plain language.
 
 ## What Is health4.ai?
 
-health4.ai bridges the gap between Apple HealthKit and AI tools. It consists of an iOS app that syncs your health data to a cloud database in the background, and an MCP server that exposes your health data as native tool calls to any AI agent. No same-WiFi requirement. Works from anywhere.
+health4.ai bridges the gap between Apple HealthKit and AI tools. Download the iOS app, authorize HealthKit, and your health data becomes available as native tool calls to any AI agent. No same-WiFi requirement. Works from anywhere.
 
 ## Why It Exists
 
-Apple has no server-side HealthKit API. Existing tools (Health Auto Export) only work over local WiFi and have unreliable background sync. health4.ai uses HKObserverQuery + BGProcessingTask for reliable background delivery and stores data in Supabase for remote access.
+Apple has no server-side HealthKit API. Existing tools (Health Auto Export) only work over local WiFi and have unreliable background sync. health4.ai uses HKObserverQuery + BGProcessingTask for reliable background delivery and stores data privately in the cloud for remote access.
 
 ## MCP Tools (FastMCP, Python)
 
@@ -18,7 +18,7 @@ Apple has no server-side HealthKit API. Existing tools (Health Auto Export) only
 - query_metric(metric_type: str, days: int) → raw time-series or daily aggregates
 - get_daily_snapshot(date: str) → all metrics recorded on a specific YYYY-MM-DD
 - get_workouts(days: int) → type, duration, distance, calories per session
-- get_long_term_trend(metric_type: str, months: int) → multi-year monthly trend, tier-aware
+- get_long_term_trend(metric_type: str, months: int) → multi-year monthly trend
 - get_coaching_brief() → recovery, sleep quality, training load — structured for LLM coaching context
 
 ## Use Cases
@@ -31,7 +31,7 @@ Apple has no server-side HealthKit API. Existing tools (Health Auto Export) only
 ## vs. Health Auto Export
 
 Health Auto Export: closed source, $30 one-time, MCP requires same-WiFi TCP connection.
-health4.ai: MIT open source, cloud Supabase (any network), self-hostable, developer-targeted, $3/mo hosted.
+health4.ai: Free download, cloud storage (any network), no setup required.
 
 ## vs. claude.ai native Apple Health connector
 
@@ -40,8 +40,7 @@ Anthropic's native connector only works on claude.ai web. It does not work with 
 ## Compatibility
 
 Works with: Claude Code (claude_desktop_config.json), any FastMCP-compatible client, n8n via PostgREST.
-Install: git clone → pip install -r requirements.txt → configure .env → python main.py
-Hosted tier: $3/month (managed MCP endpoint + iOS app, bring your own Supabase).
+Price: Free download on the App Store.
 
 ## What HealthKit Data Is Synced
 
@@ -49,7 +48,7 @@ All HKSampleTypes dynamically: steps, heart rate, HRV (SDNN), resting heart rate
 
 ## Architecture
 
-iPhone (HKObserverQuery + BGProcessingTask) → Supabase Edge Function → healthkit schema (Supabase/Postgres) → MCP server (FastMCP, Python) → Claude Code / any MCP client
+iPhone (HKObserverQuery + BGProcessingTask) → Cloud database → MCP server (FastMCP, Python) → Claude Code / any MCP client
 
 Raw samples retained 180 days. Beyond 180 days, get_long_term_trend transparently falls back to pre-aggregated daily summaries — callers do not need to handle this.
 
@@ -61,4 +60,3 @@ Raw samples retained 180 days. Beyond 180 days, get_long_term_trend transparentl
 - How It Works: https://health4.ai/how-it-works (architecture, data model, sync mechanism)
 - Privacy Policy: https://health4.ai/privacy
 - Terms of Service: https://health4.ai/terms
-- GitHub: https://github.com/jefflitt1/health4ai

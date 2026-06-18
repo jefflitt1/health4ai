@@ -24,7 +24,7 @@ const lastUpdated = '2026-06-18';
         <li><strong class="text-neutral-200">Health data</strong> — HealthKit metrics you authorize (sleep, HRV, steps, workouts, heart rate, etc.). This data is uploaded to Supabase.</li>
         <li><strong class="text-neutral-200">Account data</strong> — email address (waitlist sign-ups and hosted-tier accounts), auth tokens.</li>
         <li><strong class="text-neutral-200">Usage data</strong> — MCP API call counts, error logs (no health payload in logs). We use PostHog for analytics; it does not receive health data.</li>
-        <li><strong class="text-neutral-200">Self-hosted users</strong> — If you self-host using your own Supabase project, we never see your health data. You control the database.</li>
+        <li><strong class="text-neutral-200">No third-party access</strong> — Your health data is stored in a private database. We do not share it with third parties, advertisers, or data brokers.</li>
       </ul>
     </section>
 
@@ -43,14 +43,14 @@ const lastUpdated = '2026-06-18';
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">3. Where data is stored</h2>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        Hosted-tier health data is stored in Supabase (hosted on AWS us-east-1). Data is encrypted at rest and in transit (TLS 1.2+). Self-hosted users store data in their own Supabase instance — we have no access.
+        Your health data is stored in a private Supabase database (hosted on AWS us-east-1). Data is encrypted at rest and in transit (TLS 1.2+). Only you can query your data.
       </p>
     </section>
 
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">4. HIPAA</h2>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        health4.ai is not a covered entity under HIPAA and does not operate as a HIPAA Business Associate unless a Business Associate Agreement (BAA) is separately executed in writing. If you require HIPAA compliance, self-host using your own Supabase project and your own infrastructure.
+        health4.ai is not a covered entity under HIPAA and does not operate as a HIPAA Business Associate unless a Business Associate Agreement (BAA) is separately executed in writing.
       </p>
     </section>
 
@@ -95,7 +95,7 @@ const lastUpdated = '2026-06-18';
 
   <footer class="border-t border-neutral-800/60 px-6 py-8 mt-12">
     <div class="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
-      <span>© 2026 health4.ai · MIT License</span>
+      <span>© 2026 health4.ai</span>
       <div class="flex gap-6">
         <a href="/privacy" class="hover:text-neutral-400 transition-colors">Privacy</a>
         <a href="/terms" class="hover:text-neutral-400 transition-colors">Terms</a>

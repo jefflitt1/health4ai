@@ -5,7 +5,7 @@ interface Props {
 }
 const {
   title = 'health4.ai — Apple Health data for AI',
-  description = 'Open-source iOS app + cloud MCP server. Give Claude, n8n, and any AI agent native access to your Apple Health data.',
+  description = 'Free iOS app that connects Apple Health to Claude, ChatGPT, Cursor, and any AI. Ask about your sleep, recovery, and fitness in plain language.',
 } = Astro.props;
 ---
 <!doctype html>
@@ -32,26 +32,16 @@ const {
       "@type": "SoftwareApplication",
       "name": "health4.ai",
       "url": "https://health4.ai",
-      "description": "Open-source iOS app and MCP server that syncs Apple HealthKit data to Supabase and gives Claude Code, ChatGPT, and any AI agent native access to your health data.",
+      "description": "Free iOS app that connects Apple Health to Claude, ChatGPT, Cursor, and any AI. Ask about your sleep, recovery, and fitness in plain language.",
       "applicationCategory": "HealthApplication",
       "operatingSystem": "iOS",
       "softwareVersion": "1.0",
-      "license": "https://opensource.org/licenses/MIT",
-      "codeRepository": "https://github.com/jefflitt1/health4ai",
       "offers": [
         {
           "@type": "Offer",
-          "name": "Self-hosted",
           "price": "0",
           "priceCurrency": "USD",
-          "description": "MIT open source — self-host with your own Supabase"
-        },
-        {
-          "@type": "Offer",
-          "name": "Hosted Pro",
-          "price": "3",
-          "priceCurrency": "USD",
-          "description": "Managed cloud Supabase and remote MCP endpoint"
+          "description": "Free download on the App Store"
         }
       ],
       "sameAs": "https://github.com/jefflitt1/health4ai"

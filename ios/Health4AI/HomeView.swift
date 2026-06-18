@@ -9,14 +9,12 @@ struct HomeView: View {
                 VStack(spacing: 20) {
                     statusCard
                     metricsGrid
-                    if syncState.isBackfilling || !syncState.backfillCompleted {
-                        backfillCard
-                    }
+                    backfillCard
                     actionsCard
                 }
                 .padding()
             }
-            .navigationTitle("Health Bridge")
+            .navigationTitle("health4ai")
             .navigationBarTitleDisplayMode(.large)
         }
     }
@@ -86,7 +84,7 @@ struct HomeView: View {
             ProgressView()
                 .scaleEffect(1.2)
         } else {
-            Image(systemName: syncState.isAuthenticated ? "iphone.radiowaves.left.and.right" : "iphone.slash")
+            Image(systemName: syncState.isAuthenticated ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
                 .font(.title)
                 .foregroundStyle(syncState.isAuthenticated ? .pink : .secondary)
         }
@@ -115,28 +113,38 @@ struct HomeView: View {
 
     private var backfillCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Historical Backfill", systemImage: "clock.arrow.circlepath")
+            Label("Import Health History", systemImage: "clock.arrow.circlepath")
                 .font(.headline)
             if syncState.isBackfilling {
-                VStack(alignment: .leading, spacing: 8) {
-                    ProgressView(value: syncState.backfillProgressFraction)
-                        .tint(.pink)
-                    HStack {
-                        Text("\(syncState.backfillSyncedRecords) records")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        if let date = syncState.backfillEarliestDate {
-                            Text("from \(date.formatted(.dateTime.month().year()))")
-                                .font(.caption)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        ProgressView().scaleEffect(0.85)
+                        if syncState.backfillSyncedRecords == 0 {
+                            Text("Scanning HealthKit…")
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
+                        } else {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(syncState.backfillSyncedRecords.formatted()) records synced")
+                                    .font(.subheadline.weight(.medium))
+                                if let date = syncState.backfillEarliestDate {
+                                    Text("back to \(date.formatted(.dateTime.month().year()))")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         }
+                        Spacer()
                     }
-                    Button("Cancel") {
+                    Button(role: .destructive) {
                         BulkExportManager.shared.cancelBackfill()
+                    } label: {
+                        Text("Cancel")
+                            .font(.subheadline)
+                            .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                    .buttonStyle(.bordered)
+                    .tint(.red)
                 }
             } else if syncState.backfillCompleted {
                 Label("Complete", systemImage: "checkmark.circle.fill")

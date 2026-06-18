@@ -23,7 +23,7 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
     <div class="max-w-2xl">
       <div class="inline-flex items-center gap-2 text-xs text-green-400 border border-green-400/30 rounded-full px-3 py-1 mb-8">
         <span class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
-        Open source · MIT licensed · Coming to App Store
+        Free download · Coming to App Store
       </div>
 
       <h1 class="text-3xl sm:text-5xl font-bold leading-tight text-white mb-6">
@@ -31,8 +31,7 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
       </h1>
 
       <p class="text-neutral-400 text-lg leading-relaxed mb-10 max-w-xl">
-        health4.ai syncs HealthKit to the cloud and gives Claude Code, ChatGPT, Cursor, n8n, and any AI agent
-        native access via MCP. Works from anywhere — no same-WiFi required.
+        Download the app. Ask Claude about your sleep, recovery, and fitness in plain language. health4.ai connects Apple Health to Claude, ChatGPT, Cursor, and any AI — no setup required.
       </p>
 
       <!-- Waitlist form -->
@@ -124,8 +123,8 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
             detail: 'Health Auto Export requires your phone to be awake. We use the correct iOS architecture (HKObserverQuery) — sync happens whether you open the app or not.',
           },
           {
-            label: 'Open source · MIT',
-            detail: 'Self-host the entire stack or use our hosted tier. No lock-in. Your data goes to your Supabase endpoint.',
+            label: 'Nothing to set up',
+            detail: 'Download from the App Store, tap to connect HealthKit, and you\'re done. No server, no config files, no developer account required.',
           },
           {
             label: 'Privacy-first',
@@ -146,19 +145,12 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
     </div>
   </section>
 
-  <!-- Pricing teaser -->
+  <!-- Pricing -->
   <section id="pricing" class="px-6 py-16 border-t border-neutral-800/60">
-    <div class="max-w-5xl mx-auto flex flex-col sm:flex-row gap-4">
-      <div class="flex-1 border border-neutral-800 rounded-xl p-6">
-        <p class="text-neutral-400 text-xs uppercase tracking-widest mb-2">Self-hosted</p>
-        <p class="text-3xl font-bold text-white mb-1">Free</p>
-        <p class="text-neutral-500 text-sm">Forever. MIT license. Bring your own Supabase.</p>
-      </div>
-      <div class="flex-1 border border-green-400/30 rounded-xl p-6 bg-green-400/5">
-        <p class="text-green-400 text-xs uppercase tracking-widest mb-2">Hosted Pro</p>
-        <p class="text-3xl font-bold text-white mb-1">$3<span class="text-lg font-normal text-neutral-400">/mo</span></p>
-        <p class="text-neutral-500 text-sm">Cloud Supabase, remote MCP endpoint, no setup.</p>
-      </div>
+    <div class="max-w-5xl mx-auto text-center">
+      <p class="text-neutral-500 text-xs uppercase tracking-widest mb-4">Pricing</p>
+      <p class="text-5xl font-bold text-white mb-3">Free</p>
+      <p class="text-neutral-400 text-sm">Free download on the App Store. Always.</p>
     </div>
   </section>
 
@@ -178,13 +170,11 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
         </thead>
         <tbody class="text-neutral-400">
           {[
-            ['Open source', '✓ MIT', '✗ Closed', '✗ Closed', '—'],
             ['Works remotely', '✓ Any network', '✗ Same WiFi only', '✓ Web only', '✗ Manual'],
             ['Claude Code / API', '✓', '✗', '✗', '✗'],
             ['MCP server', '✓', '✓ local only', '✗', '✗'],
-            ['Self-hostable', '✓', '✗', '✗', '—'],
             ['Continuous sync', '✓ Background', '✗ Manual', '✓', '✗'],
-            ['Price', 'Free / $3 mo', '$30 one-time', 'Requires claude.ai Plus', 'Free'],
+            ['Price', 'Free', '$30 one-time', 'Requires claude.ai Plus', 'Free'],
           ].map(([feature, h4ai, hae, claude, xml]) => (
             <tr class="border-b border-neutral-800/40">
               <td class="py-3 pr-6 text-neutral-300 font-medium">{feature}</td>
@@ -215,15 +205,15 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
           },
           {
             q: "What's the difference between health4.ai and Health Auto Export?",
-            a: 'Health Auto Export is a closed-source $30 consumer app; its MCP server only works over local WiFi. health4.ai is MIT-licensed, stores data in cloud Supabase (accessible from anywhere), and is built specifically for AI agent integration rather than dashboard visualization.',
+            a: 'Health Auto Export is a $30 closed-source app; its MCP server only works over local WiFi. health4.ai is free, stores data in the cloud (accessible from anywhere), and is built specifically for AI agent integration rather than dashboard visualization.',
           },
           {
             q: 'What MCP tools does health4.ai expose?',
             a: 'Eight tools: get_health_summary, get_sleep, get_hrv_trend, get_daily_snapshot, get_workouts, query_metric (any HKQuantityType by identifier), get_long_term_trend, and get_coaching_brief. All return structured JSON. query_metric accepts any HealthKit type identifier.',
           },
           {
-            q: 'Is my health data stored on your servers?',
-            a: 'No. Self-hosted users provision their own Supabase project — we never see the data. The hosted tier provides the iOS app and MCP endpoint, but your Supabase database is yours.',
+            q: 'Is my health data private?',
+            a: 'Yes. Your health data syncs to a private cloud database we provision for you — no one else can query it. We do not sell, share, or analyze your health data. health4.ai is not a medical device.',
           },
           {
             q: 'What HealthKit metrics does it sync?',
@@ -265,7 +255,7 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
   <!-- Footer -->
   <footer class="border-t border-neutral-800/60 px-6 py-8">
     <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
-      <span>© 2026 health4.ai · MIT License · Not a medical device</span>
+      <span>© 2026 health4.ai · Not a medical device</span>
       <div class="flex gap-6">
         <a href="/privacy" class="hover:text-neutral-400 transition-colors">Privacy</a>
         <a href="/terms" class="hover:text-neutral-400 transition-colors">Terms</a>
