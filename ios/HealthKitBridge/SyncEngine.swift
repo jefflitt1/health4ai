@@ -1,6 +1,5 @@
 import Foundation
 import HealthKit
-import BackgroundTasks
 import UIKit
 
 // MARK: - SyncEngine
@@ -16,7 +15,6 @@ final class SyncEngine {
 
     @MainActor static let shared = SyncEngine()
 
-    static let backgroundTaskIdentifier = "com.healthkitbridge.sync"
     static let batchSize = 500
 
     private let hkManager = HealthKitManager.shared
@@ -52,66 +50,9 @@ final class SyncEngine {
     @MainActor static var sharedAuthManager: AuthManager { shared.authManager }
     @MainActor static var sharedSyncState: SyncState { shared.syncState }
 
-    // MARK: - BGTaskScheduler Registration
-
-    /// Call during app launch (before the app finishes launching).
-    func registerBackgroundTasks() {
-        BGTaskScheduler.shared.register(
-            forTaskWithIdentifier: Self.backgroundTaskIdentifier,
-            using: nil
-        ) { [weak self] task in
-            guard let self = self, let processingTask = task as? BGProcessingTask else {
-                task.setTaskCompleted(success: false)
-                return
-            }
-            self.handleBackgroundTask(processingTask)
-        }
-    }
-
-    /// Schedules the next background processing task (called after each task completes).
-    func scheduleBackgroundSync() {
-        let request = BGProcessingTaskRequest(identifier: Self.backgroundTaskIdentifier)
-        request.requiresNetworkConnectivity = true
-        request.requiresExternalPower = false
-        // Earliest allowed begin date: 55 minutes from now (targeting ~1 hour cadence)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 55 * 60)
-
-        do {
-            try BGTaskScheduler.shared.submit(request)
-            Task { @MainActor in
-                self.syncState.nextScheduledSync = request.earliestBeginDate
-            }
-        } catch {
-            // BGTaskScheduler can fail in simulator; log but don't crash
-            print("[SyncEngine] Failed to schedule background task: \(error)")
-        }
-    }
-
-    // MARK: - Background task handler
-
-    private func handleBackgroundTask(_ task: BGProcessingTask) {
-        scheduleBackgroundSync() // Immediately reschedule for next cycle
-
-        let syncTask = Task {
-            do {
-                let count = try await performFullSync()
-                await MainActor.run {
-                    self.syncState.recordSyncComplete(count: count)
-                }
-                task.setTaskCompleted(success: true)
-            } catch {
-                await MainActor.run {
-                    self.syncState.recordSyncError(error.localizedDescription)
-                }
-                task.setTaskCompleted(success: false)
-            }
-        }
-
-        task.expirationHandler = {
-            syncTask.cancel()
-            task.setTaskCompleted(success: false)
-        }
-    }
+    // MARK: - BGTaskScheduler Registration (disabled on iOS 27 Beta)
+    // BackgroundTasks.framework triggers _libxpc_initializer XPC crash on iOS 27 Beta.
+    // Restore these when the beta is fixed. HKObserverQuery background delivery still works.
 
     // MARK: - HKObserverQuery registration
 

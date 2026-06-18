@@ -1,10 +1,8 @@
 import SwiftUI
-import BackgroundTasks
 
 // MARK: - HealthKitBridgeApp
 
 @main
-@MainActor
 struct HealthKitBridgeApp: App {
     // UIApplicationDelegate adapter — required for BGTaskScheduler and lifecycle hooks
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -22,17 +20,9 @@ struct HealthKitBridgeApp: App {
                 .environmentObject(syncState)
                 .environmentObject(authManager)
         }
-        .onChange(of: scenePhase) { _, newPhase in
-            switch newPhase {
-            case .background:
-                // Schedule background task when entering background via scene phase
-                // (AppDelegate.applicationDidEnterBackground also fires, this is belt+suspenders)
-                SyncEngine.shared.scheduleBackgroundSync()
-            case .active:
-                break // AppDelegate.applicationDidBecomeActive handles foreground sync
-            default:
-                break
-            }
+        .onChange(of: scenePhase) { newPhase in
+            // BGTask scheduling disabled on iOS 27 Beta; AppDelegate handles lifecycle
+            _ = newPhase
         }
     }
 }

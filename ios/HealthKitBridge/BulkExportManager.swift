@@ -1,6 +1,5 @@
 import Foundation
 import HealthKit
-import BackgroundTasks
 import UIKit
 
 // MARK: - BulkExportManager
@@ -14,8 +13,6 @@ final class BulkExportManager {
 
     private let hkManager = HealthKitManager.shared
     private let syncEngine: SyncEngine
-
-    static let backfillTaskIdentifier = "com.healthkitbridge.backfill"
 
     // Tracks which types have been fully backfilled
     private static let completedTypesKey = "hkb.backfill.completedTypes"
@@ -210,36 +207,9 @@ final class BulkExportManager {
         return totalCount
     }
 
-    // MARK: - Background task support
-
-    /// Register the BGProcessingTask handler. Call at app launch before didFinishLaunching returns.
-    func registerBackgroundBackfillTask() {
-        BGTaskScheduler.shared.register(
-            forTaskWithIdentifier: Self.backfillTaskIdentifier,
-            using: nil
-        ) { [weak self] task in
-            guard let self = self, let processingTask = task as? BGProcessingTask else {
-                task.setTaskCompleted(success: false)
-                return
-            }
-            self.handleBackgroundBackfillTask(processingTask)
-        }
-    }
-
-    /// Schedule the next background backfill run. Call when entering background.
-    /// requiresExternalPower = true so iOS only runs it while the phone is charging.
-    func scheduleBackgroundBackfill() {
-        guard backfillNeeded else { return }
-        let request = BGProcessingTaskRequest(identifier: Self.backfillTaskIdentifier)
-        request.requiresNetworkConnectivity = true
-        request.requiresExternalPower = true
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 60)
-        do {
-            try BGTaskScheduler.shared.submit(request)
-        } catch {
-            print("[BulkExport] Failed to schedule background backfill: \(error)")
-        }
-    }
+    // MARK: - Background task support (disabled on iOS 27 Beta)
+    // BackgroundTasks.framework triggers _libxpc_initializer XPC crash on iOS 27 Beta.
+    // Restore registerBackgroundBackfillTask() + scheduleBackgroundBackfill() when fixed.
 
     /// Request ~30 seconds of background execution time when the app transitions to background.
     /// This lets the current 90-day chunk finish rather than being cut off mid-upload.
@@ -254,25 +224,6 @@ final class BulkExportManager {
         guard bgTaskID != .invalid else { return }
         UIApplication.shared.endBackgroundTask(bgTaskID)
         bgTaskID = .invalid
-    }
-
-    private func handleBackgroundBackfillTask(_ task: BGProcessingTask) {
-        scheduleBackgroundBackfill() // Reschedule immediately for next opportunity
-
-        let backfillTask = Task { @MainActor [weak self] in
-            guard let self = self else {
-                task.setTaskCompleted(success: false)
-                return
-            }
-            let syncState = SyncEngine.sharedSyncState
-            await self.runBackfill(syncState: syncState)
-            task.setTaskCompleted(success: true)
-        }
-
-        task.expirationHandler = {
-            backfillTask.cancel()
-            task.setTaskCompleted(success: false)
-        }
     }
 
     // MARK: - Reset backfill state (for re-running)

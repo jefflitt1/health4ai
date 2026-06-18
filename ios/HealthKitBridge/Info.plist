@@ -8,19 +8,23 @@
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>HealthKit Bridge does not write health data.</string>
 
-	<!-- Background modes -->
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>fetch</string>
-		<string>processing</string>
-	</array>
+	<!-- UIBackgroundModes omitted: 'fetch' triggers XPC service registration crash on iOS 27 Beta -->
+	<!-- Re-add when iOS 27 fixes the libxpc _xpc_init_service bug: -->
+	<!-- <key>UIBackgroundModes</key><array><string>fetch</string></array> -->
 
-	<!-- BGTaskScheduler permitted identifiers -->
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>com.healthkitbridge.sync</string>
-		<string>com.healthkitbridge.backfill</string>
-	</array>
+	<!-- BGTaskSchedulerPermittedIdentifiers omitted: triggers same XPC crash -->
+	<!-- Re-add com.healthkitbridge.sync + com.healthkitbridge.backfill when iOS 27 fixes XPC -->
+
+	<!-- iOS 27 Beta 1 requires UIApplicationSceneManifest even for apps built with older SDKs.
+	     Without it, iOS 27 uses a legacy XPC launch path that crashes in _xpc_init_service.
+	     SwiftUI App protocol handles scene delegation automatically; empty UISceneConfigurations is correct. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict/>
+	</dict>
 
 	<!-- Standard app metadata -->
 	<key>CFBundleDevelopmentRegion</key>
