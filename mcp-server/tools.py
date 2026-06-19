@@ -13,6 +13,7 @@ from datetime import datetime, date, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 NY = ZoneInfo("America/New_York")
+import contextvars
 import os
 import re
 import psycopg2
@@ -20,6 +21,7 @@ import psycopg2.extras
 from dotenv import load_dotenv
 
 load_dotenv()
+
 
 
 def _build_database_url() -> str:
@@ -53,6 +55,9 @@ def _build_database_url() -> str:
 
 DATABASE_URL = _build_database_url()
 DEFAULT_USER_ID = os.environ.get("HEALTHKIT_USER_ID", "")
+
+# Set the context var default so stdio mode works without --transport http
+current_user_id = contextvars.ContextVar('current_user_id', default=DEFAULT_USER_ID)
 
 TABLE = "healthkit_metrics"
 SUMMARY_TABLE = "healthkit_daily_summaries"
@@ -418,7 +423,7 @@ def get_health_summary(days: int = 7) -> dict:
     Overview of key health metrics for the past N days.
     Returns avg steps, avg sleep, avg HRV, avg resting HR, workout count.
     """
-    uid = DEFAULT_USER_ID
+    uid = current_user_id.get()
     since = _since(days)
 
     steps_rows = _fetch_metrics(STEPS, uid, since)
@@ -474,7 +479,7 @@ def get_sleep(days: int = 7) -> dict:
     Sleep analysis for the past N days.
     Returns per-night breakdown with stage durations (REM, Deep/Core, Light, Awake).
     """
-    uid = DEFAULT_USER_ID
+    uid = current_user_id.get()
     since = _since(days)
     # Oura Ring syncs sleep stages to Apple Health — use as the single sleep source.
     # Apple Watch also writes stages; summing both would double-count every night.
@@ -537,7 +542,7 @@ def get_hrv_trend(days: int = 30) -> dict:
     Returns daily averages, 7-day rolling comparison, and trend direction.
     Tier-aware: windows beyond 30 days transparently use daily summaries.
     """
-    uid = DEFAULT_USER_ID
+    uid = current_user_id.get()
     points = _get_tiered_daily(HRV, uid, days)
 
     daily_avgs = [
@@ -574,7 +579,7 @@ def query_metric(
     Windows <= 30 days return raw samples; longer windows return daily aggregates
     (raw samples beyond 30 days are summarized and no longer stored individually).
     """
-    uid = DEFAULT_USER_ID
+    uid = current_user_id.get()
 
     if days > RAW_CUTOFF_DAYS:
         points = _get_tiered_daily(metric_type, uid, days)
@@ -625,7 +630,7 @@ def get_workouts(days: int = 30, limit: int = 20) -> dict:
     """
     Recent workouts with type, duration, distance, and calories.
     """
-    uid = DEFAULT_USER_ID
+    uid = current_user_id.get()
     since = _since(days)
     rows = _fetch_metrics(WORKOUT, uid, since, limit=limit)
 
@@ -661,7 +666,7 @@ def get_daily_snapshot(date: str = "") -> dict:
     Everything recorded for a specific date (YYYY-MM-DD). Defaults to today.
     Returns steps, sleep, workouts, HRV, resting HR, active energy, and all other metrics.
     """
-    uid = DEFAULT_USER_ID
+    uid = current_user_id.get()
     if not date:
         date = datetime.now(NY).strftime("%Y-%m-%d")
 
@@ -734,7 +739,7 @@ def get_long_term_trend(
                           HKQuantityTypeIdentifierStepCount
     months: how many months of history to return (default 24)
     """
-    uid = DEFAULT_USER_ID
+    uid = current_user_id.get()
     points = _get_tiered_daily(metric_type, uid, months * 30)
     if not points:
         return {"metric_type": metric_type, "months": months, "data": [],
@@ -777,7 +782,7 @@ def get_coaching_brief() -> dict:
     recovery status, sleep quality, training load, and fitness trajectory.
     Call this at the start of every coaching session.
     """
-    uid = DEFAULT_USER_ID
+    uid = current_user_id.get()
 
     # Recent raw data (last 14 days)
     since_14d = _since(14)
@@ -902,7 +907,7 @@ def search_records(
 
     Results sorted highest-to-lowest so outliers surface first.
     """
-    uid = DEFAULT_USER_ID
+    uid = current_user_id.get()
     days = _clamp_days(days)
     limit = _clamp_limit(limit)
     today = datetime.now(NY).strftime("%Y-%m-%d")
@@ -951,7 +956,7 @@ def get_metric_stats(
       good_day_above = your 75th percentile (a genuinely above-average day)
       poor_day_below = your 25th percentile (a below-average day worth noting)
     """
-    uid = DEFAULT_USER_ID
+    uid = current_user_id.get()
     days = _clamp_days(days)
     today = datetime.now(NY).strftime("%Y-%m-%d")
     start_date = (datetime.now(NY) - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -1019,7 +1024,7 @@ def compare_periods(
 
     Returns per-period stats and a delta showing which period was better.
     """
-    uid = DEFAULT_USER_ID
+    uid = current_user_id.get()
     is_cumulative = metric_type in _CUMULATIVE_METRICS
     value_key = "sum_value" if is_cumulative else "avg_value"
     _avg_fn = _daily_total_avg if is_cumulative else _weighted_mean

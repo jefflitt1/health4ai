@@ -27,20 +27,41 @@ Deno.serve(async (req: Request) => {
     return new Response('Method Not Allowed', { status: 405 })
   }
 
-  // Validate bearer token
+  // Validate bearer token — two paths:
+  // 1. h4_sk_... (health4.ai hosted tier API key) → lookup in healthkit_api_keys
+  // 2. Supabase JWT → validate via auth.getUser()
   const authHeader = req.headers.get('Authorization')
   if (!authHeader?.startsWith('Bearer ')) {
     return json({ error: 'Missing Authorization header' }, 401)
   }
-  const jwt = authHeader.slice(7)
+  const bearer = authHeader.slice(7)
 
-  // Verify the JWT and get the user
-  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: `Bearer ${jwt}` } },
-  })
-  const { data: { user }, error: authError } = await userClient.auth.getUser()
-  if (authError || !user) {
-    return json({ error: 'Unauthorized' }, 401)
+  const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  let userId: string
+
+  if (bearer.startsWith('h4_sk_')) {
+    // Hosted tier: validate sync_token
+    const { data: keyRow, error: keyErr } = await adminClient
+      .from('healthkit_api_keys')
+      .select('user_id')
+      .eq('sync_token', bearer)
+      .eq('revoked', false)
+      .single()
+    if (keyErr || !keyRow) return json({ error: 'Invalid or revoked sync token' }, 401)
+    userId = keyRow.user_id
+    // Track last_sync timestamp
+    await adminClient
+      .from('healthkit_api_keys')
+      .update({ last_sync: new Date().toISOString() })
+      .eq('sync_token', bearer)
+  } else {
+    // Self-hosted: validate Supabase JWT
+    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${bearer}` } },
+    })
+    const { data: { user }, error: authError } = await userClient.auth.getUser()
+    if (authError || !user) return json({ error: 'Unauthorized' }, 401)
+    userId = user.id
   }
 
   // Parse payload
@@ -74,7 +95,7 @@ Deno.serve(async (req: Request) => {
 
   // Attach user_id to all rows
   const rows = payload.samples.map((s) => ({
-    user_id: user.id,
+    user_id: userId,
     metric_type: s.metric_type,
     value: s.value ?? null,
     unit: s.unit,
@@ -102,9 +123,7 @@ Deno.serve(async (req: Request) => {
   }
   const dedupedRows = Array.from(seen.values())
 
-  // Use service role to bypass RLS for upsert
-  const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
+  // Use service role to bypass RLS for upsert (adminClient already defined above)
   const { error, count } = await adminClient
     .from('healthkit_metrics')
     .upsert(dedupedRows, {

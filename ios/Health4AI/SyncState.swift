@@ -4,11 +4,13 @@ import Combine
 // MARK: - Connection configuration
 
 enum ConnectionType: String, CaseIterable {
-    case supabase = "supabase"
-    case rest = "rest"
+    case hosted   = "hosted"   // health4.ai managed cloud (setup-code flow)
+    case supabase = "supabase" // self-hosted Supabase
+    case rest     = "rest"     // any REST endpoint
 
     var displayName: String {
         switch self {
+        case .hosted:   return "health4.ai"
         case .supabase: return "Supabase"
         case .rest:     return "REST / Webhook"
         }
@@ -92,8 +94,13 @@ final class SyncState: ObservableObject {
 
     // MARK: - Computed endpoint
 
+    static let hostedIngestURL = "https://donnmhbwhpjlmpnwgdqr.supabase.co/functions/v1/healthkit-ingest"
+    static let hostedAPIBase   = "https://donnmhbwhpjlmpnwgdqr.supabase.co/functions/v1/health4-register"
+
     var resolvedEndpointURL: String {
         switch connectionType {
+        case .hosted:
+            return SyncState.hostedIngestURL
         case .supabase:
             let base = supabaseProjectURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             return base.isEmpty ? serverURL : "\(base)/functions/v1/healthkit-ingest"

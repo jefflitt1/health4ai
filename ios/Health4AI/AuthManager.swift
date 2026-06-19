@@ -76,6 +76,7 @@ final class AuthManager: ObservableObject {
     private static let refreshTokenKey = "refresh_token"
     private static let userEmailKey    = "user_email"
     private static let expiryKey       = "token_expiry"
+    static let hostedSyncTokenKey      = "h4_sync_token"  // hosted tier credential
 
     // MARK: - Supabase anon key
 
@@ -131,8 +132,23 @@ final class AuthManager: ObservableObject {
         get { loadFromKeychain(key: Self.accessTokenKey) }
     }
 
+    /// Returns the hosted tier sync_token (h4_sk_...) if configured.
+    var hostedSyncToken: String? {
+        loadFromKeychain(key: Self.hostedSyncTokenKey)
+    }
+
     var isSignedIn: Bool {
-        currentToken != nil
+        currentToken != nil || hostedSyncToken != nil
+    }
+
+    // MARK: - Hosted tier
+
+    func saveHostedSyncToken(_ token: String) throws {
+        try saveToKeychain(key: Self.hostedSyncTokenKey, value: token)
+    }
+
+    func clearHostedSyncToken() {
+        deleteFromKeychain(key: Self.hostedSyncTokenKey)
     }
 
     var storedEmail: String? {
@@ -250,7 +266,13 @@ final class AuthManager: ObservableObject {
     }
 
     /// Returns a valid access token, refreshing it if necessary.
+    /// For the hosted tier (h4_sk_... token), returns it directly — no expiry.
     func validToken(serverURL: String) async throws -> String {
+        // Hosted tier: sync_token is long-lived, no refresh needed
+        if let hosted = hostedSyncToken, hosted.hasPrefix("h4_sk_") {
+            return hosted
+        }
+        // Self-hosted Supabase: JWT with expiry + refresh
         if isTokenExpired {
             try await refreshAccessToken(serverURL: serverURL)
         }

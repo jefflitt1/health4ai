@@ -55,9 +55,14 @@ struct ConnectionView: View {
         } header: {
             Text("Backend Type")
         } footer: {
-            Text(syncState.connectionType == .supabase
-                 ? "Enter your Supabase project URL and anon key. The sync endpoint is configured automatically."
-                 : "Enter any HTTPS endpoint that accepts JSON POST requests.")
+            switch syncState.connectionType {
+            case .hosted:
+                Text("Connected to health4.ai cloud. Your sync token is stored securely on this device.")
+            case .supabase:
+                Text("Enter your Supabase project URL and anon key. The sync endpoint is configured automatically.")
+            case .rest:
+                Text("Enter any HTTPS endpoint that accepts JSON POST requests.")
+            }
         }
     }
 

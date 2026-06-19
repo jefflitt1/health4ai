@@ -2,8 +2,8 @@
 import Layout from '../layouts/Layout.astro';
 ---
 <Layout
-  title="How health4.ai works — HealthKit to Postgres to MCP architecture"
-  description="Technical deep-dive: how health4.ai bridges Apple's no-API constraint via on-device sync, your own Postgres database, and a FastMCP server."
+  title="How health4.ai works — connect your Apple Health data to any AI"
+  description="Set up health4.ai in under 5 minutes. Download the app, ask your AI to create your data table, paste one token, and your health data is live."
 >
   <nav class="flex items-center justify-between px-6 py-5 max-w-3xl mx-auto">
     <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
@@ -17,199 +17,226 @@ import Layout from '../layouts/Layout.astro';
   <main class="px-6 py-12 max-w-3xl mx-auto">
 
     <!-- Hero -->
-    <h1 class="text-2xl font-bold text-white mb-4">How health4.ai works</h1>
-    <p class="text-neutral-300 leading-relaxed mb-2">
-      Apple locks HealthKit behind on-device iOS APIs — there is no server-side REST endpoint, no webhook, no way to pull your health data from a cloud service directly. health4.ai works within that constraint by running a sync engine inside an iOS app, writing to a Postgres database you control, and exposing that database through a standard MCP server.
-    </p>
+    <h1 class="text-2xl font-bold text-white mb-3">How health4.ai works</h1>
     <p class="text-neutral-400 text-sm leading-relaxed mb-12">
-      The result: any MCP-compatible AI agent — Claude Code, ChatGPT, Cursor, n8n — can query your Apple Health data using the same tool-call pattern it uses to query anything else.
+      Apple blocks cloud access to your health data by design — there is no server API, no webhook, no OAuth flow.
+      health4.ai bridges this gap with a tiny iOS app that syncs HealthKit data to a cloud database, then exposes
+      it to your AI through a standard MCP server. Setup takes under 5 minutes.
     </p>
 
-    <!-- Why Apple has no server-side API -->
-    <section class="mb-12">
-      <h2 class="text-white font-semibold text-base mb-3 text-green-400">Why Apple has no server-side HealthKit API</h2>
-      <p class="text-neutral-400 text-sm leading-relaxed mb-3">
-        Apple requires all HealthKit access to go through on-device iOS code — specifically, through the <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">HealthKit</code> framework APIs that run in your app's process on your phone. There is no REST API, no cloud webhook, no OAuth flow that lets a remote server pull your health records directly.
-      </p>
-      <p class="text-neutral-400 text-sm leading-relaxed mb-3">
-        This is a deliberate privacy design decision by Apple: health data never leaves the device without explicit user action inside an app the user installed and authorized. The <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">HKHealthStore</code> authorization sheet the user sees is the only path in.
-      </p>
-      <p class="text-neutral-400 text-sm leading-relaxed">
-        health4.ai complies with this model fully. The iOS app is the only component that ever reads HealthKit data. Everything downstream — your Postgres database, the MCP server, AI agents — only sees data that the app chose to upload, under the user's explicit authorization.
-      </p>
-    </section>
-
-    <!-- Architecture diagram -->
-    <section class="mb-12">
-      <h2 class="text-white font-semibold text-base mb-4 text-green-400">Architecture</h2>
-      <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-5 text-xs text-green-300 leading-relaxed overflow-x-auto">
-iPhone (iOS app)
-  └─ HKObserverQuery ──► receives new HealthKit samples
-  └─ BGProcessingTask ──► fires during charging/background
-         │
-         ▼
-  Postgres (Supabase / Neon / local)
-  (validates JWT, deduplicates, batches inserts)
-         │
-         ▼
-  Your Postgres database
-  schema: healthkit
-  ├── health_samples       (EAV: metric_type, timestamp, value, unit)
-  └── health_daily_summaries  (pre-aggregated, covers >180 days)
-         │
-         ▼
-  MCP Server (FastMCP, Python)
-  8 tools: get_sleep, get_hrv_trend, get_workouts,
-           get_daily_snapshot, query_metric, ...
-         │
-         ▼
-  Claude Code / ChatGPT / Cursor / n8n</pre>
-    </section>
-
-    <!-- Four architecture decisions -->
-    <section class="mb-12">
-      <h2 class="text-white font-semibold text-base mb-6 text-green-400">Four architecture decisions</h2>
+    <!-- Setup guide -->
+    <section class="mb-14">
+      <h2 class="text-green-400 font-semibold text-base mb-6">Setting up — step by step</h2>
 
       <div class="space-y-8">
 
-        <!-- EAV -->
-        <div class="border-l-2 border-neutral-700 pl-5">
-          <h3 class="text-white text-sm font-semibold mb-2">
-            a. EAV schema — not N metric tables
-          </h3>
-          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
-            HealthKit exposes 100+ distinct sample types — steps, HRV, VO2 max, sleep stages, blood glucose, respiratory rate, and more. Apple adds new types with each iOS release.
-          </p>
-          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
-            A single <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">health_samples(metric_type, timestamp, value, unit)</code> table handles all of them without schema migrations. When Apple ships a new HKQuantityType, the app starts syncing it automatically — no column to add, no migration to run.
-          </p>
-          <p class="text-neutral-400 text-sm leading-relaxed">
-            The trade-off is slightly more complex queries (filter by <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">metric_type</code> rather than table name) versus zero schema churn over the product's lifetime. That's an easy trade.
-          </p>
+        <!-- Step 1 -->
+        <div class="flex gap-5">
+          <div class="flex-shrink-0 w-8 h-8 rounded-full bg-green-500/15 border border-green-500/30 flex items-center justify-center text-green-400 font-bold text-sm">1</div>
+          <div>
+            <h3 class="text-white font-semibold mb-2">Download the health4.ai app</h3>
+            <p class="text-neutral-400 text-sm leading-relaxed">
+              Install health4.ai from the App Store. On first launch, tap <strong class="text-neutral-300">Get Started</strong> and proceed through the Welcome and Privacy screens.
+            </p>
+          </div>
         </div>
 
-        <!-- HKObserverQuery + BGProcessingTask -->
-        <div class="border-l-2 border-neutral-700 pl-5">
-          <h3 class="text-white text-sm font-semibold mb-2">
-            b. HKObserverQuery + BGProcessingTask — not manual export
-          </h3>
-          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
-            <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">HKObserverQuery</code> fires a background callback whenever the Health app writes a new sample. The app registers this query once; iOS delivers updates continuously. No polling, no user interaction required.
-          </p>
-          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
-            <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">BGProcessingTask</code> is the iOS background processing API designed for exactly this use case — it runs while the device is charging and connected to power, with no strict time limit. It's the right primitive for a reliable, periodic database sync.
-          </p>
-          <p class="text-neutral-400 text-sm leading-relaxed">
-            Manual export approaches (like Health Auto Export's shortcut-based flow) require the user to be active and the app to be in the foreground. That's fine for occasional snapshots but not for "always current" data an AI agent can query at any moment.
-          </p>
+        <!-- Step 2 -->
+        <div class="flex gap-5">
+          <div class="flex-shrink-0 w-8 h-8 rounded-full bg-green-500/15 border border-green-500/30 flex items-center justify-center text-green-400 font-bold text-sm">2</div>
+          <div>
+            <h3 class="text-white font-semibold mb-2">Choose <em>health4.ai cloud</em></h3>
+            <p class="text-neutral-400 text-sm leading-relaxed mb-3">
+              On the <strong class="text-neutral-300">Connect to your AI</strong> screen, tap <strong class="text-neutral-300">health4.ai cloud</strong>. The app generates a short setup code — it looks like this:
+            </p>
+            <pre class="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-4 text-green-400 font-mono text-xl font-bold text-center tracking-widest">H4-SAGE-3817</pre>
+            <p class="text-neutral-500 text-xs mt-2">The code expires in 30 minutes. Tap "Generate a new code" if it expires before you finish.</p>
+          </div>
         </div>
 
-        <!-- Raw + summary tier -->
-        <div class="border-l-2 border-neutral-700 pl-5">
-          <h3 class="text-white text-sm font-semibold mb-2">
-            c. Raw + summary tier — transparent to callers
-          </h3>
-          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
-            Raw samples are retained in <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">health_samples</code> for 180 days. Beyond that window, pre-aggregated daily summaries in <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">health_daily_summaries</code> cover multi-year queries without the storage cost of every individual sample.
-          </p>
-          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
-            The MCP layer selects the right tier automatically based on the requested time range. A caller asking for last week's HRV gets raw samples. A caller asking for HRV trend over the last two years gets daily aggregates. Neither caller needs to know this distinction exists.
-          </p>
-          <p class="text-neutral-400 text-sm leading-relaxed">
-            This keeps database storage costs reasonable while enabling long-horizon queries that are often the most useful for AI-assisted health analysis.
-          </p>
+        <!-- Step 3 -->
+        <div class="flex gap-5">
+          <div class="flex-shrink-0 w-8 h-8 rounded-full bg-green-500/15 border border-green-500/30 flex items-center justify-center text-green-400 font-bold text-sm">3</div>
+          <div>
+            <h3 class="text-white font-semibold mb-2">Tell your AI to set you up</h3>
+            <p class="text-neutral-400 text-sm leading-relaxed mb-3">
+              The app shows a pre-written prompt — tap the copy button next to it, then open your AI (Claude, Cursor, Continue, etc.) and paste it. It reads:
+            </p>
+            <blockquote class="bg-neutral-900 border border-neutral-800 rounded-lg p-4 text-neutral-300 text-sm italic leading-relaxed">
+              "I just downloaded health4.ai. Please set up my health data table. My setup code is: <span class="text-green-400 not-italic font-mono">H4-SAGE-3817</span>"
+            </blockquote>
+            <p class="text-neutral-400 text-sm mt-3 leading-relaxed">
+              Your AI calls the <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">health4_register</code> tool, creates your personal data table, and responds with a <strong class="text-neutral-300">sync token</strong> and instructions for adding health4.ai to your AI's MCP configuration.
+            </p>
+            <div class="mt-3 p-4 bg-neutral-900 border border-neutral-800 rounded-lg">
+              <p class="text-neutral-500 text-xs mb-2 font-medium uppercase tracking-wide">What your AI says back:</p>
+              <p class="text-neutral-300 text-sm leading-relaxed">
+                "Your health data table is ready. Paste this sync token into the health4.ai app: <span class="text-green-400 font-mono text-xs">h4_sk_a3f9b2c1d4e5...</span>"
+              </p>
+            </div>
+            <div class="mt-3 p-3 bg-amber-950/30 border border-amber-800/40 rounded-lg">
+              <p class="text-amber-400 text-xs font-medium mb-1">Need to add the health4.ai MCP to your AI first?</p>
+              <p class="text-neutral-400 text-xs leading-relaxed">
+                For Claude Desktop: open <code class="text-neutral-300">claude_desktop_config.json</code>, add the server entry your AI provides, and restart Claude.
+                The exact config block is included in your AI's setup response.
+              </p>
+            </div>
+          </div>
         </div>
 
-        <!-- JWT per-user auth -->
-        <div class="border-l-2 border-neutral-700 pl-5">
-          <h3 class="text-white text-sm font-semibold mb-2">
-            d. JWT per-user auth + row-level security
-          </h3>
-          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
-            The iOS app includes an auth token in every upload request, which is validated before writing. The MCP server uses a server-side credential — never exposed to clients.
-          </p>
-          <p class="text-neutral-400 text-sm leading-relaxed mb-2">
-            Row-level security on <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">health_samples</code> enforces data isolation at the Postgres level: <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">user_id = auth.uid()</code>. The database rejects cross-user reads regardless of what the application layer does.
-          </p>
+        <!-- Step 4 -->
+        <div class="flex gap-5">
+          <div class="flex-shrink-0 w-8 h-8 rounded-full bg-green-500/15 border border-green-500/30 flex items-center justify-center text-green-400 font-bold text-sm">4</div>
+          <div>
+            <h3 class="text-white font-semibold mb-2">Paste your sync token into the app</h3>
+            <p class="text-neutral-400 text-sm leading-relaxed mb-3">
+              Tap <strong class="text-neutral-300">I've done it — paste my sync token</strong>, paste the <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">h4_sk_...</code> token your AI gave you, and tap <strong class="text-neutral-300">Verify & Connect</strong>.
+            </p>
+            <p class="text-neutral-400 text-sm leading-relaxed">
+              The app validates the token with health4.ai and stores it securely in the iOS Keychain. The sync token is the app's permanent credential — it doesn't expire.
+            </p>
+          </div>
+        </div>
+
+        <!-- Step 5 -->
+        <div class="flex gap-5">
+          <div class="flex-shrink-0 w-8 h-8 rounded-full bg-green-500/15 border border-green-500/30 flex items-center justify-center text-green-400 font-bold text-sm">5</div>
+          <div>
+            <h3 class="text-white font-semibold mb-2">Grant HealthKit access — sync begins</h3>
+            <p class="text-neutral-400 text-sm leading-relaxed mb-3">
+              Tap <strong class="text-neutral-300">Allow Health Access</strong>. iOS shows the standard HealthKit permission sheet — you choose which data types to share. The app immediately starts syncing the past 30 days in the background.
+            </p>
+            <p class="text-neutral-400 text-sm leading-relaxed">
+              From this point on, syncing is automatic. The app uses <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">HKObserverQuery</code> — iOS wakes it when new HealthKit data is written, even when the app is closed.
+            </p>
+          </div>
+        </div>
+
+        <!-- Step 6 -->
+        <div class="flex gap-5">
+          <div class="flex-shrink-0 w-8 h-8 rounded-full bg-pink-500/15 border border-pink-500/30 flex items-center justify-center text-pink-400 font-bold text-sm">✓</div>
+          <div>
+            <h3 class="text-white font-semibold mb-2">Ask your AI about your health</h3>
+            <p class="text-neutral-400 text-sm leading-relaxed mb-3">
+              Once the first sync completes (usually 2–5 minutes), go back to your AI and ask:
+            </p>
+            <div class="space-y-2">
+              {[
+                "How was my sleep this week?",
+                "Show me my HRV trend over the last 30 days",
+                "How many workouts did I do last month?",
+                "Compare my steps before and after my vacation"
+              ].map(q => (
+                <div class="flex items-start gap-2 text-sm text-neutral-300">
+                  <span class="text-pink-400 mt-0.5">›</span>
+                  <span class="italic">"{q}"</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
       </div>
     </section>
 
-    <!-- Data model -->
-    <section class="mb-12">
-      <h2 class="text-white font-semibold text-base mb-4 text-green-400">Data model — <code class="text-green-300 text-sm font-normal">health_samples</code></h2>
-      <p class="text-neutral-400 text-sm leading-relaxed mb-4">
-        The core table. Every metric Apple Health tracks lands here.
-      </p>
-      <div class="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
-        <table class="w-full text-xs text-left">
-          <thead>
-            <tr class="border-b border-neutral-800">
-              <th class="px-4 py-3 text-neutral-500 font-normal w-2/5">column</th>
-              <th class="px-4 py-3 text-neutral-500 font-normal w-1/5">type</th>
-              <th class="px-4 py-3 text-neutral-500 font-normal">notes</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-neutral-800/60">
-            <tr>
-              <td class="px-4 py-3 text-green-300"><code>id</code></td>
-              <td class="px-4 py-3 text-neutral-500">uuid</td>
-              <td class="px-4 py-3 text-neutral-400">PK, gen_random_uuid()</td>
-            </tr>
-            <tr>
-              <td class="px-4 py-3 text-green-300"><code>user_id</code></td>
-              <td class="px-4 py-3 text-neutral-500">uuid</td>
-              <td class="px-4 py-3 text-neutral-400">FK → auth.users, RLS enforced</td>
-            </tr>
-            <tr>
-              <td class="px-4 py-3 text-green-300"><code>metric_type</code></td>
-              <td class="px-4 py-3 text-neutral-500">text</td>
-              <td class="px-4 py-3 text-neutral-400">HKQuantityType identifier, e.g. <code class="text-neutral-300">HKQuantityTypeIdentifierHeartRateVariabilitySDNN</code></td>
-            </tr>
-            <tr>
-              <td class="px-4 py-3 text-green-300"><code>value</code></td>
-              <td class="px-4 py-3 text-neutral-500">float8</td>
-              <td class="px-4 py-3 text-neutral-400">numeric value in the given unit</td>
-            </tr>
-            <tr>
-              <td class="px-4 py-3 text-green-300"><code>unit</code></td>
-              <td class="px-4 py-3 text-neutral-500">text</td>
-              <td class="px-4 py-3 text-neutral-400">e.g. <code class="text-neutral-300">ms</code>, <code class="text-neutral-300">count/min</code>, <code class="text-neutral-300">kcal</code></td>
-            </tr>
-            <tr>
-              <td class="px-4 py-3 text-green-300"><code>start_date</code></td>
-              <td class="px-4 py-3 text-neutral-500">timestamptz</td>
-              <td class="px-4 py-3 text-neutral-400">HKSample startDate</td>
-            </tr>
-            <tr>
-              <td class="px-4 py-3 text-green-300"><code>end_date</code></td>
-              <td class="px-4 py-3 text-neutral-500">timestamptz</td>
-              <td class="px-4 py-3 text-neutral-400">HKSample endDate (equals start_date for point samples)</td>
-            </tr>
-            <tr>
-              <td class="px-4 py-3 text-green-300"><code>source_name</code></td>
-              <td class="px-4 py-3 text-neutral-500">text</td>
-              <td class="px-4 py-3 text-neutral-400">which app wrote this to HealthKit (e.g. "Apple Watch", "Oura")</td>
-            </tr>
-            <tr>
-              <td class="px-4 py-3 text-green-300"><code>created_at</code></td>
-              <td class="px-4 py-3 text-neutral-500">timestamptz</td>
-              <td class="px-4 py-3 text-neutral-400">row insert time, not sample time</td>
-            </tr>
-          </tbody>
-        </table>
+    <!-- Edge cases / FAQ -->
+    <section class="mb-14">
+      <h2 class="text-green-400 font-semibold text-base mb-5">Common questions</h2>
+      <div class="space-y-5">
+
+        <details class="group border border-neutral-800 rounded-lg overflow-hidden">
+          <summary class="px-5 py-4 text-sm text-neutral-300 cursor-pointer hover:text-white list-none flex items-center justify-between">
+            My setup code expired before I finished
+            <span class="text-neutral-600 group-open:rotate-180 transition-transform">▾</span>
+          </summary>
+          <p class="px-5 pb-4 text-neutral-400 text-sm leading-relaxed border-t border-neutral-800 pt-4">
+            Tap <strong class="text-neutral-300">Generate a new code</strong> on the same screen. The old code is invalidated automatically. Go back to your AI with the new code and the whole exchange takes about 30 seconds.
+          </p>
+        </details>
+
+        <details class="group border border-neutral-800 rounded-lg overflow-hidden">
+          <summary class="px-5 py-4 text-sm text-neutral-300 cursor-pointer hover:text-white list-none flex items-center justify-between">
+            The token I pasted didn't work
+            <span class="text-neutral-600 group-open:rotate-180 transition-transform">▾</span>
+          </summary>
+          <p class="px-5 pb-4 text-neutral-400 text-sm leading-relaxed border-t border-neutral-800 pt-4">
+            Make sure you copied the full <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">h4_sk_…</code> token including the prefix. If the token starts with something else, your AI may not have the health4.ai MCP installed — check its setup response for the MCP configuration block.
+          </p>
+        </details>
+
+        <details class="group border border-neutral-800 rounded-lg overflow-hidden">
+          <summary class="px-5 py-4 text-sm text-neutral-300 cursor-pointer hover:text-white list-none flex items-center justify-between">
+            My AI doesn't know what health4.ai is
+            <span class="text-neutral-600 group-open:rotate-180 transition-colors">▾</span>
+          </summary>
+          <p class="px-5 pb-4 text-neutral-400 text-sm leading-relaxed border-t border-neutral-800 pt-4">
+            The health4.ai MCP needs to be added to your AI's config first. In Claude Desktop, open
+            <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">~/Library/Application Support/Claude/claude_desktop_config.json</code>
+            and add the <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">health4ai</code> server entry. See the GitHub README for the exact config.
+          </p>
+        </details>
+
+        <details class="group border border-neutral-800 rounded-lg overflow-hidden">
+          <summary class="px-5 py-4 text-sm text-neutral-300 cursor-pointer hover:text-white list-none flex items-center justify-between">
+            Can I use health4.ai with multiple AIs?
+            <span class="text-neutral-600 group-open:rotate-180 transition-transform">▾</span>
+          </summary>
+          <p class="px-5 pb-4 text-neutral-400 text-sm leading-relaxed border-t border-neutral-800 pt-4">
+            Yes. Your MCP API key (the <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">h4_mk_…</code> key) works with any MCP-compatible AI: Claude, Cursor, Continue, Ollama with MCP support. Add the same MCP server entry — same URL, same key — to each AI's config.
+          </p>
+        </details>
+
+        <details class="group border border-neutral-800 rounded-lg overflow-hidden">
+          <summary class="px-5 py-4 text-sm text-neutral-300 cursor-pointer hover:text-white list-none flex items-center justify-between">
+            How do I revoke access?
+            <span class="text-neutral-600 group-open:rotate-180 transition-transform">▾</span>
+          </summary>
+          <p class="px-5 pb-4 text-neutral-400 text-sm leading-relaxed border-t border-neutral-800 pt-4">
+            In the app: go to <strong class="text-neutral-300">Connection</strong> tab → <strong class="text-neutral-300">Revoke access</strong>. This immediately invalidates both your sync token and MCP API key. Your historical data remains in the database; to delete it, tap <strong class="text-neutral-300">Delete my data</strong> in the same screen.
+          </p>
+        </details>
+
+        <details class="group border border-neutral-800 rounded-lg overflow-hidden">
+          <summary class="px-5 py-4 text-sm text-neutral-300 cursor-pointer hover:text-white list-none flex items-center justify-between">
+            I prefer to host my own database
+            <span class="text-neutral-600 group-open:rotate-180 transition-transform">▾</span>
+          </summary>
+          <p class="px-5 pb-4 text-neutral-400 text-sm leading-relaxed border-t border-neutral-800 pt-4">
+            On the <strong class="text-neutral-300">Connect to your AI</strong> screen, choose <strong class="text-neutral-300">Self-hosted</strong> instead. Enter your own Supabase project URL + anon key, or any REST endpoint that accepts JSON POST requests. The schema is documented on <a href="https://github.com/jefflitt1/health4ai" class="text-green-400 hover:underline">GitHub</a>.
+          </p>
+        </details>
+
       </div>
+    </section>
+
+    <!-- Architecture (condensed) -->
+    <section class="mb-14">
+      <h2 class="text-green-400 font-semibold text-base mb-4">Under the hood</h2>
+      <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-5 text-xs text-green-300 leading-relaxed overflow-x-auto">iPhone (health4.ai iOS app)
+  └─ HKObserverQuery ──► new HealthKit sample arrives
+  └─ BGProcessingTask ──► runs while charging
+         │  POST /healthkit-ingest   Bearer h4_sk_...
+         ▼
+  health4.ai Supabase DB
+  ├── healthkit_metrics       (raw samples, 30-day rolling window)
+  └── healthkit_daily_summaries  (pre-aggregated, multi-year)
+         │  mcp_api_key = h4_mk_...
+         ▼
+  mcp.health4.ai  (FastMCP, HTTP transport)
+  11 tools: get_sleep · get_hrv_trend · get_workouts ·
+            get_daily_snapshot · query_metric · get_health_summary ·
+            get_long_term_trend · search_records · get_metric_stats ·
+            compare_periods · get_coaching_brief
+         │
+         ▼
+  Claude / Cursor / Continue / Ollama</pre>
       <p class="text-neutral-500 text-xs mt-3">
-        A unique index on <code class="text-neutral-400">(user_id, metric_type, start_date, source_name)</code> prevents duplicate inserts when the sync job re-processes an overlapping time window.
+        The sync token (app credential) and MCP API key (AI credential) are different. The app can never read your data; your AI can never write to it.
       </p>
     </section>
 
     <!-- CTA -->
     <section class="border-t border-neutral-800/60 pt-10">
-      <p class="text-neutral-300 text-sm leading-relaxed mb-6">
-        Download the app, authorize HealthKit, and start asking your AI questions about your health.
-      </p>
       <div class="flex flex-wrap gap-4">
         <a
           href="https://github.com/jefflitt1/health4ai"
