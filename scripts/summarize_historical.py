@@ -74,9 +74,9 @@ def types_before(cutoff: str) -> list[str]:
         f"https://api.supabase.com/v1/projects/{project_ref}/database/query",
         headers={"Authorization": f"Bearer {PAT}", "Content-Type": "application/json"},
         json={"query": (
-            f"SELECT DISTINCT metric_type FROM public.healthkit_metrics "
-            f"WHERE user_id = '{USER_ID}' "
-            f"AND started_at < '{cutoff}T00:00:00+00:00'::timestamptz"
+            "SELECT DISTINCT metric_type FROM public.healthkit_metrics "
+            f"WHERE user_id = $user${USER_ID}$user$ "
+            f"AND started_at < $cutoff${cutoff}T00:00:00+00:00$cutoff$::timestamptz"
         )},
         timeout=120,
     )
@@ -111,7 +111,10 @@ def count_raw(metric_type: str, cutoff: str) -> int:
 
 def summarize(metric_type: str, cutoff: str) -> dict:
     """Run summarization via Management API to bypass PostgREST statement timeout."""
-    sql = f"SELECT * FROM public.summarize_healthkit_metric('{USER_ID}', '{metric_type}', '{cutoff}')"
+    import re
+    if not re.match(r'^HK[A-Za-z]+TypeIdentifier[A-Za-z]+$', metric_type):
+        raise ValueError(f"Unexpected metric_type value: {metric_type!r}")
+    sql = f"SELECT * FROM public.summarize_healthkit_metric($u${USER_ID}$u$, $m${metric_type}$m$, $c${cutoff}$c$)"
     resp = httpx.post(MGMT_URL, headers=MGMT_HEADERS, json={"query": sql}, timeout=600)
     resp.raise_for_status()
     return resp.json()

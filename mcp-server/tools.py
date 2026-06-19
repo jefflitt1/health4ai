@@ -85,6 +85,9 @@ def _get(metric_type: str, user_id: str, since: str, limit: int = 500,
             "offset": offset,
         }
         if source_filter:
+            import re
+            if not re.match(r'^[\w\s\-\.]{1,64}$', source_filter):
+                return {"error": "source_filter contains invalid characters"}
             params["source_device"] = f"ilike.*{source_filter}*"
         resp = httpx.get(
             f"{POSTGREST}/{TABLE}",
@@ -454,6 +457,11 @@ def get_daily_snapshot(date: str = "") -> dict:
     uid = DEFAULT_USER_ID
     if not date:
         date = datetime.now(NY).strftime("%Y-%m-%d")
+
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        return {"error": f"Invalid date format '{date}' — expected YYYY-MM-DD"}
 
     # Compute NY midnight boundaries and convert to UTC for the DB query
     day_start_ny = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=NY)

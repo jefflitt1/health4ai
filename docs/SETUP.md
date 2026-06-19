@@ -1,85 +1,80 @@
-# HealthKit Bridge — Setup Guide
+# health4ai — Setup Guide
 
-## Step 1: Run the Supabase Migration
+## Step 1: Set up your Postgres database
 
-DDL must go through the Supabase Management API. The `exec_sql` RPC is not
-available on this project. Get a Personal Access Token from
-https://supabase.com/dashboard/account/tokens (NOT the service role key).
+Run the schema against your chosen backend:
+
+```bash
+psql "$DATABASE_URL" < web/public/schema.sql
+```
+
+**Supabase:** get `DATABASE_URL` from Settings → Database → Connection string (URI).
+**Neon:** get it from Connection Details.
+**Local Docker:** `postgresql://postgres:yourpassword@localhost:5432/postgres`
+
+If using Supabase and the schema needs to go through the Management API:
 
 ```bash
 export SUPABASE_PAT="sbp_your_personal_access_token"
-PROJECT_REF="donnmhbwhpjlmpnwgdqr"
+PROJECT_REF="your_project_ref"
 
 curl -X POST \
   "https://api.supabase.com/v1/projects/$PROJECT_REF/database/query" \
   -H "Authorization: Bearer $SUPABASE_PAT" \
   -H "Content-Type: application/json" \
-  -H "User-Agent: healthkit-bridge-setup" \
-  -d @- < <(jq -Rs '{query: .}' < ../supabase/migrations/001_healthkit_schema.sql)
+  -H "User-Agent: health4ai-setup" \
+  -d @- < <(jq -Rs '{query: .}' < web/public/schema.sql)
 ```
 
-Then in Supabase Dashboard > Settings > API > Exposed Schemas, add `healthkit`
-(required — the MCP server and Edge Function both target the `healthkit` schema
-and PostgREST will 404 until it is exposed).
-
-## Step 2: Deploy the Edge Function
-
-```bash
-# Install Supabase CLI if needed: brew install supabase/tap/supabase
-cd supabase
-supabase functions deploy healthkit-ingest --project-ref donnmhbwhpjlmpnwgdqr
-```
-
-## Step 3: Set up the MCP Server
+## Step 2: Configure the MCP Server
 
 ```bash
 cd mcp-server
 cp .env.example .env
-# Edit .env — add SUPABASE_SERVICE_ROLE_KEY and HEALTHKIT_USER_ID
+# Edit .env — add DATABASE_URL and HEALTHKIT_USER_ID
 
 pip install -r requirements.txt
 python main.py  # test it runs
 ```
 
-## Step 4: Add to Claude Code MCP config
+## Step 3: Add to your AI client
 
-Add to `~/.claude/claude_desktop_config.json` (or your Claude Code MCP config):
+**Claude Code / Claude Desktop** — add to `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
-    "healthkit-bridge": {
+    "health4ai": {
       "command": "python",
-      "args": ["/Users/jgl/ventures/healthkit-bridge/mcp-server/main.py"],
+      "args": ["/path/to/health4ai/mcp-server/main.py"],
       "env": {
-        "SUPABASE_URL": "https://donnmhbwhpjlmpnwgdqr.supabase.co",
-        "SUPABASE_SERVICE_ROLE_KEY": "your_key_here",
-        "HEALTHKIT_USER_ID": "your_user_id_here"
+        "DATABASE_URL": "postgresql://...",
+        "HEALTHKIT_USER_ID": "your_user_id"
       }
     }
   }
 }
 ```
 
-## Step 5: iOS App
+**Cursor** — same block in `~/.cursor/mcp.json`.
 
-1. Open `ios/HealthKitBridge.xcodeproj` in Xcode
+**Ollama (fully local):**
+```bash
+mcphost --model ollama/llama3.2 \
+  --mcp-server "health4ai:python /path/to/health4ai/mcp-server/main.py"
+```
+
+## Step 4: iOS App
+
+1. Open `ios/Health4AI.xcodeproj` in Xcode
 2. Set your Team in Signing & Capabilities
-3. Change bundle ID if desired (default: `com.healthkitbridge.app`)
-4. Build and run on your iPhone (or distribute via TestFlight)
-5. Sign in with Supabase email/password
-6. Tap "Run Backfill" to import all historical data
-7. Background sync will run automatically every hour
+3. Build and run on your iPhone (iOS 17+)
+4. Enter your database credentials and tap **Start Sync**
 
-## Supabase Auth Setup
+The first launch runs a full backfill of your HealthKit history — this can take a few minutes depending on data volume.
 
-Create a user in Supabase Dashboard > Authentication > Users (or via the iOS app sign-up flow).
-Copy the user's UUID — this is your `HEALTHKIT_USER_ID` for the MCP server.
+## Step 5: Verify
 
-## Testing the MCP
+In your AI client, ask: *"Give me a health summary for the last 7 days."* You should get a response with steps, HRV, and sleep data.
 
-Once data is flowing, in Claude Code:
-- "How was my sleep last week?"
-- "What's my HRV trend over the last month?"
-- "How many workouts did I do this month?"
-- "Give me a snapshot of yesterday's health data"
+Run `/mcp` in Claude Code to confirm the `health4ai` server is listed with its tools.
