@@ -21,7 +21,7 @@ const lastUpdated = '2026-06-18';
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">1. What health4.ai is</h2>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        health4.ai is a free iOS app that syncs Apple HealthKit data to a private cloud database and exposes it to AI agents (Claude, ChatGPT, Cursor, and others) via MCP.
+        health4.ai is a free iOS app that transfers Apple HealthKit data to a Postgres database you configure and control, then exposes it to AI agents (Claude, ChatGPT, Cursor, Ollama, and others) via MCP. health4.ai does not store or access your health data.
       </p>
       <p class="text-neutral-400 text-sm leading-relaxed mt-3 font-medium text-amber-300/80">
         health4.ai is not a medical device. It is not intended to diagnose, treat, cure, or prevent any disease or health condition. Do not use it to make medical decisions.
@@ -39,7 +39,7 @@ const lastUpdated = '2026-06-18';
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">3. Your data</h2>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        You own your health data. We store it on your behalf to provide the Service. See our <a href="/privacy" class="text-green-400 hover:underline">Privacy Policy</a> for full detail on how it is handled, retained, and deleted.
+        You own your health data. health4.ai acts as a conduit — your HealthKit data flows directly from your device to the Postgres database you configure. We do not store, retain, or have access to your health data at any point. See our <a href="/privacy" class="text-green-400 hover:underline">Privacy Policy</a> for full detail.
       </p>
     </section>
 

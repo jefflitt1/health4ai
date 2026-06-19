@@ -15,35 +15,33 @@ const lastUpdated = '2026-06-18';
     <p class="text-neutral-500 text-xs mb-10">Last updated: {lastUpdated}</p>
 
     <p class="text-neutral-300 leading-relaxed mb-8">
-      health4.ai ("we", "us") builds tools that sync Apple HealthKit data to a Postgres database you control and expose it to AI agents via MCP. This policy explains what we collect, how we use it, and your rights.
+      health4.ai ("we", "us") provides an iOS app and MCP server that facilitate the transfer of Apple HealthKit data to a Postgres database <em>you configure and control</em>. We do not collect, store, or have access to your health data. This policy explains what limited data we do collect and your rights.
     </p>
 
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">1. What data we collect</h2>
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
-        <li><strong class="text-neutral-200">Health data</strong> — HealthKit metrics you authorize (sleep, HRV, steps, workouts, heart rate, etc.). This data is uploaded to the Postgres database you configure in the iOS app.</li>
-        <li><strong class="text-neutral-200">Account data</strong> — email address (waitlist sign-ups and app accounts), auth tokens.</li>
-        <li><strong class="text-neutral-200">Usage data</strong> — MCP API call counts, error logs (no health payload in logs). We use PostHog for analytics; it does not receive health data.</li>
-        <li><strong class="text-neutral-200">No third-party access</strong> — Your health data is stored in a private database. We do not share it with third parties, advertisers, or data brokers.</li>
+        <li><strong class="text-neutral-200">Health data — we do not collect it.</strong> HealthKit metrics you authorize flow directly from your device to the Postgres database you configure (Supabase, Neon, or self-hosted). health4.ai never receives, stores, or has access to your health data.</li>
+        <li><strong class="text-neutral-200">Account data</strong> — email address (waitlist sign-ups only), used solely to notify you at App Store launch.</li>
+        <li><strong class="text-neutral-200">Usage data</strong> — anonymous page views and feature interaction events via PostHog (US-hosted). PostHog never receives health data. We do not use advertising cookies or trackers.</li>
       </ul>
     </section>
 
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">2. How we use it</h2>
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
-        <li>To deliver the service — sync HealthKit data so AI agents can query it.</li>
-        <li>To notify you at App Store launch (waitlist only).</li>
-        <li>To improve reliability — aggregated, non-identifiable usage metrics.</li>
+        <li>To notify you at App Store launch (waitlist email only).</li>
+        <li>To improve reliability — aggregated, non-identifiable usage metrics only.</li>
       </ul>
       <p class="text-neutral-400 text-sm mt-3">
-        <strong class="text-neutral-200">We do not</strong> use your health data for advertising, sell it to third parties, or share it with any party not required to operate the service. Per Apple's HealthKit guidelines, health data will never be used for advertising or sold to data brokers.
+        We do not sell personal data. We do not use health data for advertising. Per Apple's HealthKit guidelines, health data will never be used for advertising or sold to data brokers. Because we never receive your health data, we are structurally incapable of misusing it.
       </p>
     </section>
 
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">3. Where data is stored</h2>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        Your health data is stored in the Postgres database you configure — Supabase, Neon, or self-hosted. Data is encrypted at rest and in transit (TLS 1.2+). Only you can query your data.
+        Your health data lives in the Postgres database <em>you</em> configure — Supabase, Neon, or self-hosted. You choose the provider, you hold the credentials, and only you can query the data. health4.ai has no access to it.
       </p>
     </section>
 
@@ -57,17 +55,17 @@ const lastUpdated = '2026-06-18';
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">5. Your rights</h2>
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
-        <li><strong class="text-neutral-200">Access & export</strong> — request a copy of your stored data at any time.</li>
-        <li><strong class="text-neutral-200">Deletion</strong> — request deletion of your account and all associated health data. We will complete deletion within 30 days.</li>
-        <li><strong class="text-neutral-200">GDPR / CCPA</strong> — EU and California residents have additional rights (portability, rectification, opt-out of sale). We do not sell personal data. Contact us to exercise any right.</li>
-        <li><strong class="text-neutral-200">Apple HealthKit data</strong> — you can revoke HealthKit permission at any time in iPhone Settings → Privacy & Security → Health → health4.ai.</li>
+        <li><strong class="text-neutral-200">Health data control</strong> — your health data is in your database. You can delete it directly at any time — no request to us required.</li>
+        <li><strong class="text-neutral-200">Account deletion</strong> — contact us to delete your waitlist email address. We will confirm deletion within 14 days.</li>
+        <li><strong class="text-neutral-200">Revoke HealthKit access</strong> — stop syncing at any time in iPhone Settings → Privacy & Security → Health → health4.ai. No data is deleted from your database automatically; you remain in full control.</li>
+        <li><strong class="text-neutral-200">GDPR / CCPA</strong> — EU and California residents have additional rights (portability, rectification, opt-out of sale). We do not sell personal data. Contact us to exercise any right over account data we hold.</li>
       </ul>
     </section>
 
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">6. Breach notification</h2>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        In the event of a breach involving your health data, we will notify affected users within 60 days as required by the FTC Health Breach Notification Rule, and as soon as practicable.
+        Because health4.ai does not store your health data, a breach of our systems cannot expose it. In the unlikely event of a breach involving account data (email addresses), we will notify affected users within 30 days.
       </p>
     </section>
 
