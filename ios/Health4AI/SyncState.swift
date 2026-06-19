@@ -94,8 +94,8 @@ final class SyncState: ObservableObject {
 
     // MARK: - Computed endpoint
 
-    static let hostedIngestURL = "https://donnmhbwhpjlmpnwgdqr.supabase.co/functions/v1/healthkit-ingest"
-    static let hostedAPIBase   = "https://donnmhbwhpjlmpnwgdqr.supabase.co/functions/v1/health4-register"
+    static let hostedIngestURL = "https://health4.ai/ingest"
+    static let hostedAPIBase   = "https://health4.ai/register"
 
     var resolvedEndpointURL: String {
         switch connectionType {

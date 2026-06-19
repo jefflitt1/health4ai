@@ -502,6 +502,7 @@ private struct HostedSetupStep: View {
                     phase = .error("Token not recognized. Go back to your AI and ask for the sync token again."); return
                 }
                 try authManager.saveHostedSyncToken(token)
+                authManager.signOut() // F5: clear any stale Supabase JWT
                 await MainActor.run {
                     syncState.connectionType = .hosted
                     syncState.isAuthenticated = true
@@ -520,6 +521,7 @@ private struct CountdownView: View {
     let expiresAt: Date
     let onExpired: () -> Void
     @State private var remaining: TimeInterval = 0
+    @State private var timer: Timer? = nil
 
     var body: some View {
         let mins = Int(remaining) / 60
@@ -527,13 +529,21 @@ private struct CountdownView: View {
         Text("Expires in \(String(format: "%d:%02d", mins, secs))")
             .font(.caption)
             .foregroundStyle(remaining < 120 ? .orange : .secondary)
-            .onAppear { tick() }
-    }
-
-    private func tick() {
-        remaining = expiresAt.timeIntervalSinceNow
-        if remaining <= 0 { onExpired(); return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { tick() }
+            .onAppear {
+                remaining = expiresAt.timeIntervalSinceNow
+                timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                    remaining = expiresAt.timeIntervalSinceNow
+                    if remaining <= 0 {
+                        timer?.invalidate()
+                        timer = nil
+                        onExpired()
+                    }
+                }
+            }
+            .onDisappear {
+                timer?.invalidate()
+                timer = nil
+            }
     }
 }
 

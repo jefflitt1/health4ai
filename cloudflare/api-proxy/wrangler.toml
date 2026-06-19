@@ -1,0 +1,8 @@
+name            = "health4ai-api-proxy"
+main            = "worker.js"
+compatibility_date = "2024-09-23"
+account_id      = "9cf500b0fc9d1774e922bf6a40b73f89"
+
+[[routes]]
+pattern = "api.health4.ai/*"
+zone_id = "b79ab0e2372a1b2f23125d30415d47fe"
