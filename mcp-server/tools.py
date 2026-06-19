@@ -1,7 +1,12 @@
 """
-MCP tool implementations — reads from Supabase.
+MCP tool implementations — reads from Postgres via psycopg2.
 Routing: queries within 30 days use raw healthkit_metrics;
 queries beyond 30 days use healthkit_daily_summaries (aggregated).
+
+Connection: set DATABASE_URL in env. If DATABASE_URL is not set but
+SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are present, DATABASE_URL is
+auto-constructed using Supabase's transaction pooler:
+  postgresql://postgres.{project_ref}:{SERVICE_ROLE_KEY}@aws-0-us-east-1.pooler.supabase.com:6543/postgres
 """
 
 from datetime import datetime, date, timedelta, timezone
@@ -9,30 +14,60 @@ from zoneinfo import ZoneInfo
 
 NY = ZoneInfo("America/New_York")
 import os
-import httpx
+import re
+import psycopg2
+import psycopg2.extras
 from dotenv import load_dotenv
 
 load_dotenv()
 
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+
+def _build_database_url() -> str:
+    """
+    Resolve DATABASE_URL. Priority:
+    1. DATABASE_URL env var (any Postgres backend)
+    2. Auto-construct from SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
+       using the transaction pooler format (port 6543, no SSL verify needed).
+    """
+    url = os.environ.get("DATABASE_URL")
+    if url:
+        return url
+
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    if supabase_url and service_role_key:
+        # Extract project ref from https://<ref>.supabase.co
+        m = re.match(r"https://([a-z0-9]+)\.supabase\.co", supabase_url)
+        if m:
+            project_ref = m.group(1)
+            return (
+                f"postgresql://postgres.{project_ref}:{service_role_key}"
+                f"@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
+            )
+
+    raise RuntimeError(
+        "No database connection configured. Set DATABASE_URL, "
+        "or set both SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+    )
+
+
+DATABASE_URL = _build_database_url()
 DEFAULT_USER_ID = os.environ.get("HEALTHKIT_USER_ID", "")
 
-POSTGREST = f"{SUPABASE_URL}/rest/v1"
-HEADERS = {
-    "apikey": SERVICE_ROLE_KEY,
-    "Authorization": f"Bearer {SERVICE_ROLE_KEY}",
-    "Prefer": "count=none",
-}
 TABLE = "healthkit_metrics"
 SUMMARY_TABLE = "healthkit_daily_summaries"
 RAW_CUTOFF_DAYS = 30  # beyond this, queries hit daily summaries
 
 # Query parameter bounds — reject/clamp caller input before any DB read so a
-# mistaken or hostile MCP client can't trigger unbounded PostgREST scans.
+# mistaken or hostile MCP client can't trigger unbounded scans.
 MAX_DAYS = 1825       # 5 years
 MAX_MONTHS = 120      # 10 years
 MAX_LIMIT = 1000
+
+
+def _connect():
+    """Open a new psycopg2 connection. Callers are responsible for closing it."""
+    return psycopg2.connect(DATABASE_URL)
 
 
 def _clamp_days(days: int) -> int:
@@ -64,47 +99,171 @@ WEIGHT = "HKQuantityTypeIdentifierBodyMass"
 WORKOUT = "HKWorkoutTypeIdentifier"
 
 
-def _get(metric_type: str, user_id: str, since: str, limit: int = 500,
-         source_filter: str | None = None) -> list[dict]:
-    # PostgREST enforces max-rows ~5000 per page. Paginate to collect all rows
-    # up to `limit`. For raw queries (not tiered), callers pass explicit limits
-    # (e.g. 50 for workouts, 500 for recent HRV) that stay under the cap.
-    # _get_tiered_daily passes limit=100000 — paginate those.
-    # source_filter: optional substring match on source_device (e.g. "Oura" for sleep).
+def _fetch_metrics(metric_type: str, user_id: str, since: str, limit: int = 500,
+                   source_filter: str | None = None) -> list[dict]:
+    """
+    Fetch raw healthkit_metrics rows since `since` (ISO timestamp), up to `limit`.
+    Paginates in batches of 5000 to collect all rows within the limit.
+    source_filter: optional substring match on source_device (ILIKE %filter%).
+    """
+    if source_filter:
+        if not re.match(r'^[\w\s\-\.]{1,64}$', source_filter):
+            return {"error": "source_filter contains invalid characters"}
+
     PAGE = 5000
     all_rows: list[dict] = []
     offset = 0
-    while len(all_rows) < limit:
-        fetch = min(PAGE, limit - len(all_rows))
-        params: dict = {
-            "user_id": f"eq.{user_id}",
-            "metric_type": f"eq.{metric_type}",
-            "started_at": f"gte.{since}",
-            "order": "started_at.desc",
-            "limit": fetch,
-            "offset": offset,
-        }
-        if source_filter:
-            import re
-            if not re.match(r'^[\w\s\-\.]{1,64}$', source_filter):
-                return {"error": "source_filter contains invalid characters"}
-            params["source_device"] = f"ilike.*{source_filter}*"
-        resp = httpx.get(
-            f"{POSTGREST}/{TABLE}",
-            headers=HEADERS,
-            params=params,
-            timeout=30,
-        )
-        resp.raise_for_status()
-        page = resp.json()
-        if not page:
-            break
-        all_rows.extend(page)
-        if len(page) < fetch:
-            break
-        offset += fetch
+
+    conn = _connect()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            while len(all_rows) < limit:
+                fetch = min(PAGE, limit - len(all_rows))
+                if source_filter:
+                    cur.execute(
+                        f"""
+                        SELECT * FROM {TABLE}
+                        WHERE user_id = %s
+                          AND metric_type = %s
+                          AND started_at >= %s
+                          AND source_device ILIKE %s
+                        ORDER BY started_at DESC
+                        LIMIT %s OFFSET %s
+                        """,
+                        (user_id, metric_type, since,
+                         f"%{source_filter}%", fetch, offset),
+                    )
+                else:
+                    cur.execute(
+                        f"""
+                        SELECT * FROM {TABLE}
+                        WHERE user_id = %s
+                          AND metric_type = %s
+                          AND started_at >= %s
+                        ORDER BY started_at DESC
+                        LIMIT %s OFFSET %s
+                        """,
+                        (user_id, metric_type, since, fetch, offset),
+                    )
+                page = [dict(r) for r in cur.fetchall()]
+                if not page:
+                    break
+                all_rows.extend(page)
+                if len(page) < fetch:
+                    break
+                offset += fetch
+    finally:
+        conn.close()
+
     return all_rows
 
+
+def _fetch_metrics_range(metric_type: str, user_id: str,
+                         start_iso: str, end_iso: str) -> list[dict]:
+    """Raw samples in [start_iso, end_iso) with pagination."""
+    PAGE = 5000
+    all_rows: list[dict] = []
+    offset = 0
+
+    conn = _connect()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            while True:
+                cur.execute(
+                    f"""
+                    SELECT * FROM {TABLE}
+                    WHERE user_id = %s
+                      AND metric_type = %s
+                      AND started_at >= %s
+                      AND started_at < %s
+                    ORDER BY started_at ASC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (user_id, metric_type, start_iso, end_iso, PAGE, offset),
+                )
+                page = [dict(r) for r in cur.fetchall()]
+                if not page:
+                    break
+                all_rows.extend(page)
+                if len(page) < PAGE:
+                    break
+                offset += PAGE
+    finally:
+        conn.close()
+
+    return all_rows
+
+
+def _fetch_metrics_snapshot(user_id: str, day_start: str, day_end: str,
+                            limit: int = 1000) -> list[dict]:
+    """All metric rows for a single calendar day (both bounds inclusive on started_at)."""
+    conn = _connect()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                f"""
+                SELECT * FROM {TABLE}
+                WHERE user_id = %s
+                  AND started_at >= %s
+                  AND started_at <= %s
+                ORDER BY metric_type ASC, started_at ASC
+                LIMIT %s
+                """,
+                (user_id, day_start, day_end, limit),
+            )
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def _fetch_summaries(metric_type: str, user_id: str,
+                     since_date: str, limit: int = 500) -> list[dict]:
+    """Query daily summaries table for historical data."""
+    conn = _connect()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                f"""
+                SELECT * FROM {SUMMARY_TABLE}
+                WHERE user_id = %s
+                  AND metric_type = %s
+                  AND date >= %s
+                ORDER BY date DESC
+                LIMIT %s
+                """,
+                (user_id, metric_type, since_date, limit),
+            )
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def _fetch_summaries_range(metric_type: str, user_id: str,
+                           start_date: str, end_date: str) -> list[dict]:
+    """Daily summaries in [start_date, end_date]."""
+    conn = _connect()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                f"""
+                SELECT * FROM {SUMMARY_TABLE}
+                WHERE user_id = %s
+                  AND metric_type = %s
+                  AND date >= %s
+                  AND date <= %s
+                ORDER BY date ASC
+                LIMIT 10000
+                """,
+                (user_id, metric_type, start_date, end_date),
+            )
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers (no DB calls — pure logic unchanged from prior version)
+# ---------------------------------------------------------------------------
 
 def _since(days: int) -> str:
     dt = datetime.now(timezone.utc) - timedelta(days=days)
@@ -123,7 +282,7 @@ def _daily_from_raw(rows: list[dict]) -> list[dict]:
     for r in rows:
         if r.get("value") is None:
             continue
-        daily.setdefault(_ny_date(r["started_at"]), []).append(r["value"])
+        daily.setdefault(_ny_date(str(r["started_at"])), []).append(float(r["value"]))
     out = []
     for d, vals in sorted(daily.items()):
         out.append({
@@ -151,15 +310,16 @@ def _get_tiered_daily(metric_type: str, user_id: str, days: int) -> list[dict]:
 
     # Recent raw portion (from max(window_start, cutoff) forward)
     raw_since = max(window_start, cutoff)
-    raw_rows = _get(metric_type, user_id, f"{raw_since}T00:00:00+00:00", limit=100000)
+    raw_rows = _fetch_metrics(metric_type, user_id, f"{raw_since}T00:00:00+00:00", limit=100000)
     recent_daily = _daily_from_raw(raw_rows)
 
     # Historical summary portion — only days strictly before the raw cutoff (no overlap)
     historical_daily: list[dict] = []
     if days > RAW_CUTOFF_DAYS:
-        for s in _get_summaries(metric_type, user_id, window_start, limit=10000):
-            if s["date"] < cutoff:
-                historical_daily.append({**s, "source": "summary"})
+        for s in _fetch_summaries(metric_type, user_id, window_start, limit=10000):
+            s_date = str(s["date"])
+            if s_date < cutoff:
+                historical_daily.append({**s, "date": s_date, "source": "summary"})
 
     combined = historical_daily + recent_daily
     combined.sort(key=lambda x: x["date"])
@@ -200,11 +360,58 @@ def _avg_daily_total_from_raw(rows: list[dict]) -> float | None:
     for r in rows:
         if r.get("value") is None:
             continue
-        day = _ny_date(r["started_at"])
-        daily[day] = daily.get(day, 0.0) + r["value"]
+        day = _ny_date(str(r["started_at"]))
+        daily[day] = daily.get(day, 0.0) + float(r["value"])
     totals = list(daily.values())
     return round(sum(totals) / len(totals), 1) if totals else None
 
+
+def _daily_series_for_range(metric_type: str, user_id: str,
+                             start_date: str, end_date: str) -> list[dict]:
+    """Daily-aggregated series for [start_date, end_date], tier-aware.
+    Dates before the raw cutoff come from daily summaries; recent dates from raw samples."""
+    cutoff = (datetime.now(timezone.utc).date() - timedelta(days=RAW_CUTOFF_DAYS)).isoformat()
+    daily: dict[str, dict] = {}
+
+    summary_end = min(end_date, cutoff)
+    if start_date <= summary_end:
+        for s in _fetch_summaries_range(metric_type, user_id, start_date, summary_end):
+            s_date = str(s["date"])
+            daily[s_date] = {**s, "date": s_date, "source": "summary"}
+
+    raw_start = max(start_date, cutoff)
+    if raw_start <= end_date:
+        start_iso = (
+            datetime.strptime(raw_start, "%Y-%m-%d")
+            .replace(tzinfo=NY)
+            .astimezone(timezone.utc)
+            .isoformat()
+        )
+        end_iso = (
+            (datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=NY) + timedelta(days=1))
+            .astimezone(timezone.utc)
+            .isoformat()
+        )
+        for d in _daily_from_raw(_fetch_metrics_range(metric_type, user_id, start_iso, end_iso)):
+            daily[d["date"]] = d
+
+    return sorted(daily.values(), key=lambda x: x["date"])
+
+
+def _percentile(sorted_vals: list[float], p: float) -> float:
+    """p-th percentile via linear interpolation. sorted_vals must be pre-sorted."""
+    n = len(sorted_vals)
+    if n == 0:
+        return 0.0
+    idx = (p / 100) * (n - 1)
+    lo = int(idx)
+    hi = min(lo + 1, n - 1)
+    return round(sorted_vals[lo] + (idx - lo) * (sorted_vals[hi] - sorted_vals[lo]), 2)
+
+
+# ---------------------------------------------------------------------------
+# Public tool implementations (signatures and output format unchanged)
+# ---------------------------------------------------------------------------
 
 def get_health_summary(days: int = 7) -> dict:
     """
@@ -214,11 +421,11 @@ def get_health_summary(days: int = 7) -> dict:
     uid = DEFAULT_USER_ID
     since = _since(days)
 
-    steps_rows = _get(STEPS, uid, since)
-    hrv_rows = _get(HRV, uid, since)
-    resting_hr_rows = _get(RESTING_HR, uid, since)
-    sleep_rows = _get(SLEEP, uid, since)
-    workout_rows = _get(WORKOUT, uid, since, limit=50)
+    steps_rows = _fetch_metrics(STEPS, uid, since)
+    hrv_rows = _fetch_metrics(HRV, uid, since)
+    resting_hr_rows = _fetch_metrics(RESTING_HR, uid, since)
+    sleep_rows = _fetch_metrics(SLEEP, uid, since)
+    workout_rows = _fetch_metrics(WORKOUT, uid, since, limit=50)
 
     def avg(rows: list[dict]) -> float | None:
         vals = [r["value"] for r in rows if r.get("value") is not None]
@@ -239,7 +446,7 @@ def get_health_summary(days: int = 7) -> dict:
         "steps": {
             "total": total(steps_rows),
             "daily_avg": _avg_daily_total_from_raw(steps_rows),
-            "days_with_data": len({r["started_at"][:10] for r in steps_rows}),
+            "days_with_data": len({str(r["started_at"])[:10] for r in steps_rows}),
         },
         "hrv_sdnn_ms": {
             "avg": avg(hrv_rows),
@@ -256,7 +463,7 @@ def get_health_summary(days: int = 7) -> dict:
         },
         "workouts": {
             "count": len(workout_rows),
-            "types": list({r.get("metadata", {}).get("workout_type", "unknown") for r in workout_rows}),
+            "types": list({(r.get("metadata") or {}).get("workout_type", "unknown") for r in workout_rows}),
         },
         "data_as_of": datetime.now(timezone.utc).isoformat(),
     }
@@ -271,7 +478,7 @@ def get_sleep(days: int = 7) -> dict:
     since = _since(days)
     # Oura Ring syncs sleep stages to Apple Health — use as the single sleep source.
     # Apple Watch also writes stages; summing both would double-count every night.
-    rows = _get(SLEEP, uid, since, limit=500, source_filter="Oura")
+    rows = _fetch_metrics(SLEEP, uid, since, limit=500, source_filter="Oura")
 
     nights: dict[str, dict] = {}
 
@@ -284,13 +491,13 @@ def get_sleep(days: int = 7) -> dict:
         if val not in _STAGE_NAMES:
             continue
 
-        started = row["started_at"]
+        started = str(row["started_at"])
         ended = row.get("ended_at")
         if not ended:
             continue
 
         start_dt = datetime.fromisoformat(started.replace("Z", "+00:00"))
-        end_dt = datetime.fromisoformat(ended.replace("Z", "+00:00"))
+        end_dt = datetime.fromisoformat(str(ended).replace("Z", "+00:00"))
         duration_min = round((end_dt - start_dt).total_seconds() / 60, 1)
 
         # Group by the calendar date of sleep start (shifted: sleep before 6am = previous night)
@@ -307,7 +514,7 @@ def get_sleep(days: int = 7) -> dict:
         nights[night_key]["segments"].append({
             "stage": stage,
             "started_at": started,
-            "ended_at": ended,
+            "ended_at": str(ended),
             "duration_minutes": duration_min,
         })
 
@@ -389,7 +596,7 @@ def query_metric(
         }
 
     since = _since(days)
-    rows = _get(metric_type, uid, since, limit=limit)
+    rows = _fetch_metrics(metric_type, uid, since, limit=limit)
 
     values = [r["value"] for r in rows if r.get("value") is not None]
     return {
@@ -404,8 +611,8 @@ def query_metric(
             {
                 "value": r["value"],
                 "unit": r.get("unit"),
-                "started_at": r["started_at"],
-                "ended_at": r.get("ended_at"),
+                "started_at": str(r["started_at"]),
+                "ended_at": str(r["ended_at"]) if r.get("ended_at") else None,
                 "source": r.get("source_device"),
                 "metadata": r.get("metadata"),
             }
@@ -420,14 +627,14 @@ def get_workouts(days: int = 30, limit: int = 20) -> dict:
     """
     uid = DEFAULT_USER_ID
     since = _since(days)
-    rows = _get(WORKOUT, uid, since, limit=limit)
+    rows = _fetch_metrics(WORKOUT, uid, since, limit=limit)
 
     workouts = []
     for r in rows:
         meta = r.get("metadata") or {}
         workouts.append({
-            "date": r["started_at"][:10],
-            "started_at": r["started_at"],
+            "date": str(r["started_at"])[:10],
+            "started_at": str(r["started_at"]),
             "workout_type": meta.get("workout_type", "unknown"),
             "duration_minutes": round(meta.get("duration_seconds", 0) / 60, 1),
             "distance_km": round(meta.get("total_distance_meters", 0) / 1000, 2) if meta.get("total_distance_meters") else None,
@@ -469,23 +676,7 @@ def get_daily_snapshot(date: str = "") -> dict:
     day_start = day_start_ny.astimezone(timezone.utc).isoformat()
     day_end = day_end_ny.astimezone(timezone.utc).isoformat()
 
-    # Filter on started_at for both bounds. A `lte` filter on ended_at would
-    # exclude point-in-time samples (steps, HRV, resting HR) where ended_at is null.
-    # PostgREST range needs two filters on the same column -> list of tuples.
-    resp = httpx.get(
-        f"{POSTGREST}/{TABLE}",
-        headers=HEADERS,
-        params=[
-            ("user_id", f"eq.{uid}"),
-            ("started_at", f"gte.{day_start}"),
-            ("started_at", f"lte.{day_end}"),
-            ("order", "metric_type.asc,started_at.asc"),
-            ("limit", 1000),
-        ],
-        timeout=30,
-    )
-    resp.raise_for_status()
-    rows = resp.json()
+    rows = _fetch_metrics_snapshot(uid, day_start, day_end, limit=1000)
 
     # Group by metric type
     by_type: dict[str, list[dict]] = {}
@@ -515,118 +706,18 @@ def get_daily_snapshot(date: str = "") -> dict:
         },
         "workouts": [
             {
-                "type": r.get("metadata", {}).get("workout_type"),
-                "duration_minutes": round(r.get("metadata", {}).get("duration_seconds", 0) / 60, 1),
-                "calories": r.get("metadata", {}).get("total_energy_burned_cal"),
+                "type": (r.get("metadata") or {}).get("workout_type"),
+                "duration_minutes": round((r.get("metadata") or {}).get("duration_seconds", 0) / 60, 1),
+                "calories": (r.get("metadata") or {}).get("total_energy_burned_cal"),
             }
             for r in by_type.get(WORKOUT, [])
         ],
         "sleep_records": len(by_type.get(SLEEP, [])),
         "all_metrics": {
-            mt: [{"value": r["value"], "unit": r.get("unit"), "at": r["started_at"]} for r in records]
+            mt: [{"value": r["value"], "unit": r.get("unit"), "at": str(r["started_at"])} for r in records]
             for mt, records in by_type.items()
         },
     }
-
-
-def _get_raw_range(metric_type: str, user_id: str, start_iso: str, end_iso: str) -> list[dict]:
-    """Raw samples in [start_iso, end_iso) with pagination."""
-    PAGE = 5000
-    all_rows: list[dict] = []
-    offset = 0
-    while True:
-        resp = httpx.get(
-            f"{POSTGREST}/{TABLE}",
-            headers=HEADERS,
-            params=[
-                ("user_id", f"eq.{user_id}"),
-                ("metric_type", f"eq.{metric_type}"),
-                ("started_at", f"gte.{start_iso}"),
-                ("started_at", f"lt.{end_iso}"),
-                ("order", "started_at.asc"),
-                ("limit", PAGE),
-                ("offset", offset),
-            ],
-            timeout=30,
-        )
-        resp.raise_for_status()
-        page = resp.json()
-        if not page:
-            break
-        all_rows.extend(page)
-        if len(page) < PAGE:
-            break
-        offset += PAGE
-    return all_rows
-
-
-def _get_summaries_range(metric_type: str, user_id: str, start_date: str, end_date: str) -> list[dict]:
-    """Daily summaries in [start_date, end_date]."""
-    resp = httpx.get(
-        f"{POSTGREST}/{SUMMARY_TABLE}",
-        headers=HEADERS,
-        params=[
-            ("user_id", f"eq.{user_id}"),
-            ("metric_type", f"eq.{metric_type}"),
-            ("date", f"gte.{start_date}"),
-            ("date", f"lte.{end_date}"),
-            ("order", "date.asc"),
-            ("limit", 10000),
-        ],
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-
-def _daily_series_for_range(metric_type: str, user_id: str, start_date: str, end_date: str) -> list[dict]:
-    """Daily-aggregated series for [start_date, end_date], tier-aware.
-    Dates before the raw cutoff come from daily summaries; recent dates from raw samples."""
-    cutoff = (datetime.now(timezone.utc).date() - timedelta(days=RAW_CUTOFF_DAYS)).isoformat()
-    daily: dict[str, dict] = {}
-
-    summary_end = min(end_date, cutoff)
-    if start_date <= summary_end:
-        for s in _get_summaries_range(metric_type, user_id, start_date, summary_end):
-            daily[s["date"]] = {**s, "source": "summary"}
-
-    raw_start = max(start_date, cutoff)
-    if raw_start <= end_date:
-        start_iso = datetime.strptime(raw_start, "%Y-%m-%d").replace(tzinfo=NY).astimezone(timezone.utc).isoformat()
-        end_iso = (datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=NY) + timedelta(days=1)).astimezone(timezone.utc).isoformat()
-        for d in _daily_from_raw(_get_raw_range(metric_type, user_id, start_iso, end_iso)):
-            daily[d["date"]] = d
-
-    return sorted(daily.values(), key=lambda x: x["date"])
-
-
-def _percentile(sorted_vals: list[float], p: float) -> float:
-    """p-th percentile via linear interpolation. sorted_vals must be pre-sorted."""
-    n = len(sorted_vals)
-    if n == 0:
-        return 0.0
-    idx = (p / 100) * (n - 1)
-    lo = int(idx)
-    hi = min(lo + 1, n - 1)
-    return round(sorted_vals[lo] + (idx - lo) * (sorted_vals[hi] - sorted_vals[lo]), 2)
-
-
-def _get_summaries(metric_type: str, user_id: str, since_date: str, limit: int = 500) -> list[dict]:
-    """Query daily summaries table for historical data."""
-    resp = httpx.get(
-        f"{POSTGREST}/{SUMMARY_TABLE}",
-        headers=HEADERS,
-        params={
-            "user_id": f"eq.{user_id}",
-            "metric_type": f"eq.{metric_type}",
-            "date": f"gte.{since_date}",
-            "order": "date.desc",
-            "limit": limit,
-        },
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json()
 
 
 def get_long_term_trend(
@@ -693,14 +784,14 @@ def get_coaching_brief() -> dict:
     since_30d = _since(30)
     since_7d = _since(7)
 
-    hrv_14d = _get(HRV, uid, since_14d, limit=200)
-    rhr_14d = _get(RESTING_HR, uid, since_14d, limit=50)
-    sleep_14d = _get(SLEEP, uid, since_14d, limit=500, source_filter="Oura")
-    workouts_30d = _get(WORKOUT, uid, since_30d, limit=50)
-    steps_7d = _get(STEPS, uid, since_7d, limit=500)
-    vo2_rows = _get(VO2MAX, uid, _since(365), limit=50)
-    weight_rows = _get(WEIGHT, uid, since_30d, limit=30)
-    energy_7d = _get(ACTIVE_ENERGY, uid, since_7d, limit=500)
+    hrv_14d = _fetch_metrics(HRV, uid, since_14d, limit=200)
+    rhr_14d = _fetch_metrics(RESTING_HR, uid, since_14d, limit=50)
+    sleep_14d = _fetch_metrics(SLEEP, uid, since_14d, limit=500, source_filter="Oura")
+    workouts_30d = _fetch_metrics(WORKOUT, uid, since_30d, limit=50)
+    steps_7d = _fetch_metrics(STEPS, uid, since_7d, limit=500)
+    vo2_rows = _fetch_metrics(VO2MAX, uid, _since(365), limit=50)
+    weight_rows = _fetch_metrics(WEIGHT, uid, since_30d, limit=30)
+    energy_7d = _fetch_metrics(ACTIVE_ENERGY, uid, since_7d, limit=500)
 
     def avg(rows: list[dict]) -> float | None:
         vals = [r["value"] for r in rows if r.get("value") is not None]
@@ -723,16 +814,14 @@ def get_coaching_brief() -> dict:
         hrv_status = "improving" if delta > 2 else "declining" if delta < -2 else "stable"
 
     # Sleep: sum Core+Deep+REM segments only (value 3/4/5).
-    # Excluding InBed (0), AsleepUnspecified (1), and Awake (2) prevents double-counting
-    # when both Apple Watch and iPhone write overlapping parent records for the same night.
     nights: dict[str, float] = {}
     for row in sleep_14d:
         if row.get("value") not in (3.0, 4.0, 5.0):
             continue
         if not row.get("ended_at"):
             continue
-        start = datetime.fromisoformat(row["started_at"].replace("Z", "+00:00"))
-        end = datetime.fromisoformat(row["ended_at"].replace("Z", "+00:00"))
+        start = datetime.fromisoformat(str(row["started_at"]).replace("Z", "+00:00"))
+        end = datetime.fromisoformat(str(row["ended_at"]).replace("Z", "+00:00"))
         night_key = (start - timedelta(hours=6)).strftime("%Y-%m-%d")
         nights[night_key] = nights.get(night_key, 0) + (end - start).total_seconds() / 3600
 
@@ -853,7 +942,7 @@ def get_metric_stats(
 ) -> dict:
     """
     Personal baseline statistics for any health metric.
-    Returns min, max, mean, std dev, and percentile distribution (p10–p90).
+    Returns min, max, mean, std dev, and percentile distribution (p10-p90).
 
     Use to answer: 'Is today's reading good or bad for me personally?'
     Pair with get_daily_snapshot to compare today's value against your baseline.
@@ -935,8 +1024,6 @@ def compare_periods(
     value_key = "sum_value" if is_cumulative else "avg_value"
     _avg_fn = _daily_total_avg if is_cumulative else _weighted_mean
 
-    # Validate dates up front: bad format or inverted/oversized ranges would
-    # otherwise reach the DB as a huge or empty scan. Fail fast with a clear error.
     def _valid(start: str, end: str) -> str | None:
         try:
             s = datetime.strptime(start, "%Y-%m-%d")
