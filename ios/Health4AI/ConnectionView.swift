@@ -10,6 +10,9 @@ struct ConnectionView: View {
     @State private var showSignOut = false
     @State private var testResult: TestResult? = nil
     @State private var isTesting = false
+    @State private var isRevoking = false
+    @State private var showRevokeConfirm = false
+    @State private var revokeError: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -39,6 +42,22 @@ struct ConnectionView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("You will need to sign in again to resume syncing.")
+        }
+        .alert("Revoke Access", isPresented: $showRevokeConfirm) {
+            Button("Revoke", role: .destructive) {
+                Task { await revokeHostedAccess() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your sync token will be permanently revoked. Your health data remains in health4.ai cloud. You can reconnect with a new token at any time.")
+        }
+        .alert("Revoke Failed", isPresented: Binding(
+            get: { revokeError != nil },
+            set: { if !$0 { revokeError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(revokeError ?? "Unknown error")
         }
     }
 
@@ -71,10 +90,47 @@ struct ConnectionView: View {
     @ViewBuilder
     private var configSection: some View {
         switch syncState.connectionType {
+        case .hosted:
+            hostedStatusSection
         case .supabase:
             supabaseConfigSection
         case .rest:
             restConfigSection
+        }
+    }
+
+    private var hostedStatusSection: some View {
+        Section {
+            HStack {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(.pink)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Connected to health4.ai")
+                        .fontWeight(.medium)
+                    if let token = authManager.hostedSyncToken {
+                        Text("\(token.prefix(12))…")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Button(role: .destructive) {
+                showRevokeConfirm = true
+            } label: {
+                HStack {
+                    if isRevoking {
+                        ProgressView().scaleEffect(0.8)
+                    } else {
+                        Image(systemName: "xmark.shield")
+                    }
+                    Text(isRevoking ? "Revoking…" : "Revoke Access")
+                }
+            }
+            .disabled(isRevoking)
+        } header: {
+            Text("health4.ai Cloud")
+        } footer: {
+            Text("Revoking removes this device's sync token. Your data stays in health4.ai cloud.")
         }
     }
 
@@ -207,6 +263,36 @@ struct ConnectionView: View {
             Text("Verify")
         } footer: {
             Text("Sends a small ping to your endpoint to confirm it's reachable.")
+        }
+    }
+
+    private func revokeHostedAccess() async {
+        guard let token = authManager.hostedSyncToken else { return }
+        isRevoking = true
+        defer { isRevoking = false }
+
+        guard let url = URL(string: "\(SyncState.hostedAPIBase)/revoke") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["sync_token": token])
+        req.timeoutInterval = 15
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: req)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200...299).contains(code) else {
+                await MainActor.run { revokeError = "Server returned HTTP \(code)" }
+                return
+            }
+            await MainActor.run {
+                authManager.clearHostedSyncToken()
+                SyncEngine.shared.stopObserving()
+                syncState.connectionType = .supabase
+                syncState.isAuthenticated = false
+            }
+        } catch {
+            await MainActor.run { revokeError = error.localizedDescription }
         }
     }
 
