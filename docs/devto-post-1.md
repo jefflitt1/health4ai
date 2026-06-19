@@ -23,14 +23,16 @@ That's what health4.ai is.
 The architecture is straightforward:
 
 ```
-iPhone (HKObserverQuery) -> Supabase Edge Function -> healthkit schema -> FastMCP server -> Claude Code
+iPhone (HKObserverQuery) → Your Postgres database → FastMCP server → Any AI
 ```
 
-The iOS app registers `HKObserverQuery` observers for every HealthKit metric type. When Apple Health receives new data (a completed workout, a new HRV reading, a sleep session from Oura), the observer fires and queues a sync. `BGTaskScheduler` handles periodic background delivery. On first launch, a bulk backfill exports your entire HealthKit history.
+The iOS app registers `HKObserverQuery` observers for every HealthKit metric type. When Apple Health receives new data (a completed workout, a new HRV reading, a sleep session), the observer fires and queues a sync. `BGTaskScheduler` handles periodic background delivery. On first launch, a bulk backfill exports your entire HealthKit history — mine was around 5.6 million rows.
 
-Data lands in a long/EAV schema in Supabase: one row per `HKSample`, with `metric_type`, `value`, `unit`, `started_at`, `ended_at`, `source_device`, and a `metadata` JSONB column for workout-specific fields. New metric types never require a schema migration.
+Data lands in a simple EAV schema: one row per `HKSample`, with `metric_type`, `value`, `unit`, `started_at`, `ended_at`, `source_device`, and a `metadata` JSONB column. New metric types never require a schema migration.
 
-The MCP server is a Python FastMCP process running locally on your machine. It reads from Supabase using the service role key (server-side only, never in the iOS app) and exposes 8 tools that Claude Code can call.
+The MCP server is a Python FastMCP process running locally. It reads directly from Postgres (your credentials, your database) and exposes 11 tools that any MCP client can call.
+
+**You own the data.** health4.ai never receives or stores your health data. It flows from your iPhone to your Postgres database — you choose the provider.
 
 ---
 
@@ -43,106 +45,103 @@ git clone https://github.com/jefflitt1/health4ai.git
 cd health4ai
 ```
 
-### 2. Run the Supabase migration
+### 2. Set up your Postgres database
 
-You need a Supabase project. The free tier works fine for personal use.
+Pick the backend that fits you and run the schema:
 
+**Supabase (free tier works fine):**
 ```bash
-supabase link --project-ref your-project-ref
-supabase db push
+psql "$DATABASE_URL" < web/public/schema.sql
 ```
 
-Or apply the migrations manually from `supabase/migrations/` if you prefer. The main migration creates the `healthkit` schema, the `healthkit_metrics` table, RLS policies, and a few views for sleep and biometrics.
+**Neon (serverless Postgres):**
+```bash
+psql "$DATABASE_URL" < web/public/schema.sql
+```
+
+**Local Docker:**
+```bash
+docker run -d --name health4ai-postgres \
+  -e POSTGRES_PASSWORD=yourpassword -p 5432:5432 postgres:16
+psql "postgresql://postgres:yourpassword@localhost:5432/postgres" \
+  < web/public/schema.sql
+```
 
 ### 3. Install the iOS app
 
-TestFlight link: **TBD** (the app is in TestFlight; public link coming soon).
-
-Open it, sign in with your Supabase URL and credentials, and tap **Start Sync**. The first-launch backfill runs in the background and can take a few minutes depending on how much Health data you have. My backfill was 5.6 million rows.
+TestFlight link: **coming soon** — the app is in review. Sign in with your Postgres connection details and tap **Start Sync**.
 
 ### 4. Configure the MCP server
-
-Copy the example env file:
 
 ```bash
 cp mcp-server/.env.example mcp-server/.env
 ```
 
-Fill in your values:
+Edit `mcp-server/.env`:
 
 ```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
-HEALTHKIT_USER_ID=your_supabase_user_id_here
+DATABASE_URL=postgresql://...    # your Postgres connection string
+HEALTHKIT_USER_ID=your_user_id   # any string to identify your data
 ```
 
-Get `HEALTHKIT_USER_ID` from the Supabase dashboard under Authentication > Users. It's the UUID of the account you used to sign into the iOS app.
-
-Install Python dependencies:
+Install dependencies:
 
 ```bash
-cd mcp-server
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+cd mcp-server && pip install -r requirements.txt
 ```
 
 ### 5. Add it to Claude Code
 
-Open `~/.claude/claude_desktop_config.json` (create it if it doesn't exist) and add:
-
 ```json
 {
   "mcpServers": {
-    "healthkit-bridge": {
-      "command": "/path/to/health4ai/mcp-server/.venv/bin/python",
+    "health4ai": {
+      "command": "python",
       "args": ["/path/to/health4ai/mcp-server/main.py"],
       "env": {
-        "SUPABASE_URL": "https://your-project.supabase.co",
-        "SUPABASE_SERVICE_ROLE_KEY": "your_service_role_key_here",
-        "HEALTHKIT_USER_ID": "your_supabase_user_id_here"
+        "DATABASE_URL": "postgresql://...",
+        "HEALTHKIT_USER_ID": "your_user_id"
       }
     }
   }
 }
 ```
 
-Restart Claude Code. Run `/mcp` to confirm the server shows up. You should see `healthkit-bridge` with 8 tools listed.
+Restart Claude Code. Run `/mcp` to confirm. You should see `health4ai` with 11 tools listed.
+
+**Works with Cursor too** — same config block in `~/.cursor/mcp.json`.
+
+**Fully local with Ollama:**
+```bash
+mcphost --model ollama/llama3.2 \
+  --mcp-server "health4ai:python /path/to/health4ai/mcp-server/main.py"
+```
+Your data and the model both stay on-device. Nothing leaves your machine.
 
 ---
 
-## What you can ask Claude
+## What you can ask
 
-Here are 6 prompts that work well, along with which tool they trigger and what the response looks like.
+Here are prompts that work well, along with which tool they trigger:
 
-**"How did I sleep this week?"**
-Triggers `get_sleep`. Returns per-night breakdown with Core, Deep, and REM stage durations. Pulls from Oura Ring records in Apple Health if you have one (de-duplicates from Apple Watch to avoid double-counting).
+**"How did I sleep this week?"** → `get_sleep` — per-night breakdown with Core, Deep, and REM stage durations.
 
-**"Is my HRV trending up or down this month?"**
-Triggers `get_hrv_trend`. Returns daily SDNN averages, a 7-day rolling comparison, and a direction flag: improving, declining, or stable.
+**"Is my HRV trending up or down this month?"** → `get_hrv_trend` — daily SDNN averages, 7-day rolling comparison, trend direction.
 
-**"Give me a full health summary for the last 14 days."**
-Triggers `get_health_summary`. Returns average steps, average HRV, resting heart rate, sleep record count, and workout count and types.
+**"Give me a full health summary for the last 14 days."** → `get_health_summary` — steps, HRV, resting HR, sleep, workouts.
 
-**"What does yesterday look like?"**
-Triggers `get_daily_snapshot`. Returns everything recorded that day: steps, active energy, resting HR, HRV, weight, any workouts, sleep records, and the full list of metric types present.
+**"What does yesterday look like?"** → `get_daily_snapshot` — everything recorded that day.
 
-**"List my workouts from the last 30 days."**
-Triggers `get_workouts`. Returns each workout with type, duration, distance, and calories burned.
+**"Is 42ms HRV good or bad for me?"** → `get_metric_stats` — your personal baseline: min/max/mean, percentiles, good/poor-day thresholds.
 
-**"Show me my resting heart rate trend over the past 2 years."**
-Triggers `get_long_term_trend`. For windows beyond 180 days, the tool transparently switches from raw samples to pre-aggregated daily summaries, then monthly buckets. So a 2-year query is fast and complete.
+**"Did my sleep improve after I started lifting?"** → `compare_periods` — compare any metric between two date ranges with delta, % change, and a plain-English verdict.
 
----
-
-## Self-host for free or use hosted
-
-Self-hosting is free: your Supabase free tier, your Xcode build, your data. Nothing leaves your infrastructure. The hosted version (in development) will skip the Supabase and Xcode setup entirely. Install the App Store app, create an account, paste one JSON config block, and you're querying.
+**"Show me my resting heart rate trend over the past 2 years."** → `get_long_term_trend` — transparently switches to pre-aggregated monthly buckets beyond 180 days, so it's fast and complete regardless of data volume.
 
 ---
 
 ## GitHub
 
-The full source is at [https://github.com/jefflitt1/health4ai](https://github.com/jefflitt1/health4ai). MIT licensed, PRs welcome.
+[https://github.com/jefflitt1/health4ai](https://github.com/jefflitt1/health4ai) — MIT licensed. PRs welcome.
 
-If you set it up and run into anything, open an issue. The main thing still pending is the public TestFlight link and the hosted tier. Everything else is working.
+If you set it up and run into anything, open an issue. The main thing still pending is the public TestFlight link. Everything else is working.
