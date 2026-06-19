@@ -55,22 +55,31 @@ def parse_hk_date(s: str) -> str:
         return s
 
 
-def sql_escape(s: str) -> str:
-    return s.replace("'", "''")
+import re as _re
+
+_HK_TYPE_RE = _re.compile(r'^HK[A-Za-z]+$')
+
+
+def _dq(tag: str, s: str) -> str:
+    """Dollar-quote a string value — safe against any single-quote or backslash content."""
+    return f"${tag}${s}${tag}$"
 
 
 def build_insert_sql(rows: list[dict]) -> str:
     values = []
-    for r in rows:
-        uid      = USER_ID
-        mt       = sql_escape(r["metric_type"])
-        val      = r["value"] if r["value"] is not None else "NULL"
-        unit     = sql_escape(r.get("unit", ""))
-        src      = sql_escape(r.get("source_device", ""))
-        started  = sql_escape(r["started_at"])
-        ended    = f"'{sql_escape(r['ended_at'])}'" if r.get("ended_at") else "NULL"
+    for i, r in enumerate(rows):
+        mt = r["metric_type"]
+        if not _HK_TYPE_RE.match(mt):
+            raise ValueError(f"Unexpected metric_type at row {i}: {mt!r}")
+        val     = r["value"] if r["value"] is not None else "NULL"
+        unit    = _dq(f"u{i}", r.get("unit", ""))
+        src     = _dq(f"s{i}", r.get("source_device", ""))
+        started = _dq(f"st{i}", r["started_at"])
+        ended   = _dq(f"e{i}", r["ended_at"]) if r.get("ended_at") else "NULL"
+        uid     = _dq(f"id{i}", USER_ID)
+        mtq     = _dq(f"m{i}", mt)
         values.append(
-            f"('{uid}','{mt}',{val},'{unit}','{src}','{started}',{ended},NULL,now())"
+            f"({uid},{mtq},{val},{unit},{src},{started},{ended},NULL,now())"
         )
     vals_str = ",\n".join(values)
     return f"""

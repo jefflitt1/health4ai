@@ -1,5 +1,6 @@
 import SwiftUI
 import HealthKit
+import Security
 
 // MARK: - Root view
 
@@ -50,8 +51,58 @@ struct MainTabView: View {
     }
 }
 
+// MARK: - CredentialKeychain
+
+/// Keychain storage for sensitive credential strings (anon key, bearer token, API key).
+/// Uses the same kSecClassGenericPassword pattern as AuthManager.
+enum CredentialKeychain {
+    static let service = "com.healthkitbridge.credentials"
+
+    static let sensitiveKeys: Set<String> = [
+        "hkb.supabaseAnonKey",
+        "hkb.restBearerToken",
+        "hkb.restApiKeyValue",
+    ]
+
+    static func save(_ value: String, forKey key: String) {
+        guard let data = value.data(using: .utf8) else { return }
+        let deleteQuery: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service as CFString,
+            kSecAttrAccount: key as CFString,
+        ]
+        SecItemDelete(deleteQuery as CFDictionary)
+        if !value.isEmpty {
+            let addQuery: [CFString: Any] = [
+                kSecClass: kSecClassGenericPassword,
+                kSecAttrService: service as CFString,
+                kSecAttrAccount: key as CFString,
+                kSecValueData: data as CFData,
+                kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            ]
+            SecItemAdd(addQuery as CFDictionary, nil)
+        }
+    }
+
+    static func load(forKey key: String) -> String? {
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service as CFString,
+            kSecAttrAccount: key as CFString,
+            kSecReturnData: kCFBooleanTrue!,
+            kSecMatchLimit: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+}
+
 // MARK: - SecureFieldToggle (shared across views)
 
+/// Togglable secure/plain text field.
+/// Keys in `CredentialKeychain.sensitiveKeys` persist to iOS Keychain; others to UserDefaults.
 struct SecureFieldToggle: View {
     let placeholder: String
     let userDefaultsKey: String
@@ -59,10 +110,15 @@ struct SecureFieldToggle: View {
     @State private var value: String
     @State private var isVisible = false
 
+    private var isSensitive: Bool { CredentialKeychain.sensitiveKeys.contains(userDefaultsKey) }
+
     init(placeholder: String, userDefaultsKey: String) {
         self.placeholder = placeholder
         self.userDefaultsKey = userDefaultsKey
-        _value = State(initialValue: UserDefaults.standard.string(forKey: userDefaultsKey) ?? "")
+        let sensitive = CredentialKeychain.sensitiveKeys.contains(userDefaultsKey)
+        _value = State(initialValue: sensitive
+            ? CredentialKeychain.load(forKey: userDefaultsKey) ?? ""
+            : UserDefaults.standard.string(forKey: userDefaultsKey) ?? "")
     }
 
     var body: some View {
@@ -74,12 +130,15 @@ struct SecureFieldToggle: View {
                     SecureField(placeholder, text: $value)
                 }
             }
-            .autocapitalization(.none)
             .autocorrectionDisabled()
             .multilineTextAlignment(.trailing)
             .font(.system(.caption, design: .monospaced))
             .onChange(of: value) { _, newValue in
-                UserDefaults.standard.set(newValue, forKey: userDefaultsKey)
+                if isSensitive {
+                    CredentialKeychain.save(newValue, forKey: userDefaultsKey)
+                } else {
+                    UserDefaults.standard.set(newValue, forKey: userDefaultsKey)
+                }
             }
             Button {
                 isVisible.toggle()

@@ -79,10 +79,9 @@ final class AuthManager: ObservableObject {
 
     // MARK: - Supabase anon key
 
-    /// Returns the configured Supabase anon key, or throws `.missingAnonKey` if absent/empty.
-    /// The anon key is a public key by design, so storing it in UserDefaults is acceptable.
+    /// Returns the configured Supabase anon key from Keychain, or throws `.missingAnonKey` if absent.
     private func requireAnonKey() throws -> String {
-        guard let anonKey = UserDefaults.standard.string(forKey: "hkb.supabaseAnonKey"),
+        guard let anonKey = CredentialKeychain.load(forKey: "hkb.supabaseAnonKey"),
               !anonKey.isEmpty else {
             throw AuthManagerError.missingAnonKey
         }
