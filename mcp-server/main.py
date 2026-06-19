@@ -10,6 +10,7 @@ Modes:
 """
 
 import argparse
+import hashlib
 import os
 
 from dotenv import load_dotenv
@@ -53,15 +54,16 @@ mcp.tool()(compare_periods)
 
 
 def _resolve_user_from_mcp_key(mcp_api_key: str) -> str | None:
-    """Look up user_id from mcp_api_key in healthkit_api_keys."""
+    """Look up user_id from mcp_api_key hash in healthkit_api_keys."""
+    key_hash = hashlib.sha256(mcp_api_key.encode()).hexdigest()
     try:
         conn = _connect()
         try:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT user_id FROM healthkit_api_keys "
-                    "WHERE mcp_api_key = %s AND NOT revoked",
-                    (mcp_api_key,),
+                    "WHERE mcp_api_key_hash = %s AND NOT revoked",
+                    (key_hash,),
                 )
                 row = cur.fetchone()
                 return str(row[0]) if row else None
