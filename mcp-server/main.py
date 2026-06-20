@@ -80,15 +80,21 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.transport == "http":
-        # HTTP mode: wrap with Starlette middleware for per-request auth
-        from starlette.applications import Starlette
+        # HTTP mode: FastMCP 3.x http_app with Starlette middleware for per-request auth
+        from starlette.middleware import Middleware
         from starlette.middleware.base import BaseHTTPMiddleware
         from starlette.requests import Request as StarletteRequest
-        from starlette.responses import JSONResponse
+        from starlette.responses import JSONResponse, Response
         import uvicorn
 
         class AuthMiddleware(BaseHTTPMiddleware):
             async def dispatch(self, request: StarletteRequest, call_next):
+                # Health check for Cloudflare tunnel and uptime monitors
+                if request.method == "GET" and request.url.path in ("/", "/health"):
+                    return Response(
+                        '{"status":"ok","service":"health4ai-mcp"}',
+                        media_type="application/json",
+                    )
                 auth = request.headers.get("Authorization", "")
                 if auth.startswith("Bearer h4_mk_"):
                     mcp_key = auth[7:]
@@ -101,25 +107,13 @@ if __name__ == "__main__":
                     finally:
                         current_user_id.reset(token)
                     return response
-                elif DEFAULT_USER_ID:
-                    # Single-user fallback (dev mode — no auth header required)
+                elif DEFAULT_USER_ID and not os.environ.get("MCP_AUTH_ENABLED", "").lower() == "true":
+                    # Single-user dev mode: auth not enforced (MCP_AUTH_ENABLED unset)
                     return await call_next(request)
                 else:
                     return JSONResponse({"error": "Authorization required"}, status_code=401)
 
-        app = mcp.get_asgi_app()
-        wrapped = Starlette(routes=app.routes if hasattr(app, 'routes') else [])
-        # Apply middleware to the FastMCP ASGI app directly
-        from starlette.middleware import Middleware
-        from starlette.types import ASGIApp
-
-        class WrappedApp:
-            def __init__(self, inner: ASGIApp):
-                self._middleware = AuthMiddleware(inner)
-
-            async def __call__(self, scope, receive, send):
-                await self._middleware(scope, receive, send)
-
-        uvicorn.run(WrappedApp(app), host="0.0.0.0", port=args.port)
+        app = mcp.http_app(middleware=[Middleware(AuthMiddleware)])
+        uvicorn.run(app, host="0.0.0.0", port=args.port)
     else:
         mcp.run()

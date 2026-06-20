@@ -27,29 +27,16 @@ load_dotenv()
 def _build_database_url() -> str:
     """
     Resolve DATABASE_URL. Priority:
-    1. DATABASE_URL env var (any Postgres backend)
-    2. Auto-construct from SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
-       using the transaction pooler format (port 6543, no SSL verify needed).
+    1. DATABASE_URL env var
+    2. SUPABASE_DB_URL env var (direct pooler URL with actual DB password)
+    3. Raise — do not auto-construct from service role key (it's not the DB password)
     """
-    url = os.environ.get("DATABASE_URL")
+    url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
     if url:
         return url
 
-    supabase_url = os.environ.get("SUPABASE_URL", "")
-    service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-    if supabase_url and service_role_key:
-        # Extract project ref from https://<ref>.supabase.co
-        m = re.match(r"https://([a-z0-9]+)\.supabase\.co", supabase_url)
-        if m:
-            project_ref = m.group(1)
-            return (
-                f"postgresql://postgres.{project_ref}:{service_role_key}"
-                f"@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
-            )
-
     raise RuntimeError(
-        "No database connection configured. Set DATABASE_URL, "
-        "or set both SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+        "No database connection configured. Set DATABASE_URL or SUPABASE_DB_URL."
     )
 
 
