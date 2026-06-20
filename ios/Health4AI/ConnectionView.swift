@@ -13,6 +13,7 @@ struct ConnectionView: View {
     @State private var isRevoking = false
     @State private var showRevokeConfirm = false
     @State private var revokeError: String? = nil
+    @State private var showReconnect = false
 
     var body: some View {
         NavigationStack {
@@ -27,6 +28,11 @@ struct ConnectionView: View {
         }
         .sheet(isPresented: $showSignIn) {
             SignInView()
+                .environmentObject(authManager)
+                .environmentObject(syncState)
+        }
+        .sheet(isPresented: $showReconnect) {
+            OnboardingView()
                 .environmentObject(authManager)
                 .environmentObject(syncState)
         }
@@ -49,7 +55,7 @@ struct ConnectionView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Your sync token will be permanently revoked. Your health data remains in health4.ai cloud. You can reconnect with a new token at any time.")
+            Text("Your sync token will be permanently revoked. Your health data remains in health4.ai cloud — to also erase it, use “Delete my data” after revoking. You can reconnect with a new token at any time.")
         }
         .alert("Revoke Failed", isPresented: Binding(
             get: { revokeError != nil },
@@ -99,38 +105,63 @@ struct ConnectionView: View {
         }
     }
 
+    @ViewBuilder
     private var hostedStatusSection: some View {
-        Section {
-            HStack {
-                Image(systemName: "checkmark.seal.fill")
-                    .foregroundStyle(.pink)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Connected to health4.ai")
-                        .fontWeight(.medium)
-                    if let token = authManager.hostedSyncToken {
+        if let token = authManager.hostedSyncToken {
+            Section {
+                HStack {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundStyle(.pink)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Connected to health4.ai")
+                            .fontWeight(.medium)
                         Text("\(token.prefix(12))…")
                             .font(.system(.caption2, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
                 }
-            }
-            Button(role: .destructive) {
-                showRevokeConfirm = true
-            } label: {
-                HStack {
-                    if isRevoking {
-                        ProgressView().scaleEffect(0.8)
-                    } else {
-                        Image(systemName: "xmark.shield")
+                Button(role: .destructive) {
+                    showRevokeConfirm = true
+                } label: {
+                    HStack {
+                        if isRevoking {
+                            ProgressView().scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "xmark.shield")
+                        }
+                        Text(isRevoking ? "Revoking…" : "Revoke Access")
                     }
-                    Text(isRevoking ? "Revoking…" : "Revoke Access")
                 }
+                .disabled(isRevoking)
+            } header: {
+                Text("health4.ai Cloud")
+            } footer: {
+                Text("Revoking removes this device's sync token. Your data stays in health4.ai cloud.")
             }
-            .disabled(isRevoking)
-        } header: {
-            Text("health4.ai Cloud")
-        } footer: {
-            Text("Revoking removes this device's sync token. Your data stays in health4.ai cloud.")
+        } else {
+            // Post-revoke / never-connected state — guide the user back to onboarding
+            // instead of dropping them on an empty Supabase form.
+            Section {
+                HStack {
+                    Image(systemName: "bolt.horizontal.circle")
+                        .foregroundStyle(.secondary)
+                    Text("Not connected to health4.ai")
+                        .fontWeight(.medium)
+                }
+                Button {
+                    showReconnect = true
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Reconnect to health4.ai")
+                    }
+                    .foregroundStyle(.pink)
+                }
+            } header: {
+                Text("health4.ai Cloud")
+            } footer: {
+                Text("Generate a new setup code and paste a fresh sync token to resume syncing.")
+            }
         }
     }
 
@@ -288,7 +319,9 @@ struct ConnectionView: View {
             await MainActor.run {
                 authManager.clearHostedSyncToken()
                 SyncEngine.shared.stopObserving()
-                syncState.connectionType = .supabase
+                // Stay on the .hosted tab — hostedStatusSection now renders a
+                // "Reconnect" prompt when the token is nil, instead of dropping
+                // the user on an empty Supabase config form.
                 syncState.isAuthenticated = false
             }
         } catch {

@@ -74,17 +74,17 @@ import Layout from '../layouts/Layout.astro';
                 "Your health data table is ready. Paste this sync token into the health4.ai app: <span class="text-green-400 font-mono text-xs">h4_sk_a3f9b2c1d4e5...</span>"
               </p>
             </div>
-            <div class="mt-3 p-3 bg-neutral-900 border border-neutral-700 rounded-lg">
-              <p class="text-neutral-400 text-xs font-medium mb-2">Claude Desktop MCP config (add to <code class="text-green-300">claude_desktop_config.json</code>):</p>
-              <pre class="text-green-300 text-xs leading-relaxed overflow-x-auto">"health4ai": {
+            <div class="mt-3 p-4 bg-neutral-900 border border-neutral-700 rounded-lg">
+              <p class="text-neutral-400 text-xs font-medium mb-1">Claude Desktop MCP config (add to <code class="text-green-300">claude_desktop_config.json</code>):</p>
+              <p class="text-neutral-400 text-xs mb-2">Shown with a placeholder key — your AI's setup response returns this exact block with your <code class="text-green-300">h4_mk_…</code> key already filled in.</p>
+              <pre class="text-green-300 text-xs leading-relaxed overflow-x-auto">"health4ai": &#123;
   "command": "npx",
   "args": [
     "-y", "mcp-remote",
     "https://mcp.health4.ai/mcp",
     "--header", "Authorization: Bearer h4_mk_..."
   ]
-}</pre>
-              <p class="text-neutral-500 text-xs mt-2">Connects Claude Desktop to the hosted health4.ai MCP at <code class="text-green-300">mcp.health4.ai</code>. Your AI's setup response includes this block with your key pre-filled.</p>
+&#125;</pre>
             </div>
           </div>
         </div>
