@@ -78,10 +78,13 @@ import Layout from '../layouts/Layout.astro';
               <p class="text-neutral-400 text-xs font-medium mb-2">Claude Desktop MCP config (add to <code class="text-green-300">claude_desktop_config.json</code>):</p>
               <pre class="text-green-300 text-xs leading-relaxed overflow-x-auto">"health4ai": {
   "command": "npx",
-  "args": ["-y", "@health4ai/mcp-client"],
-  "env": { "MCP_API_KEY": "h4_mk_..." }
+  "args": [
+    "-y", "mcp-remote",
+    "https://mcp.health4.ai/mcp",
+    "--header", "Authorization: Bearer h4_mk_..."
+  ]
 }</pre>
-              <p class="text-neutral-500 text-xs mt-2">Your AI's setup response includes the exact block with your key pre-filled.</p>
+              <p class="text-neutral-500 text-xs mt-2">Connects Claude Desktop to the hosted health4.ai MCP at <code class="text-green-300">mcp.health4.ai</code>. Your AI's setup response includes this block with your key pre-filled.</p>
             </div>
           </div>
         </div>
