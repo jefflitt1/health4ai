@@ -4,13 +4,11 @@ import Combine
 // MARK: - Connection configuration
 
 enum ConnectionType: String, CaseIterable {
-    case hosted   = "hosted"   // health4.ai managed cloud (setup-code flow)
     case supabase = "supabase" // self-hosted Supabase
     case rest     = "rest"     // any REST endpoint
 
     var displayName: String {
         switch self {
-        case .hosted:   return "health4.ai"
         case .supabase: return "Supabase"
         case .rest:     return "REST / Webhook"
         }
@@ -94,13 +92,8 @@ final class SyncState: ObservableObject {
 
     // MARK: - Computed endpoint
 
-    static let hostedIngestURL = "https://health4.ai/ingest"
-    static let hostedAPIBase   = "https://health4.ai/register"
-
     var resolvedEndpointURL: String {
         switch connectionType {
-        case .hosted:
-            return SyncState.hostedIngestURL
         case .supabase:
             let base = supabaseProjectURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             return base.isEmpty ? serverURL : "\(base)/functions/v1/healthkit-ingest"
@@ -120,7 +113,7 @@ final class SyncState: ObservableObject {
     init() {
         let defaults = UserDefaults.standard
         let typeRaw = defaults.string(forKey: Keys.connectionType) ?? ConnectionType.supabase.rawValue
-        self.connectionType = ConnectionType(rawValue: typeRaw) ?? .supabase
+        self.connectionType = (typeRaw == "hosted") ? .supabase : (ConnectionType(rawValue: typeRaw) ?? .supabase)
         self.supabaseProjectURL = defaults.string(forKey: Keys.supabaseProjectURL) ?? ""
         self.serverURL = defaults.string(forKey: Keys.serverURL) ?? ""
         let authRaw = defaults.string(forKey: Keys.restAuthType) ?? RestAuthType.bearer.rawValue

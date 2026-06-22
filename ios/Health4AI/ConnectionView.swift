@@ -10,11 +10,6 @@ struct ConnectionView: View {
     @State private var showSignOut = false
     @State private var testResult: TestResult? = nil
     @State private var isTesting = false
-    @State private var isRevoking = false
-    @State private var showRevokeConfirm = false
-    @State private var revokeError: String? = nil
-    @State private var showReconnect = false
-
     var body: some View {
         NavigationStack {
             List {
@@ -31,11 +26,6 @@ struct ConnectionView: View {
                 .environmentObject(authManager)
                 .environmentObject(syncState)
         }
-        .sheet(isPresented: $showReconnect) {
-            OnboardingView()
-                .environmentObject(authManager)
-                .environmentObject(syncState)
-        }
         .alert("Sign Out", isPresented: $showSignOut) {
             Button("Sign Out", role: .destructive) {
                 authManager.signOut()
@@ -48,22 +38,6 @@ struct ConnectionView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("You will need to sign in again to resume syncing.")
-        }
-        .alert("Revoke Access", isPresented: $showRevokeConfirm) {
-            Button("Revoke", role: .destructive) {
-                Task { await revokeHostedAccess() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Your sync token will be permanently revoked. Your health data remains in health4.ai cloud — to also erase it, use “Delete my data” after revoking. You can reconnect with a new token at any time.")
-        }
-        .alert("Revoke Failed", isPresented: Binding(
-            get: { revokeError != nil },
-            set: { if !$0 { revokeError = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(revokeError ?? "Unknown error")
         }
     }
 
@@ -81,8 +55,6 @@ struct ConnectionView: View {
             Text("Backend Type")
         } footer: {
             switch syncState.connectionType {
-            case .hosted:
-                Text("Connected to health4.ai cloud. Your sync token is stored securely on this device.")
             case .supabase:
                 Text("Enter your Supabase project URL and anon key. The sync endpoint is configured automatically.")
             case .rest:
@@ -96,72 +68,10 @@ struct ConnectionView: View {
     @ViewBuilder
     private var configSection: some View {
         switch syncState.connectionType {
-        case .hosted:
-            hostedStatusSection
         case .supabase:
             supabaseConfigSection
         case .rest:
             restConfigSection
-        }
-    }
-
-    @ViewBuilder
-    private var hostedStatusSection: some View {
-        if let token = authManager.hostedSyncToken {
-            Section {
-                HStack {
-                    Image(systemName: "checkmark.seal.fill")
-                        .foregroundStyle(.pink)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Connected to health4.ai")
-                            .fontWeight(.medium)
-                        Text("\(token.prefix(12))…")
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Button(role: .destructive) {
-                    showRevokeConfirm = true
-                } label: {
-                    HStack {
-                        if isRevoking {
-                            ProgressView().scaleEffect(0.8)
-                        } else {
-                            Image(systemName: "xmark.shield")
-                        }
-                        Text(isRevoking ? "Revoking…" : "Revoke Access")
-                    }
-                }
-                .disabled(isRevoking)
-            } header: {
-                Text("health4.ai Cloud")
-            } footer: {
-                Text("Revoking removes this device's sync token. Your data stays in health4.ai cloud.")
-            }
-        } else {
-            // Post-revoke / never-connected state — guide the user back to onboarding
-            // instead of dropping them on an empty Supabase form.
-            Section {
-                HStack {
-                    Image(systemName: "bolt.horizontal.circle")
-                        .foregroundStyle(.secondary)
-                    Text("Not connected to health4.ai")
-                        .fontWeight(.medium)
-                }
-                Button {
-                    showReconnect = true
-                } label: {
-                    HStack {
-                        Image(systemName: "arrow.clockwise")
-                        Text("Reconnect to health4.ai")
-                    }
-                    .foregroundStyle(.pink)
-                }
-            } header: {
-                Text("health4.ai Cloud")
-            } footer: {
-                Text("Generate a new setup code and paste a fresh sync token to resume syncing.")
-            }
         }
     }
 
@@ -294,38 +204,6 @@ struct ConnectionView: View {
             Text("Verify")
         } footer: {
             Text("Sends a small ping to your endpoint to confirm it's reachable.")
-        }
-    }
-
-    private func revokeHostedAccess() async {
-        guard let token = authManager.hostedSyncToken else { return }
-        isRevoking = true
-        defer { isRevoking = false }
-
-        guard let url = URL(string: "\(SyncState.hostedAPIBase)/revoke") else { return }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["sync_token": token])
-        req.timeoutInterval = 15
-
-        do {
-            let (_, response) = try await URLSession.shared.data(for: req)
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            guard (200...299).contains(code) else {
-                await MainActor.run { revokeError = "Server returned HTTP \(code)" }
-                return
-            }
-            await MainActor.run {
-                authManager.clearHostedSyncToken()
-                SyncEngine.shared.stopObserving()
-                // Stay on the .hosted tab — hostedStatusSection now renders a
-                // "Reconnect" prompt when the token is nil, instead of dropping
-                // the user on an empty Supabase config form.
-                syncState.isAuthenticated = false
-            }
-        } catch {
-            await MainActor.run { revokeError = error.localizedDescription }
         }
     }
 
