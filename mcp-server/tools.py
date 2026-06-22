@@ -100,7 +100,7 @@ def _fetch_metrics(metric_type: str, user_id: str, since: str, limit: int = 500,
     """
     if source_filter:
         if not re.match(r'^[\w\s\-\.]{1,64}$', source_filter):
-            return {"error": "source_filter contains invalid characters"}
+            raise ValueError("source_filter contains invalid characters")
 
     PAGE = 5000
     all_rows: list[dict] = []
@@ -197,7 +197,7 @@ def _fetch_metrics_snapshot(user_id: str, day_start: str, day_end: str,
                 SELECT * FROM {TABLE}
                 WHERE user_id = %s
                   AND started_at >= %s
-                  AND started_at <= %s
+                  AND started_at < %s
                 ORDER BY metric_type ASC, started_at ASC
                 LIMIT %s
                 """,
@@ -529,6 +529,7 @@ def get_hrv_trend(days: int = 30) -> dict:
     Returns daily averages, 7-day rolling comparison, and trend direction.
     Tier-aware: windows beyond 30 days transparently use daily summaries.
     """
+    days = _clamp_days(days)
     uid = current_user_id.get()
     points = _get_tiered_daily(HRV, uid, days)
 
@@ -566,6 +567,8 @@ def query_metric(
     Windows <= 30 days return raw samples; longer windows return daily aggregates
     (raw samples beyond 30 days are summarized and no longer stored individually).
     """
+    days = _clamp_days(days)
+    limit = _clamp_limit(limit)
     uid = current_user_id.get()
 
     if days > RAW_CUTOFF_DAYS:
@@ -688,6 +691,7 @@ def get_daily_snapshot(date: str = "") -> dict:
         "date": date,
         "total_records": len(rows),
         "truncated": len(rows) >= 1000,
+        "truncation_note": "Use query_metric with a specific metric_type to retrieve complete data for a single metric." if len(rows) >= 1000 else None,
         "metrics_present": sorted(by_type.keys()),
         "highlights": {
             "steps": sum_val(STEPS),
@@ -726,6 +730,7 @@ def get_long_term_trend(
                           HKQuantityTypeIdentifierStepCount
     months: how many months of history to return (default 24)
     """
+    months = max(1, min(int(months), MAX_MONTHS))
     uid = current_user_id.get()
     points = _get_tiered_daily(metric_type, uid, months * 30)
     if not points:
@@ -1011,6 +1016,8 @@ def compare_periods(
 
     Returns per-period stats and a delta showing which period was better.
     """
+    label_a = str(label_a)[:32]
+    label_b = str(label_b)[:32]
     uid = current_user_id.get()
     is_cumulative = metric_type in _CUMULATIVE_METRICS
     value_key = "sum_value" if is_cumulative else "avg_value"

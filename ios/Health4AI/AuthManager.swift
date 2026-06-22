@@ -232,6 +232,7 @@ final class AuthManager: ObservableObject {
         deleteFromKeychain(key: Self.accessTokenKey)
         deleteFromKeychain(key: Self.refreshTokenKey)
         deleteFromKeychain(key: Self.userEmailKey)
+        deleteFromKeychain(key: "h4_sync_token") // clean up legacy hosted-tier token if present
         UserDefaults.standard.removeObject(forKey: Self.expiryKey)
     }
 

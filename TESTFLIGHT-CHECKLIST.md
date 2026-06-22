@@ -6,7 +6,7 @@ Generated: 2026-06-22. All scripted steps already done. Follow these in order.
 
 ## DONE (scripted — no action needed)
 - [x] PrivacyInfo.xcprivacy created and wired into Xcode build target
-- [x] Team ID unified to YPUTGF6QUT (paid App Store account) across all build configs
+- [x] Team ID unified to Z3D54X3D96 (paid App Store account) across all build configs
 - [x] Privacy Policy live at https://health4.ai/privacy
 - [x] Committed: e056df9, c6c6ac1
 

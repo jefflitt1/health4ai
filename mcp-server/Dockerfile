@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ENV DATABASE_URL=""
+# Set DATABASE_URL at runtime: docker run -e DATABASE_URL=postgresql://...
+# Omitting it here forces an explicit runtime value (server fails fast if absent).
 
 CMD ["python", "main.py"]

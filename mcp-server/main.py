@@ -69,8 +69,9 @@ def _resolve_user_from_mcp_key(mcp_api_key: str) -> str | None:
                 return str(row[0]) if row else None
         finally:
             conn.close()
-    except Exception:
-        return None
+    except Exception as e:
+        # Distinguish DB errors from missing-key (None) so callers can return 503 vs 401
+        raise RuntimeError(f"DB error during key resolution: {e}") from e
 
 
 if __name__ == "__main__":
@@ -98,7 +99,10 @@ if __name__ == "__main__":
                 auth = request.headers.get("Authorization", "")
                 if auth.startswith("Bearer h4_mk_"):
                     mcp_key = auth[7:]
-                    uid = _resolve_user_from_mcp_key(mcp_key)
+                    try:
+                        uid = _resolve_user_from_mcp_key(mcp_key)
+                    except RuntimeError:
+                        return JSONResponse({"error": "Service temporarily unavailable"}, status_code=503)
                     if not uid:
                         return JSONResponse({"error": "Invalid or revoked MCP API key"}, status_code=401)
                     token = current_user_id.set(uid)
@@ -107,8 +111,8 @@ if __name__ == "__main__":
                     finally:
                         current_user_id.reset(token)
                     return response
-                elif DEFAULT_USER_ID and not os.environ.get("MCP_AUTH_ENABLED", "").lower() == "true":
-                    # Single-user dev mode: auth not enforced (MCP_AUTH_ENABLED unset)
+                elif DEFAULT_USER_ID and os.environ.get("MCP_AUTH_ENABLED", "").lower() == "true":
+                    # Dev bypass explicitly opted in: single-user stdio-style access via HTTP
                     return await call_next(request)
                 else:
                     return JSONResponse({"error": "Authorization required"}, status_code=401)

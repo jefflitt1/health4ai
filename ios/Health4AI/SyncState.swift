@@ -114,7 +114,16 @@ final class SyncState: ObservableObject {
         let defaults = UserDefaults.standard
         let typeRaw = defaults.string(forKey: Keys.connectionType) ?? ConnectionType.supabase.rawValue
         self.connectionType = (typeRaw == "hosted") ? .supabase : (ConnectionType(rawValue: typeRaw) ?? .supabase)
-        self.supabaseProjectURL = defaults.string(forKey: Keys.supabaseProjectURL) ?? ""
+        let savedProjectURL = defaults.string(forKey: Keys.supabaseProjectURL) ?? ""
+        self.supabaseProjectURL = savedProjectURL
+
+        // Post-hosted-migration guard: hosted users never configured a supabaseProjectURL.
+        // Clear the persisted type so the app presents setup flow rather than silently
+        // failing to sync against an empty URL.
+        if typeRaw == "hosted" && savedProjectURL.isEmpty {
+            defaults.removeObject(forKey: Keys.connectionType)
+        }
+
         self.serverURL = defaults.string(forKey: Keys.serverURL) ?? ""
         let authRaw = defaults.string(forKey: Keys.restAuthType) ?? RestAuthType.bearer.rawValue
         self.restAuthType = RestAuthType(rawValue: authRaw) ?? .bearer
