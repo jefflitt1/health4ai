@@ -9,6 +9,7 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
   .ecg-glow   { stroke-dasharray: 950; stroke-dashoffset: 950; animation: ecg-draw 3.8s cubic-bezier(0.4,0,0.2,1) infinite; }
   .ring-pulse { animation: ring-breathe 3.2s ease-in-out infinite; }
   .peak-dot   { animation: peak-pulse 3.8s ease-in-out infinite; transform-origin: 156px 138px; }
+  .hp-field   { position:absolute; left:-9999px; top:-9999px; width:0; height:0; opacity:0; pointer-events:none; }
   .peak-halo  { animation: peak-pulse 3.8s ease-in-out infinite; animation-delay: 90ms; transform-origin: 156px 138px; }
   .card-a     { animation: float-up 4.8s ease-in-out infinite; }
   .card-b     { animation: float-up 4.8s ease-in-out infinite; animation-delay: 2.2s; }
@@ -112,6 +113,7 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
 
       <!-- Waitlist form -->
       <form id="waitlist-form" class="hero-in-3 flex flex-col sm:flex-row gap-3 max-w-md">
+        <input type="text" id="hp-1" name="website" class="hp-field" tabindex="-1" autocomplete="off" aria-hidden="true" />
         <input type="email" id="email-input" placeholder="your@email.com" required
           class="flex-1 rounded-xl px-4 py-3 text-white text-sm outline-none focus:ring-1 transition-all"
           style="background:#0f1225;border:1px solid rgba(255,255,255,0.1);--tw-ring-color:var(--accent)" />
@@ -390,6 +392,7 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
     <h2 class="text-3xl font-extrabold text-white tracking-tight mb-3">Get notified at launch</h2>
     <p class="text-sm mb-8" style="color:var(--muted)">One email when it's on the App Store. No spam, ever.</p>
     <form id="waitlist-form-2" class="flex flex-col sm:flex-row gap-3 justify-center">
+      <input type="text" id="hp-2" name="website" class="hp-field" tabindex="-1" autocomplete="off" aria-hidden="true" />
       <input type="email" id="email-input-2" placeholder="your@email.com" required
         class="flex-1 max-w-xs rounded-xl px-4 py-3 text-white text-sm outline-none"
         style="background:#0f1225;border:1px solid rgba(255,255,255,0.1)" />
@@ -477,7 +480,13 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
 
 <script define:vars={{ SUPABASE_URL, SUPABASE_ANON_KEY }}>
   // Waitlist submission
-  async function submitWaitlist(email, statusEl) {
+  async function submitWaitlist(email, statusEl, formId, honeypotId) {
+    // Honeypot: bots fill hidden fields, humans don't
+    if (document.getElementById(honeypotId)?.value) {
+      statusEl.textContent = 'Received — we\'ll be in touch.';
+      statusEl.style.color = '#ff6b9d';
+      return;
+    }
     statusEl.textContent = 'Submitting…';
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/health4ai_waitlist`, {
@@ -491,23 +500,27 @@ const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
         body: JSON.stringify({ email }),
       });
       if (res.ok || res.status === 409) {
-        statusEl.textContent = res.status === 409 ? "You're already on the list." : "You're on the list — we'll email you at launch.";
+        const msg = res.status === 409 ? "You're already on the list." : "Received — we'll be in touch.";
+        statusEl.textContent = msg;
         statusEl.style.color = '#ff6b9d';
+        if (res.ok) window.posthog?.capture('waitlist_signup', { form: formId });
       } else {
+        window.posthog?.capture('waitlist_error', { form: formId, status: res.status });
         throw new Error(res.status);
       }
     } catch {
       statusEl.textContent = 'Something went wrong. Try again.';
       statusEl.style.color = '#ff5577';
+      window.posthog?.capture('waitlist_error', { form: formId, status: 'network_error' });
     }
   }
   document.getElementById('waitlist-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    await submitWaitlist(document.getElementById('email-input').value, document.getElementById('form-status'));
+    await submitWaitlist(document.getElementById('email-input').value, document.getElementById('form-status'), 'hero', 'hp-1');
   });
   document.getElementById('waitlist-form-2')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    await submitWaitlist(document.getElementById('email-input-2').value, document.getElementById('form-status-2'));
+    await submitWaitlist(document.getElementById('email-input-2').value, document.getElementById('form-status-2'), 'bottom', 'hp-2');
   });
 
   // Backend tabs
