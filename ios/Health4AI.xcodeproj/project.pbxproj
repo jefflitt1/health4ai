@@ -22,6 +22,7 @@
 		B0000013 /* PrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000013 /* PrivacyView.swift */; };
 		B000000A /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A000000A /* HealthKit.framework */; };
 		B000000C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A000000F /* Assets.xcassets */; };
+		B000000D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A0000014 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +44,7 @@
 		A000000D /* Health4AI.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Health4AI.entitlements; sourceTree = "<group>"; };
 		A000000E /* Health4AI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Health4AI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A000000F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A0000014 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -85,6 +87,7 @@
 				A000000C /* Info.plist */,
 				A000000D /* Health4AI.entitlements */,
 				A000000F /* Assets.xcassets */,
+				A0000014 /* PrivacyInfo.xcprivacy */,
 			);
 			path = Health4AI;
 			sourceTree = "<group>";
@@ -164,6 +167,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B000000C /* Assets.xcassets in Resources */,
+				B000000D /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
