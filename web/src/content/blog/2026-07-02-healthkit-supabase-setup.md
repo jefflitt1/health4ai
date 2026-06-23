@@ -1,7 +1,7 @@
 ---
 title: "How to Set Up health4ai with Supabase in 10 Minutes"
 description: "Step-by-step: create a Supabase project, run the schema, configure the iOS app, and start querying your Apple Health data in Claude Code."
-pubDate: 2026-07-02
+pubDate: 2026-06-23
 slug: "healthkit-supabase-setup"
 tags: ["apple-health", "supabase", "setup", "healthkit", "mcp", "tutorial"]
 draft: false

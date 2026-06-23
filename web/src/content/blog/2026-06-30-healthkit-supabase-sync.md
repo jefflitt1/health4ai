@@ -1,7 +1,7 @@
 ---
 title: "HealthKit → Supabase: Reliable Background Sync That Actually Works"
 description: "Why iOS background sync is hard, why BGProcessingTask fails, and how HKObserverQuery with a Postgres backend is the only architecture that holds up in practice."
-pubDate: 2026-06-30
+pubDate: 2026-06-23
 slug: "healthkit-supabase-sync"
 tags: ["healthkit", "supabase", "background-sync", "ios", "postgres", "mcp"]
 draft: false

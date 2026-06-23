@@ -1,7 +1,7 @@
 ---
 title: "Why Claude's Apple Health Connector Doesn't Work for Developers"
 description: "Anthropic's Apple Health integration exists — but it only works in the claude.ai web UI. Here's why it doesn't reach Claude Code, the API, or any MCP client."
-pubDate: 2026-06-27
+pubDate: 2026-06-23
 slug: "claude-connector-developer-gap"
 tags: ["claude-code", "apple-health", "mcp", "anthropic", "healthkit", "developer"]
 draft: false
