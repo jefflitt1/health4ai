@@ -1,7 +1,7 @@
 ---
 title: "Every Way to Get Apple Health Data into an AI in 2026 — Compared"
 description: "A fair comparison of six approaches for connecting HealthKit to an AI: native connectors, Health Auto Export, VitalTrends, Open Wearables, Health Bridge, and health4ai."
-pubDate: 2026-06-25
+pubDate: 2026-06-23
 slug: "apple-health-ai-compared"
 tags: ["apple-health", "healthkit", "mcp", "comparison", "health-auto-export", "supabase"]
 draft: false
