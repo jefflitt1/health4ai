@@ -1,8 +1,11 @@
 import SwiftUI
+import UIKit
 
 struct HomeView: View {
     @EnvironmentObject var syncState: SyncState
     @State private var showMCPSetup = false
+    @State private var isRequestingHealth = false
+    @State private var healthAccessError: String?
 
     var body: some View {
         NavigationStack {
@@ -11,6 +14,7 @@ struct HomeView: View {
                     statusCard
                     metricsGrid
                     mcpCard
+                    healthAccessCard
                     backfillCard
                     actionsCard
                 }
@@ -142,6 +146,68 @@ struct HomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Health access card
+
+    /// Apple Health read authorization status is not reliably queryable for read types,
+    /// so this card is always available as a recovery path: for users who tapped
+    /// "Skip for now" during onboarding, or who revoked access in iOS Settings later.
+    private var healthAccessCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Apple Health Access", systemImage: "heart.text.square")
+                .font(.headline)
+            Text("If health data isn't syncing, grant access here or enable it in Settings. Already connected? This is a safe no-op.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let healthAccessError {
+                Label(healthAccessError, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+            HStack(spacing: 12) {
+                Button {
+                    requestHealthAccess()
+                } label: {
+                    HStack(spacing: 6) {
+                        if isRequestingHealth { ProgressView().scaleEffect(0.7) }
+                        Text(isRequestingHealth ? "Requesting…" : "Grant / Re-check Access")
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.pink)
+                .disabled(isRequestingHealth)
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Text("Open Settings")
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func requestHealthAccess() {
+        isRequestingHealth = true
+        healthAccessError = nil
+        Task {
+            do {
+                try await HealthKitManager.shared.requestAuthorization()
+                await MainActor.run { isRequestingHealth = false }
+            } catch {
+                await MainActor.run {
+                    isRequestingHealth = false
+                    healthAccessError = error.localizedDescription
+                }
+            }
+        }
     }
 
     // MARK: - Backfill card
