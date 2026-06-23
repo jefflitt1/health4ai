@@ -27,9 +27,7 @@ Deno.serve(async (req: Request) => {
     return new Response('Method Not Allowed', { status: 405 })
   }
 
-  // Validate bearer token — two paths:
-  // 1. h4_sk_... (health4.ai hosted tier API key) → lookup in healthkit_api_keys
-  // 2. Supabase JWT → validate via auth.getUser()
+  // Validate Supabase JWT
   const authHeader = req.headers.get('Authorization')
   if (!authHeader?.startsWith('Bearer ')) {
     return json({ error: 'Missing Authorization header' }, 401)
@@ -37,33 +35,12 @@ Deno.serve(async (req: Request) => {
   const bearer = authHeader.slice(7)
 
   const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-  let userId: string
-
-  if (bearer.startsWith('h4_sk_')) {
-    // Hosted tier: validate sync_token (F1: hash before lookup)
-    const tokenHash = await sha256hex(bearer)
-    const { data: keyRow, error: keyErr } = await adminClient
-      .from('healthkit_api_keys')
-      .select('user_id')
-      .eq('sync_token_hash', tokenHash)
-      .eq('revoked', false)
-      .single()
-    if (keyErr || !keyRow) return json({ error: 'Invalid or revoked sync token' }, 401)
-    userId = keyRow.user_id
-    // Track last_sync timestamp
-    await adminClient
-      .from('healthkit_api_keys')
-      .update({ last_sync: new Date().toISOString() })
-      .eq('sync_token_hash', tokenHash)
-  } else {
-    // Self-hosted: validate Supabase JWT
-    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: `Bearer ${bearer}` } },
-    })
-    const { data: { user }, error: authError } = await userClient.auth.getUser()
-    if (authError || !user) return json({ error: 'Unauthorized' }, 401)
-    userId = user.id
-  }
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: `Bearer ${bearer}` } },
+  })
+  const { data: { user }, error: authError } = await userClient.auth.getUser()
+  if (authError || !user) return json({ error: 'Unauthorized' }, 401)
+  const userId = user.id
 
   // Parse payload
   let payload: IngestPayload
@@ -140,11 +117,6 @@ Deno.serve(async (req: Request) => {
 
   return json({ inserted: count ?? dedupedRows.length })
 })
-
-async function sha256hex(text: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
-}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

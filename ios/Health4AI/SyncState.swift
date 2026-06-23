@@ -4,7 +4,7 @@ import Combine
 // MARK: - Connection configuration
 
 enum ConnectionType: String, CaseIterable {
-    case supabase = "supabase" // self-hosted Supabase
+    case supabase = "supabase"
     case rest     = "rest"     // any REST endpoint
 
     var displayName: String {
@@ -113,14 +113,13 @@ final class SyncState: ObservableObject {
     init() {
         let defaults = UserDefaults.standard
         let typeRaw = defaults.string(forKey: Keys.connectionType) ?? ConnectionType.supabase.rawValue
-        self.connectionType = (typeRaw == "hosted") ? .supabase : (ConnectionType(rawValue: typeRaw) ?? .supabase)
+        self.connectionType = ConnectionType(rawValue: typeRaw) ?? .supabase
         let savedProjectURL = defaults.string(forKey: Keys.supabaseProjectURL) ?? ""
         self.supabaseProjectURL = savedProjectURL
 
-        // Post-hosted-migration guard: hosted users never configured a supabaseProjectURL.
-        // Clear the persisted type so the app presents setup flow rather than silently
-        // failing to sync against an empty URL.
-        if typeRaw == "hosted" && savedProjectURL.isEmpty {
+        // Migration guard: if the persisted type is unknown (e.g. an old value no longer
+        // in the enum) and no project URL was configured, reset so the app shows setup flow.
+        if ConnectionType(rawValue: typeRaw) == nil && savedProjectURL.isEmpty {
             defaults.removeObject(forKey: Keys.connectionType)
         }
 

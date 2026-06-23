@@ -2,9 +2,8 @@
 // Routes api.health4.ai/* → Supabase Edge Functions
 // Decouples the iOS binary from the Supabase project ref.
 //
-// /ingest      → healthkit-ingest  (POST only — HealthKit data write)
-// /register/*  → health4-register  (setup, register, validate, revoke)
-// /            → health check
+// /ingest → healthkit-ingest  (POST only — HealthKit data write)
+// /       → health check
 
 const SUPABASE_BASE = "https://donnmhbwhpjlmpnwgdqr.supabase.co/functions/v1"
 
@@ -22,9 +21,6 @@ export default {
     let upstream
     if (path === "/ingest") {
       upstream = `${SUPABASE_BASE}/healthkit-ingest`
-    } else if (path.startsWith("/register")) {
-      const suffix = path.slice("/register".length) // e.g. "/setup", "/validate", ""
-      upstream = `${SUPABASE_BASE}/health4-register${suffix}${url.search}`
     } else {
       return new Response(JSON.stringify({ error: "Not found" }), {
         status: 404,
