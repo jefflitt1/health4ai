@@ -1,6 +1,5 @@
 -- health4.ai — Waitlist table (landing-page email capture)
 -- Run via: Supabase Management API POST /v1/projects/{ref}/database/query
--- Project: donnmhbwhpjlmpnwgdqr (jgle-business)
 --
 -- Captures the public.health4ai_waitlist table that backs the "Join waitlist"
 -- forms on the landing page (web/src/pages/index.astro). Created live during an

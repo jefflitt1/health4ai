@@ -1,6 +1,5 @@
--- HealthKit Bridge — Supabase schema migration
--- Run via: Supabase Management API POST /v1/projects/{ref}/database/query
--- Project: donnmhbwhpjlmpnwgdqr (jgle-business)
+-- health4ai — HealthKit schema migration
+-- Run against your Supabase project via the SQL Editor or Management API.
 
 CREATE SCHEMA IF NOT EXISTS healthkit;
 

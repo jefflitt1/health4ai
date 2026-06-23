@@ -3,8 +3,6 @@
 -- Filtering to source_device ILIKE '%Oura%' prevents double-counting (both devices write
 -- the same night with slightly different started_at timestamps, bypassing the unique key).
 -- Night boundary: any segment starting before 06:00 local time counts as the prior night.
---
--- Queried by n8n via PostgREST for the daily digest health line (Option C path).
 -- Example: GET /rest/v1/v_healthkit_sleep_nightly?user_id=eq.{uid}&night_date=eq.{yesterday}
 
 CREATE OR REPLACE VIEW public.v_healthkit_sleep_nightly AS
