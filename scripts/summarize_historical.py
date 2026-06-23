@@ -112,7 +112,7 @@ def count_raw(metric_type: str, cutoff: str) -> int:
 def summarize(metric_type: str, cutoff: str) -> dict:
     """Run summarization via Management API to bypass PostgREST statement timeout."""
     import re
-    if not re.match(r'^HK[A-Za-z]+TypeIdentifier[A-Za-z]+$', metric_type):
+    if not re.match(r'^HK[A-Za-z0-9]+TypeIdentifier[A-Za-z0-9]+$', metric_type):
         raise ValueError(f"Unexpected metric_type value: {metric_type!r}")
     sql = f"SELECT * FROM public.summarize_healthkit_metric($u${USER_ID}$u$, $m${metric_type}$m$, $c${cutoff}$c$)"
     resp = httpx.post(MGMT_URL, headers=MGMT_HEADERS, json={"query": sql}, timeout=600)
