@@ -8,7 +8,9 @@ import Layout from '../layouts/Layout.astro';
   <nav class="flex items-center justify-between px-6 py-5 max-w-5xl mx-auto">
     <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
     <div class="flex gap-6 text-sm text-neutral-500">
-      <a href="/" class="hover:text-neutral-300 transition-colors">Home</a>
+      <a href="/how-it-works" class="hover:text-neutral-300 transition-colors">How it works</a>
+      <a href="/compare" class="hover:text-neutral-300 transition-colors">Compare</a>
+      <a href="/blog" class="hover:text-neutral-300 transition-colors">Blog</a>
       <a href="https://github.com/jefflitt1/health4ai" target="_blank" rel="noopener" class="hover:text-neutral-300 transition-colors">GitHub →</a>
     </div>
   </nav>
@@ -20,30 +22,51 @@ import Layout from '../layouts/Layout.astro';
       <div class="text-green-500 text-xs font-mono mb-3 tracking-widest uppercase">MCP Server Reference</div>
       <h1 class="text-3xl font-bold text-white mb-4">MCP Tools Reference</h1>
       <p class="text-neutral-400 text-sm leading-relaxed max-w-2xl">
-        For developers: once you install the health4.ai app and connect HealthKit, these are the 8 MCP tools your AI can call. Add the server to
-        <code class="text-amber-400 bg-neutral-900 px-1 rounded text-xs">claude_desktop_config.json</code>
-        with the token from the app — no repo clone, no service keys.
+        Once you install the iOS app and sync your HealthKit data, these are the 11 MCP tools your AI can call. The server is open source — clone the repo, drop in your Supabase credentials, and add one config block to your AI client.
       </p>
     </div>
 
     <!-- Quick install -->
     <section class="mb-16">
-      <h2 class="text-white font-semibold text-sm mb-4 uppercase tracking-widest">Quick Install</h2>
-      <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-5 overflow-x-auto text-xs leading-relaxed text-neutral-300"><code>{`{
+      <h2 class="text-white font-semibold text-sm mb-4 uppercase tracking-widest">Setup (3 steps)</h2>
+      <div class="space-y-4 mb-6">
+        <div class="flex gap-4 items-start">
+          <span class="text-green-500 font-mono font-bold text-sm w-6 shrink-0">1</span>
+          <div>
+            <div class="text-white text-sm font-medium mb-1">Clone the MCP server</div>
+            <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-4 overflow-x-auto text-xs text-neutral-300"><code>git clone https://github.com/jefflitt1/health4ai
+cd health4ai/mcp-server</code></pre>
+          </div>
+        </div>
+        <div class="flex gap-4 items-start">
+          <span class="text-green-500 font-mono font-bold text-sm w-6 shrink-0">2</span>
+          <div>
+            <div class="text-white text-sm font-medium mb-1">Configure your Supabase credentials</div>
+            <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-4 overflow-x-auto text-xs text-neutral-300"><code>cp .env.example .env
+# Edit .env — add your Supabase URL, service role key, and user ID</code></pre>
+          </div>
+        </div>
+        <div class="flex gap-4 items-start">
+          <span class="text-green-500 font-mono font-bold text-sm w-6 shrink-0">3</span>
+          <div>
+            <div class="text-white text-sm font-medium mb-1">Add to your AI client</div>
+            <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-5 overflow-x-auto text-xs leading-relaxed text-neutral-300"><code>{`{
   "mcpServers": {
     "health4ai": {
-      "command": "npx",
-      "args": ["health4ai-mcp"],
-      "env": { "HEALTH4AI_TOKEN": "your-token-from-the-app" }
+      "command": "python3",
+      "args": ["/path/to/health4ai/mcp-server/main.py"]
     }
   }
 }`}</code></pre>
-      <p class="text-neutral-500 text-xs mt-3">The app generates your token after you connect HealthKit. One command — nothing else to set up.</p>
+            <p class="text-neutral-500 text-xs mt-2">Works with Claude Desktop, Cursor, Continue, and any MCP-compatible client. Full setup guide in the <a href="https://github.com/jefflitt1/health4ai" class="text-green-400 hover:underline">README</a>.</p>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Tool cards -->
     <section class="mb-16">
-      <h2 class="text-white font-semibold text-sm mb-8 uppercase tracking-widest">8 Tools</h2>
+      <h2 class="text-white font-semibold text-sm mb-8 uppercase tracking-widest">11 Tools</h2>
 
       <div class="space-y-6">
 
@@ -266,6 +289,82 @@ import Layout from '../layouts/Layout.astro';
   "sleep_quality": "good",
   "training_load": "moderate",
   "recommendation": "Ready for intensity. HRV elevated vs baseline."
+}`}</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- search_records -->
+        <div class="border border-neutral-800 rounded-lg p-6 bg-neutral-900/40">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
+            <code class="text-green-400 font-mono font-bold text-base">search_records</code>
+            <span class="text-neutral-600 text-xs font-mono">Threshold filtering · worst/best days</span>
+          </div>
+          <p class="text-amber-400 font-mono text-xs mb-3">
+            search_records(metric_type: str, threshold: float, operator: str, days: int) → [&#123;date, value&#125;]
+          </p>
+          <p class="text-neutral-400 text-sm mb-4">Filter records by threshold. Answers "worst HRV days", "nights under 6h", "days over 10k steps".</p>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Example prompt</div>
+              <div class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs italic">"What were my worst HRV days this year?"</div>
+            </div>
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Return shape</div>
+              <pre class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs overflow-x-auto"><code>{`[{"date": "2026-03-12", "value": 28.4},
+ {"date": "2026-01-08", "value": 31.2}]`}</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- get_metric_stats -->
+        <div class="border border-neutral-800 rounded-lg p-6 bg-neutral-900/40">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
+            <code class="text-green-400 font-mono font-bold text-base">get_metric_stats</code>
+            <span class="text-neutral-600 text-xs font-mono">Personal baseline · percentiles</span>
+          </div>
+          <p class="text-amber-400 font-mono text-xs mb-3">
+            get_metric_stats(metric_type: str, days: int) → &#123;mean, median, p10, p90, std_dev&#125;
+          </p>
+          <p class="text-neutral-400 text-sm mb-4">Your personal baseline and percentiles. Answers "is 42ms HRV good for me?"</p>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Example prompt</div>
+              <div class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs italic">"Is my HRV today above or below my normal range?"</div>
+            </div>
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Return shape</div>
+              <pre class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs overflow-x-auto"><code>{`{
+  "mean": 52.1, "median": 51.4,
+  "p10": 38.2,  "p90": 67.8,
+  "std_dev": 9.3
+}`}</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- compare_periods -->
+        <div class="border border-neutral-800 rounded-lg p-6 bg-neutral-900/40">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
+            <code class="text-green-400 font-mono font-bold text-base">compare_periods</code>
+            <span class="text-neutral-600 text-xs font-mono">Before/after · with verdict</span>
+          </div>
+          <p class="text-amber-400 font-mono text-xs mb-3">
+            compare_periods(metric_type: str, period_a_start: str, period_a_end: str, period_b_start: str, period_b_end: str) → &#123;period_a, period_b, delta_pct, verdict&#125;
+          </p>
+          <p class="text-neutral-400 text-sm mb-4">Compare two date ranges with a plain-language verdict. Answers "did my sleep improve after I started lifting?"</p>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Example prompt</div>
+              <div class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs italic">"Compare my sleep before and after I started taking magnesium"</div>
+            </div>
+            <div>
+              <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Return shape</div>
+              <pre class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs overflow-x-auto"><code>{`{
+  "period_a": {"avg": 6.8, "label": "before"},
+  "period_b": {"avg": 7.4, "label": "after"},
+  "delta_pct": 8.8,
+  "verdict": "Improved"
 }`}</code></pre>
             </div>
           </div>

@@ -101,16 +101,16 @@ struct HomeView: View {
     private var metricsGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
             MetricTile(
-                icon: "arrow.up.arrow.down.circle.fill",
+                icon: "calendar",
                 color: .blue,
-                label: "Last batch",
-                value: "\(syncState.lastSyncRecordCount)"
+                label: "Tracking since",
+                value: syncState.trackingSinceLabel
             )
             MetricTile(
-                icon: "tray.full.fill",
+                icon: "chart.bar.fill",
                 color: .purple,
-                label: "Total synced",
-                value: syncState.lifetimeSyncedRecords.formatted()
+                label: "Metric types",
+                value: "150+"
             )
         }
     }
@@ -129,8 +129,8 @@ struct HomeView: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
-                Text(syncState.lifetimeSyncedRecords > 0
-                     ? "\(syncState.lifetimeSyncedRecords.formatted()) records ready — query with Claude, Ollama, ChatGPT, or any MCP-compatible AI"
+                Text(syncState.backfillEarliestDate != nil || syncState.lastSyncDate != nil
+                     ? "Your health data is live — query with Claude, Ollama, ChatGPT, or any MCP-compatible AI"
                      : "Sync your data, then ask any AI natural-language questions about any metric")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -307,9 +307,7 @@ struct MCPSetupView: View {
                 MCPFlowRow(icon: "iphone", label: "This app", sublabel: "syncs HealthKit → your database", color: .pink)
                 MCPFlowArrow()
                 MCPFlowRow(icon: "server.rack", label: "Your Supabase DB",
-                           sublabel: syncState.lifetimeSyncedRecords > 0
-                               ? "\(syncState.lifetimeSyncedRecords.formatted()) records"
-                               : "your health records",
+                           sublabel: syncState.backfillEarliestDate.map { "Your data since \(Calendar.current.component(.year, from: $0))" } ?? "your health records",
                            color: .green)
                 MCPFlowArrow()
                 MCPFlowRow(icon: "hammer", label: "health4ai MCP server", sublabel: "runs on your Mac (open source)", color: .orange)

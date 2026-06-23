@@ -150,11 +150,12 @@ final class SyncState: ObservableObject {
     }
 
     func recordBackfillProgress(synced: Int, total: Int, earliest: Date?, latest: Date?) {
+        let delta = synced - backfillSyncedRecords
         backfillSyncedRecords = synced
         backfillTotalRecords = total
         if let e = earliest { backfillEarliestDate = e }
         if let l = latest   { backfillLatestDate = l }
-        lifetimeSyncedRecords += synced
+        if delta > 0 { lifetimeSyncedRecords += delta }
         UserDefaults.standard.set(backfillSyncedRecords, forKey: Keys.backfillProgress)
     }
 
@@ -174,6 +175,16 @@ final class SyncState: ObservableObject {
     var backfillProgressFraction: Double {
         guard backfillTotalRecords > 0 else { return 0 }
         return Double(backfillSyncedRecords) / Double(backfillTotalRecords)
+    }
+
+    var trackingSinceLabel: String {
+        if let earliest = backfillEarliestDate {
+            return "\(Calendar.current.component(.year, from: earliest))"
+        }
+        if let date = lastSyncDate {
+            return "Est. \(Calendar.current.component(.year, from: date))"
+        }
+        return "—"
     }
 
     var formattedLastSync: String {
