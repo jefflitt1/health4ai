@@ -71,6 +71,10 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 
+	<!-- Declares no non-exempt encryption — suppresses the App Store Connect compliance prompt on every upload -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
 	<!-- App Transport Security: allow HTTPS only (Supabase is always HTTPS) -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
