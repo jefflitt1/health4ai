@@ -80,7 +80,7 @@ final class BulkExportManager {
         let totalTypes = remainingTypes.count
         var typesCompleted = 0
 
-        let serverURL = await MainActor.run { syncState.serverURL }
+        let serverURL = await MainActor.run { syncState.resolvedEndpointURL }
 
         for sampleType in remainingTypes {
             if Task.isCancelled { break }

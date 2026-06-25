@@ -173,7 +173,7 @@ final class SyncEngine {
     /// Queries new samples since the last anchor for `sampleType`, posts them,
     /// and saves the new anchor.
     func syncType(_ sampleType: HKSampleType) async throws -> Int {
-        let serverURL = await MainActor.run { syncState.serverURL }
+        let serverURL = await MainActor.run { syncState.resolvedEndpointURL }
         let token: String
         do {
             token = try await authManager.validToken(serverURL: serverURL)

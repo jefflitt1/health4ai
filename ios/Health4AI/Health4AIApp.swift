@@ -20,9 +20,8 @@ struct Health4AIApp: App {
                 .environmentObject(syncState)
                 .environmentObject(authManager)
         }
-        .onChange(of: scenePhase) { newPhase in
+        .onChange(of: scenePhase) { _, _ in
             // BGTask scheduling disabled on iOS 27 Beta; AppDelegate handles lifecycle
-            _ = newPhase
         }
     }
 }
