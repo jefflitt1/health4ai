@@ -99,7 +99,7 @@ If your users are iPhone + Apple Watch users (the largest segment of serious hea
 The requirements for a HealthKit integration:
 
 - iOS app with HealthKit entitlements (requires Apple Developer Program)
-- `HKObserverQuery` for real-time sync (not BGProcessingTask — see the [background sync article](/blog/apple-health-background-sync-ios) for why)
+- `HKObserverQuery` for real-time sync (not BGProcessingTask — see the [background sync article](/blog/apple-health-background-sync-ios/) for why)
 - A Postgres database for persistence
 - An MCP server (or equivalent API layer) for LLM access
 

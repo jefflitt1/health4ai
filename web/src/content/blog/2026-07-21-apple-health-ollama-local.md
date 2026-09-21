@@ -16,7 +16,7 @@ This is an option, not the only path. Claude Code is faster and more capable for
 
 ## What You Need
 
-- health4ai installed and syncing (see the [setup guide](/blog/healthkit-supabase-setup))
+- health4ai installed and syncing (see the [setup guide](/blog/healthkit-supabase-setup/))
 - [Ollama](https://ollama.ai) installed on your Mac
 - `mcphost` — a Go binary that bridges Ollama and MCP servers
 

@@ -58,7 +58,7 @@ The iOS app needs network access to reach your Postgres host. That's the only ou
 
 When you query your health data in Claude Code, the tool call returns JSON from your Postgres database. That JSON — your actual health metrics — goes into the Claude API request as part of the conversation context. Anthropic's standard data handling terms apply.
 
-If this is a concern, the Ollama path described in [the local setup guide](/blog/apple-health-ollama-local) handles it: the model runs locally, the tool call returns data locally, and nothing leaves your machine. The tradeoff is model capability.
+If this is a concern, the Ollama path described in [the local setup guide](/blog/apple-health-ollama-local/) handles it: the model runs locally, the tool call returns data locally, and nothing leaves your machine. The tradeoff is model capability.
 
 For most developers, sending health metrics to the Claude API is acceptable — it's the same data you'd share with any health analytics service, and the analysis is why you're doing this. But the option to keep it fully local exists.
 

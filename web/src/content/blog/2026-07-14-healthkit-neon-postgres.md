@@ -26,7 +26,7 @@ The old post also told you to enter your Neon connection string in the app. The 
 
 A free Supabase project you own. You run one schema file, deploy one Edge Function, create one user, and point the app at it. health4ai still runs no server and never sees your data, because the project belongs to you.
 
-The short version is in [How to Set Up health4ai with Supabase](/blog/healthkit-supabase-setup), and the full reference is the [setup guide](https://github.com/jefflitt1/health4ai/blob/main/docs/SETUP.md).
+The short version is in [How to Set Up health4ai with Supabase](/blog/healthkit-supabase-setup/), and the full reference is the [setup guide](https://github.com/jefflitt1/health4ai/blob/main/docs/SETUP.md).
 
 ## If you already followed the old post
 

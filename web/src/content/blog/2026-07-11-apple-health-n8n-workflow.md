@@ -24,7 +24,7 @@ The digest covers: 7-day HRV trend, average sleep, workout count and types, step
 
 ## Prerequisites
 
-- health4ai MCP server running on your Mac (see [setup guide](/blog/healthkit-supabase-setup))
+- health4ai MCP server running on your Mac (see [setup guide](/blog/healthkit-supabase-setup/))
 - n8n self-hosted or n8n Cloud
 - Claude API key (via Anthropic console)
 - Your health4ai MCP server accessible from n8n (same machine, or network-accessible)
