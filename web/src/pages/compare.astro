@@ -8,10 +8,10 @@ import Layout from '../layouts/Layout.astro';
   <nav class="flex items-center justify-between px-6 py-5 max-w-5xl mx-auto">
     <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
     <div class="flex gap-6 text-sm text-neutral-500">
-      <a href="/docs" class="hover:text-neutral-300 transition-colors">Docs</a>
-      <a href="/setup" class="hover:text-neutral-300 transition-colors hidden sm:inline">Setup</a>
-      <a href="/how-it-works" class="hover:text-neutral-300 transition-colors hidden sm:inline">How it works</a>
-      <a href="/mcp-tools" class="hover:text-neutral-300 transition-colors hidden sm:inline">MCP tools</a>
+      <a href="/docs/" class="hover:text-neutral-300 transition-colors">Docs</a>
+      <a href="/setup/" class="hover:text-neutral-300 transition-colors hidden sm:inline">Setup</a>
+      <a href="/how-it-works/" class="hover:text-neutral-300 transition-colors hidden sm:inline">How it works</a>
+      <a href="/mcp-tools/" class="hover:text-neutral-300 transition-colors hidden sm:inline">MCP tools</a>
       <a href="/" class="hover:text-neutral-300 transition-colors">Home</a>
     </div>
   </nav>
@@ -31,7 +31,7 @@ import Layout from '../layouts/Layout.astro';
       </p>
       <p class="text-neutral-400 text-sm leading-relaxed">
         This page compares the realistic options today: health4.ai, Health Auto Export, ChatGPT Health, neiltron/apple-health-mcp-style export+npx MCP, the claude.ai native connector, VitalTrends, and manual XML export. Ready to try the own-DB path? Start with the
-        <a href="/setup" class="text-green-400 hover:underline">~15-minute Apple Health MCP setup</a>.
+        <a href="/setup/" class="text-green-400 hover:underline">~15-minute Apple Health MCP setup</a>.
       </p>
     </section>
 
@@ -130,7 +130,7 @@ import Layout from '../layouts/Layout.astro';
         Projects like <a href="https://github.com/neiltron/apple-health-mcp" target="_blank" rel="noopener" class="text-green-400 hover:underline">neiltron/apple-health-mcp</a> take a one-shot Apple Health XML/CSV export and wrap it in an MCP server you can often start with <code class="text-amber-400 text-xs">npx</code>. That is a fine weekend project: zero iOS app, fast to try, and useful for a static snapshot.
       </p>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        The trade-off is freshness. You re-export whenever you want new data; there is no continuous HealthKit observer and no always-on Postgres of your own. health4.ai is the opposite bet — an iOS app that keeps syncing into your Supabase so Claude/Cursor agents always see recent samples. We do not publish an npx one-liner yet; install is still clone + Python (see <a href="/setup" class="text-green-400 hover:underline">Apple Health MCP setup</a>).
+        The trade-off is freshness. You re-export whenever you want new data; there is no continuous HealthKit observer and no always-on Postgres of your own. health4.ai is the opposite bet — an iOS app that keeps syncing into your Supabase so Claude/Cursor agents always see recent samples. We do not publish an npx one-liner yet; install is still clone + Python (see <a href="/setup/" class="text-green-400 hover:underline">Apple Health MCP setup</a>).
       </p>
     </section>
 
@@ -179,10 +179,10 @@ import Layout from '../layouts/Layout.astro';
     <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
       <span>© 2026 health4.ai · Not a medical device</span>
       <div class="flex gap-6">
-        <a href="/docs" class="hover:text-neutral-400 transition-colors">Docs</a>
-        <a href="/setup" class="hover:text-neutral-400 transition-colors">Setup</a>
-        <a href="/privacy" class="hover:text-neutral-400 transition-colors">Privacy</a>
-        <a href="/terms" class="hover:text-neutral-400 transition-colors">Terms</a>
+        <a href="/docs/" class="hover:text-neutral-400 transition-colors">Docs</a>
+        <a href="/setup/" class="hover:text-neutral-400 transition-colors">Setup</a>
+        <a href="/privacy/" class="hover:text-neutral-400 transition-colors">Privacy</a>
+        <a href="/terms/" class="hover:text-neutral-400 transition-colors">Terms</a>
         <a href="https://github.com/jefflitt1/health4ai" target="_blank" rel="noopener" class="hover:text-neutral-400 transition-colors">GitHub →</a>
       </div>
     </div>

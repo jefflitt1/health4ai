@@ -13,7 +13,7 @@ draft: false
 
 That is the own-DB wedge. health4.ai implements it as **HealthKit → your Supabase/Postgres → local MCP**. This post is about *why* that path exists, what "Postgres" means in practice (spoiler: Supabase Auth + Edge Functions for the iOS app), and how it differs from Health Auto Export LAN MCP and neiltron-style export+npx stacks.
 
-Setup checklist: [/setup](/setup). Comparison matrix: [/compare](/compare). Schema and ops notes: [/docs](/docs). Tool reference: [/mcp-tools](/mcp-tools).
+Setup checklist: [/setup](/setup/). Comparison matrix: [/compare](/compare/). Schema and ops notes: [/docs](/docs/). Tool reference: [/mcp-tools](/mcp-tools/).
 
 ## Why Apple Health needs a database at all
 
@@ -33,7 +33,7 @@ Two halves:
 
 **iOS app** — reads HealthKit (including background delivery via `HKObserverQuery`), signs in with Supabase Auth against a project *you* create, and posts samples to your `healthkit-ingest` Edge Function. health4.ai does not host your rows.
 
-**MCP server** — a local Python process on your machine. It connects to Postgres with `DATABASE_URL` and `HEALTHKIT_USER_ID`, then exposes tools listed on [/mcp-tools](/mcp-tools).
+**MCP server** — a local Python process on your machine. It connects to Postgres with `DATABASE_URL` and `HEALTHKIT_USER_ID`, then exposes tools listed on [/mcp-tools](/mcp-tools/).
 
 So when people say *apple health supabase*, they mean the supported ingest path. When they say *apple health postgres*, they mean the query surface the MCP server sees. Both are true — with an important constraint below.
 
@@ -41,7 +41,7 @@ The first launch still matters: the app backfills historical HealthKit samples i
 
 ## Supabase vs "any Postgres"
 
-The MCP server speaks ordinary Postgres. The **iOS app does not**. It needs Supabase Auth and the Edge Function deploy described in [SETUP.md](https://github.com/jefflitt1/health4ai/blob/main/docs/SETUP.md). Plain Neon, RDS, or Docker Postgres alone will not receive app writes — we documented that after measuring empty databases on the old connection-string path ([Can health4ai use Neon?](/blog/healthkit-neon-postgres)).
+The MCP server speaks ordinary Postgres. The **iOS app does not**. It needs Supabase Auth and the Edge Function deploy described in [SETUP.md](https://github.com/jefflitt1/health4ai/blob/main/docs/SETUP.md). Plain Neon, RDS, or Docker Postgres alone will not receive app writes — we documented that after measuring empty databases on the old connection-string path ([Can health4ai use Neon?](/blog/healthkit-neon-postgres/)).
 
 Practical recipe:
 
@@ -74,7 +74,7 @@ healthkit_daily_summaries (
 
 Indexes on `(user_id, metric_type, started_at)` make the common MCP patterns cheap: last N days of HRV, sleep stages, workouts, or an arbitrary `query_metric` call. Tier-aware tools merge recent raws with older summaries so a 90-day trend does not scan every heart-rate beat.
 
-This is also why own-DB beats a flat JSON snapshot for agent work: you can join, filter, and re-aggregate without re-exporting the phone. For a longer schema walkthrough see [Apple Health Data Schema](/blog/apple-health-data-schema) and [Supabase as a Personal Health Database](/blog/supabase-personal-health-database).
+This is also why own-DB beats a flat JSON snapshot for agent work: you can join, filter, and re-aggregate without re-exporting the phone. For a longer schema walkthrough see [Apple Health Data Schema](/blog/apple-health-data-schema/) and [Supabase as a Personal Health Database](/blog/supabase-personal-health-database/).
 
 ## Contrast: Health Auto Export folk stack
 
@@ -82,7 +82,7 @@ Health Auto Export's MCP flow is optimized around the phone as the live endpoint
 
 Own-DB flips the dependency: the phone *writes* when HealthKit fires; the agent *reads* your database from anywhere with network access to Supabase. You trade "no cloud project to create" for "agents keep working on travel days."
 
-Reliability framing matters too. Background delivery via HealthKit observers is a different mechanism than opportunistic background processing. If your pain is stale morning metrics when the Mac cannot see the phone, Postgres-backed sync is the architecture that matches the failure mode. See [/compare](/compare) for the side-by-side.
+Reliability framing matters too. Background delivery via HealthKit observers is a different mechanism than opportunistic background processing. If your pain is stale morning metrics when the Mac cannot see the phone, Postgres-backed sync is the architecture that matches the failure mode. See [/compare](/compare/) for the side-by-side.
 
 ## Contrast: neiltron export + npx MCP
 
@@ -90,7 +90,7 @@ Export-file MCP servers are excellent for demos. You leave Apple's export UI wit
 
 They are a weak fit when you want continuous HealthKit observer sync into **apple health postgres**. You re-export whenever freshness matters; there is no always-on warehouse unless you build one yourself.
 
-health4.ai does not publish an npx package yet; the supported MCP install remains clone + `pip install` + config JSON (again, [/setup](/setup)). If your goal this weekend is "prove Claude can see *any* HealthKit file," export+npx wins on time-to-first-query. If your goal is "Claude Code on Monday morning with Sunday night's sleep already ingested," own-DB wins.
+health4.ai does not publish an npx package yet; the supported MCP install remains clone + `pip install` + config JSON (again, [/setup](/setup/)). If your goal this weekend is "prove Claude can see *any* HealthKit file," export+npx wins on time-to-first-query. If your goal is "Claude Code on Monday morning with Sunday night's sleep already ingested," own-DB wins.
 
 ## What you can ask once data is in Postgres
 
@@ -128,7 +128,7 @@ The point of the wedge is not a prettier chart. It is that Claude and Cursor bec
 
 Skip this path if you refuse to create a Supabase project, if you only need a one-time research snapshot, or if you already get reliable answers from a LAN MCP and never leave home Wi‑Fi. Own-DB is operationally heavier than `npx` against an export — that cost buys continuity and remote agents.
 
-If you are still choosing among MCP architectures (LAN phone, export file, own-DB), start with [Apple Health MCP for Claude in 2026](/blog/apple-health-mcp-for-claude-2026), then come back here when you are ready to stand up Postgres.
+If you are still choosing among MCP architectures (LAN phone, export file, own-DB), start with [Apple Health MCP for Claude in 2026](/blog/apple-health-mcp-for-claude-2026/), then come back here when you are ready to stand up Postgres.
 
 ---
 

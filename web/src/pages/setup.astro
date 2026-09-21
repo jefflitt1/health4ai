@@ -8,9 +8,9 @@ import Layout from '../layouts/Layout.astro';
   <nav class="flex items-center justify-between px-6 py-5 max-w-5xl mx-auto">
     <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
     <div class="flex gap-6 text-sm text-neutral-500">
-      <a href="/docs" class="hover:text-neutral-300 transition-colors">Docs</a>
-      <a href="/mcp-tools" class="hover:text-neutral-300 transition-colors hidden sm:inline">MCP tools</a>
-      <a href="/compare" class="hover:text-neutral-300 transition-colors hidden sm:inline">Compare</a>
+      <a href="/docs/" class="hover:text-neutral-300 transition-colors">Docs</a>
+      <a href="/mcp-tools/" class="hover:text-neutral-300 transition-colors hidden sm:inline">MCP tools</a>
+      <a href="/compare/" class="hover:text-neutral-300 transition-colors hidden sm:inline">Compare</a>
       <a href="/" class="hover:text-neutral-300 transition-colors">Home</a>
     </div>
   </nav>
@@ -25,7 +25,7 @@ import Layout from '../layouts/Layout.astro';
       <p class="text-neutral-500 text-sm leading-relaxed mb-3">
         Path: HealthKit on your iPhone → your database → local MCP tools in Claude, Claude Code, or Cursor.
         Full detail lives in <a href="https://github.com/jefflitt1/health4ai/blob/main/docs/SETUP.md" target="_blank" rel="noopener" class="text-green-400 hover:underline">docs/SETUP.md</a>.
-        Prefer a comparison first? See <a href="/compare" class="text-green-400 hover:underline">Apple Health MCP vs Health Auto Export</a>.
+        Prefer a comparison first? See <a href="/compare/" class="text-green-400 hover:underline">Apple Health MCP vs Health Auto Export</a>.
       </p>
       <p class="text-neutral-500 text-xs leading-relaxed">
         The iOS app is <strong class="text-neutral-400 font-medium">invite-only TestFlight</strong> right now — join the <a href="/#waitlist" class="text-green-400 hover:underline">waitlist</a> and check the consent box to request a beta invite. There is no public TestFlight link.
@@ -114,7 +114,7 @@ HEALTHKIT_USER_ID=&lt;your auth UID&gt;</code></pre>
             <p class="text-neutral-500 text-sm leading-relaxed">
               In Claude Code run <code class="text-amber-400 text-xs">/mcp</code> and confirm <code class="text-green-400 text-xs">health4ai</code> is connected with 11 tools.
               Then ask: <em class="text-neutral-400">"Give me a health summary for the last 7 days."</em>
-              Tool reference: <a href="/mcp-tools" class="text-green-400 hover:underline">/mcp-tools</a>.
+              Tool reference: <a href="/mcp-tools/" class="text-green-400 hover:underline">/mcp-tools</a>.
             </p>
           </div>
         </li>
@@ -125,7 +125,7 @@ HEALTHKIT_USER_ID=&lt;your auth UID&gt;</code></pre>
       <p class="text-neutral-400 text-sm mb-3">Need more detail?</p>
       <a href="https://github.com/jefflitt1/health4ai/blob/main/docs/SETUP.md" target="_blank" rel="noopener" class="text-green-400 hover:underline text-sm font-medium">Full SETUP.md on GitHub →</a>
       <span class="text-neutral-600 text-sm"> · </span>
-      <a href="/docs" class="text-green-400 hover:underline text-sm font-medium">Docs hub</a>
+      <a href="/docs/" class="text-green-400 hover:underline text-sm font-medium">Docs hub</a>
     </section>
   </main>
 
@@ -133,9 +133,9 @@ HEALTHKIT_USER_ID=&lt;your auth UID&gt;</code></pre>
     <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
       <span>© 2026 health4.ai · Not a medical device</span>
       <div class="flex gap-6">
-        <a href="/docs" class="hover:text-neutral-400 transition-colors">Docs</a>
-        <a href="/privacy" class="hover:text-neutral-400 transition-colors">Privacy</a>
-        <a href="/terms" class="hover:text-neutral-400 transition-colors">Terms</a>
+        <a href="/docs/" class="hover:text-neutral-400 transition-colors">Docs</a>
+        <a href="/privacy/" class="hover:text-neutral-400 transition-colors">Privacy</a>
+        <a href="/terms/" class="hover:text-neutral-400 transition-colors">Terms</a>
         <a href="https://github.com/jefflitt1/health4ai" target="_blank" rel="noopener" class="hover:text-neutral-400 transition-colors">GitHub →</a>
       </div>
     </div>

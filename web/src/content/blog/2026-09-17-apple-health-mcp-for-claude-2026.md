@@ -11,7 +11,7 @@ draft: false
 
 If you searched for **apple health mcp**, you probably want Claude — Desktop, Claude Code, or Cursor — to query your HealthKit data with real tool calls, not pasted CSV dumps. In 2026 that is a solvable problem, but the stack you pick decides whether the data stays fresh, whether it works off your home Wi‑Fi, and whether *you* own the database.
 
-This is a decision guide, not a setup dump. For the step-by-step checklist see the [Apple Health MCP setup](/setup). For a feature matrix see [compare](/compare). Product and schema notes live under [docs](/docs).
+This is a decision guide, not a setup dump. For the step-by-step checklist see the [Apple Health MCP setup](/setup/). For a feature matrix see [compare](/compare/). Product and schema notes live under [docs](/docs/).
 
 ## What "Apple Health MCP" actually means
 
@@ -49,7 +49,7 @@ Health Auto Export is the established consumer export/sync app. Its MCP path typ
 
 **Trade-offs:** remote Claude Code sessions break when the phone is unreachable; sync freshness depends on how the app schedules background work; you are not building a personal warehouse you can SQL against for five years of history the way a Postgres schema lets you.
 
-None of that makes HAE "bad." It optimizes for a different constraint set than agent-first developers. The [compare](/compare) page spells out the same-Wi‑Fi TCP vs BYO-Supabase contrast in more detail.
+None of that makes HAE "bad." It optimizes for a different constraint set than agent-first developers. The [compare](/compare/) page spells out the same-Wi‑Fi TCP vs BYO-Supabase contrast in more detail.
 
 ## Path B — Export file + npx MCP (neiltron-style)
 
@@ -57,7 +57,7 @@ Projects like [neiltron/apple-health-mcp](https://github.com/neiltron/apple-heal
 
 **Choose this when:** you want to prove Claude can reason over HealthKit *at all*, you accept re-exporting when you want newer data, and you do not need continuous observer-based sync.
 
-**Trade-offs:** the export is a snapshot. There is no `HKObserverQuery` keeping a database warm overnight. health4.ai deliberately does **not** ship an npx package yet — install is still clone the repo and run the Python MCP server (see [/setup](/setup)).
+**Trade-offs:** the export is a snapshot. There is no `HKObserverQuery` keeping a database warm overnight. health4.ai deliberately does **not** ship an npx package yet — install is still clone the repo and run the Python MCP server (see [/setup](/setup/)).
 
 ## Path C — Own Postgres + local MCP (the health4.ai wedge)
 
@@ -65,7 +65,7 @@ Architecture in one line:
 
 **HealthKit → your Supabase/Postgres → local MCP → Claude / Cursor / ChatGPT / Ollama**
 
-The iOS app registers HealthKit observers, authenticates to *your* Supabase project, and posts samples through an Edge Function you deploy. The MCP server runs on your machine, reads `DATABASE_URL`, and registers tools documented on [/mcp-tools](/mcp-tools).
+The iOS app registers HealthKit observers, authenticates to *your* Supabase project, and posts samples through an Edge Function you deploy. The MCP server runs on your machine, reads `DATABASE_URL`, and registers tools documented on [/mcp-tools](/mcp-tools/).
 
 **Choose this when:**
 
@@ -78,9 +78,9 @@ The iOS app registers HealthKit observers, authenticates to *your* Supabase proj
 - The iOS app is **invite-only TestFlight** — not a public App Store listing yet
 - There is **no public TestFlight URL**; join the [waitlist](/#waitlist) and request a beta invite
 - There is **no npx one-liner** yet — MCP install is clone + Python
-- Backend for the iOS app is **Supabase you own** (Auth + Edge Functions). Plain Neon/local Docker alone cannot receive app writes — details in [docs](/docs) and the Neon clarification post
+- Backend for the iOS app is **Supabase you own** (Auth + Edge Functions). Plain Neon/local Docker alone cannot receive app writes — details in [docs](/docs/) and the Neon clarification post
 
-If the own-DB path is what you want, the companion post [Apple Health → Postgres](/blog/apple-health-postgres) goes deeper on schema, RLS, and why Postgres is the wedge — not just "another sync app."
+If the own-DB path is what you want, the companion post [Apple Health → Postgres](/blog/apple-health-postgres/) goes deeper on schema, RLS, and why Postgres is the wedge — not just "another sync app."
 
 ## How Claude actually uses the tools
 
@@ -93,7 +93,7 @@ Examples:
 - "Sleep stages last night" → `get_sleep`
 - "Anything odd about yesterday?" → `get_daily_snapshot` plus follow-ups
 
-In Claude Code, run `/mcp` and confirm the `health4ai` server lists its tools before you trust any answer. Tool cards and parameter notes live on [/mcp-tools](/mcp-tools). The protocol mechanics (stdio, JSON-RPC, tool schemas) are covered in [The MCP Protocol Explained for Health Developers](/blog/mcp-protocol-health-developers).
+In Claude Code, run `/mcp` and confirm the `health4ai` server lists its tools before you trust any answer. Tool cards and parameter notes live on [/mcp-tools](/mcp-tools/). The protocol mechanics (stdio, JSON-RPC, tool schemas) are covered in [The MCP Protocol Explained for Health Developers](/blog/mcp-protocol-health-developers/).
 
 A useful mental model: MCP tools return structured JSON; Claude's job is interpretation. That split is why "ask in English" works without teaching every teammate HealthKit type identifiers.
 
@@ -101,16 +101,16 @@ A useful mental model: MCP tools return structured JSON; Claude's job is interpr
 
 | You searched… | Best first move |
 |---------------|-----------------|
-| apple health mcp | Read this guide, then [/compare](/compare) |
+| apple health mcp | Read this guide, then [/compare](/compare/) |
 | apple health mcp server | Own-DB if you need remote agents; HAE if LAN-only is fine |
 | apple health claude | Confirm Desktop vs Claude.ai web vs Claude Code |
 | apple health claude code | Own-DB or export+npx; native web connector will not help |
 
-If you already read our earlier pillar [Apple Health MCP Server: Connecting HealthKit to Claude Code](/blog/apple-health-mcp-server), treat that piece as the architecture deep dive and this one as the 2026 decision tree — same product family, different question.
+If you already read our earlier pillar [Apple Health MCP Server: Connecting HealthKit to Claude Code](/blog/apple-health-mcp-server/), treat that piece as the architecture deep dive and this one as the 2026 decision tree — same product family, different question.
 
 ## Recommended default for developers in 2026
 
-For Claude Code / Cursor builders who want continuous sync and ownership: **own Supabase + local MCP**. Start with the [~15-minute setup](/setup), skim [compare](/compare) if you are still weighing HAE vs export+npx, and keep [/docs](/docs) open while you deploy the ingest function.
+For Claude Code / Cursor builders who want continuous sync and ownership: **own Supabase + local MCP**. Start with the [~15-minute setup](/setup/), skim [compare](/compare/) if you are still weighing HAE vs export+npx, and keep [/docs](/docs/) open while you deploy the ingest function.
 
 If you only need a static snapshot this weekend, export+npx is faster and fine. If you live on one home network and already use Health Auto Export's MCP, stay there until remote reach becomes a pain.
 

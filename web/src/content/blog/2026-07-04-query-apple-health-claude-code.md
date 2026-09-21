@@ -9,7 +9,7 @@ draft: false
 
 # How to Query Your Apple Health Data with Claude Code
 
-This assumes health4ai is installed and your iOS app has completed its initial backfill. If you haven't done setup yet, start with the [Supabase setup guide](/blog/healthkit-supabase-setup).
+This assumes health4ai is installed and your iOS app has completed its initial backfill. If you haven't done setup yet, start with the [Supabase setup guide](/blog/healthkit-supabase-setup/).
 
 ## Confirming the MCP Server Is Running
 

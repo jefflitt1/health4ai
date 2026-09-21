@@ -26,7 +26,7 @@ You have two options for getting health data into n8n:
 
 **Option A: Direct Postgres queries** — Use n8n's built-in Postgres node. Connect to your Supabase or Neon database with your connection string. Write SQL to pull the data you want. No extra setup required if you have health4ai installed.
 
-**Option B: HTTP to health4ai tools** — Run a lightweight FastAPI wrapper around health4ai's MCP tools (see the [n8n workflow article](/blog/apple-health-n8n-workflow)). n8n calls your HTTP endpoint; the endpoint runs the tool and returns structured JSON.
+**Option B: HTTP to health4ai tools** — Run a lightweight FastAPI wrapper around health4ai's MCP tools (see the [n8n workflow article](/blog/apple-health-n8n-workflow/)). n8n calls your HTTP endpoint; the endpoint runs the tool and returns structured JSON.
 
 For beginners, Option A (direct Postgres) is simpler. For more structured output that doesn't require you to write SQL aggregation queries, Option B is cleaner.
 
@@ -148,7 +148,7 @@ Send this as a monthly health summary email.
 
 **AI synthesis of weekly data:**
 
-Extend the weekly digest workflow with a Claude API call that synthesizes the numbers into a paragraph. Pass your health data JSON to Claude (via HTTP Request node to the Anthropic API) and return a 2-3 sentence natural-language summary instead of raw numbers. The [n8n workflow article](/blog/apple-health-n8n-workflow) has the full HTTP Request node configuration.
+Extend the weekly digest workflow with a Claude API call that synthesizes the numbers into a paragraph. Pass your health data JSON to Claude (via HTTP Request node to the Anthropic API) and return a 2-3 sentence natural-language summary instead of raw numbers. The [n8n workflow article](/blog/apple-health-n8n-workflow/) has the full HTTP Request node configuration.
 
 ---
 

@@ -131,7 +131,7 @@ supabase functions deploy healthkit-ingest --project-ref <your-project-ref> --no
 3. Under **Authentication → Users**, add the user you will sign in as. The app signs in; it does not sign up.
 4. In the app, enter your Project URL and anon key, then sign in as that user.
 
-The full walkthrough is [How to Set Up health4ai with Supabase](/blog/healthkit-supabase-setup).
+The full walkthrough is [How to Set Up health4ai with Supabase](/blog/healthkit-supabase-setup/).
 
 Once you are signed in, the first backfill runs, and the app's Home screen shows its progress with the record count and how far back it has reached. After that, `HKObserverQuery` keeps it current automatically.
 
