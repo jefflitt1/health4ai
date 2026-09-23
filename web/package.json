@@ -7,7 +7,7 @@
     "build": "astro build",
     "postbuild": "node seo-foundation/lib/agent-readiness/build-markdown-mirror.mjs dist --origin https://health4.ai && npm run test:performance && npm run test:agent-readiness",
     "test:performance": "node --test scripts/performance.test.mjs",
-    "test:agent-readiness": "node --test seo-foundation/tests/agent-readiness.test.mjs",
+    "test:agent-readiness": "node --test seo-foundation/tests/agent-readiness.test.mjs seo-foundation/tests/mcp-server-card.test.mjs",
     "preview": "astro preview"
   },
   "dependencies": {

@@ -1,9 +1,61 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.jefflitt1/health4ai",
   "title": "health4.ai",
   "description": "Query your own Apple Health data from Claude, Cursor, ChatGPT, or any MCP client. Local stdio server that reads from a Supabase/Postgres database you own; health4.ai never receives or stores your health data.",
   "version": "0.1.0",
+  "serverInfo": {
+    "name": "health4ai",
+    "version": "0.1.0"
+  },
+  "transport": {
+    "type": "stdio"
+  },
+  "tools": [
+    {
+      "name": "get_health_summary",
+      "description": "Overview of key health metrics for the past N days: average steps, sleep, HRV, resting heart rate, and workout count."
+    },
+    {
+      "name": "get_sleep",
+      "description": "Sleep analysis for the past N days, with per-night stage durations (REM, deep/core, light, awake)."
+    },
+    {
+      "name": "get_hrv_trend",
+      "description": "HRV (SDNN) trend over the past N days: daily averages, a 7-day rolling comparison, and trend direction."
+    },
+    {
+      "name": "query_metric",
+      "description": "Time series for any HealthKit metric type: raw samples for windows up to 30 days, daily aggregates beyond that."
+    },
+    {
+      "name": "get_workouts",
+      "description": "Recent workouts with type, duration, distance, and calories."
+    },
+    {
+      "name": "get_daily_snapshot",
+      "description": "Everything recorded for one date (YYYY-MM-DD, default today): steps, sleep, workouts, HRV, resting heart rate, active energy, and other metrics."
+    },
+    {
+      "name": "get_long_term_trend",
+      "description": "Long-term trend for any metric, merging recent daily data with historical daily summaries (default 24 months) for multi-year and seasonal analysis."
+    },
+    {
+      "name": "get_coaching_brief",
+      "description": "Recent trends across key metrics summarized for a coaching conversation: recovery status, sleep quality, training load, and fitness trajectory."
+    },
+    {
+      "name": "search_records",
+      "description": "Find days where a health metric crossed a threshold (daily totals for cumulative metrics, daily averages for rate metrics)."
+    },
+    {
+      "name": "get_metric_stats",
+      "description": "Personal baseline statistics for any health metric: min, max, mean, standard deviation, and p10 to p90 percentiles."
+    },
+    {
+      "name": "compare_periods",
+      "description": "Compare a health metric between two date ranges (YYYY-MM-DD)."
+    }
+  ],
   "websiteUrl": "https://health4.ai",
   "repository": {
     "url": "https://github.com/jefflitt1/health4ai",
