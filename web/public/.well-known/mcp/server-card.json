@@ -1,0 +1,40 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.jefflitt1/health4ai",
+  "title": "health4.ai",
+  "description": "Query your own Apple Health data from Claude, Cursor, ChatGPT, or any MCP client. Local stdio server that reads from a Supabase/Postgres database you own; health4.ai never receives or stores your health data.",
+  "version": "0.1.0",
+  "websiteUrl": "https://health4.ai",
+  "repository": {
+    "url": "https://github.com/jefflitt1/health4ai",
+    "source": "github",
+    "subfolder": "mcp-server"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "health4ai",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "DATABASE_URL",
+          "description": "Postgres connection string for your Supabase project (transaction pooler; database password, not a service-role key).",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "HEALTHKIT_USER_ID",
+          "description": "UUID of the Supabase Auth user whose HealthKit data to query.",
+          "isRequired": true,
+          "isSecret": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

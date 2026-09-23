@@ -1,0 +1,88 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout
+  title="About — health4.ai"
+  description="What health4.ai is, who built it, and how it works: a free, open-source iOS app and MCP server that syncs Apple Health data to a database you own."
+>
+  <nav class="flex items-center justify-between px-6 py-5 max-w-3xl mx-auto">
+    <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
+  </nav>
+
+  <main class="px-6 py-12 max-w-3xl mx-auto prose prose-invert prose-sm">
+    <h1 class="text-2xl font-bold text-white mb-2">About health4.ai</h1>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">What it is</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        health4.ai is a free, open-source iOS app that connects Apple HealthKit to a
+        Supabase/Postgres database you create and own, and an open-source MCP (Model
+        Context Protocol) server that exposes that data as native tool calls to Claude,
+        ChatGPT, Cursor, and any MCP-compatible AI client. It uses HKObserverQuery and
+        BGProcessingTask for reliable background sync, so it does not require the app to
+        stay open or the phone to be on the same Wi-Fi network as the AI client.
+      </p>
+    </section>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">Why it exists</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        Apple has no server-side HealthKit API, so most tools that connect health data to
+        an AI either require the phone and the AI client to be on the same local network,
+        or only work inside a single vendor's web app. health4.ai closes that gap by
+        syncing HealthKit data to a Postgres database the user controls, reachable from
+        anywhere, and then serving it through a standard MCP server that any compatible
+        client can call.
+      </p>
+    </section>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">How data flows</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        iPhone (HKObserverQuery + BGProcessingTask) syncs to a Supabase project the user
+        creates and owns, via a Supabase Edge Function. The MCP server (FastMCP, Python)
+        then reads from that same database and answers tool calls from Claude, Cursor, or
+        any other MCP client. health4.ai does not run a shared backend and never receives,
+        stores, or has access to a user's health data — see the{' '}
+        <a href="/privacy/" class="text-green-400 hover:underline">Privacy Policy</a> for
+        the full data-handling description.
+      </p>
+    </section>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">Open source</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        Both the iOS app and the MCP server are open source under the MIT license on{' '}
+        <a href="https://github.com/jefflitt1/health4ai" target="_blank" rel="noopener" class="text-green-400 hover:underline">GitHub</a>.
+        Anyone can read the code, self-host the MCP server against their own Supabase
+        project, or contribute.
+      </p>
+    </section>
+
+    <section>
+      <h2 class="text-white font-semibold text-base mb-3">Who runs it</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        health4.ai is an independent, free software project. It is not affiliated with
+        Apple, Anthropic, OpenAI, or Cursor; product names on this site are used only to
+        describe compatibility. Questions go to{' '}
+        <a href="mailto:hello@health4.ai" class="text-green-400 hover:underline">hello@health4.ai</a>.
+        health4.ai is not a medical device and does not diagnose, treat, cure, or prevent
+        any disease or health condition — see the{' '}
+        <a href="/terms/" class="text-green-400 hover:underline">Terms of Service</a>.
+      </p>
+    </section>
+  </main>
+
+  <footer class="border-t border-neutral-800/60 px-6 py-8 mt-12">
+    <div class="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
+      <span>© 2026 health4.ai · Not a medical device</span>
+      <div class="flex flex-wrap gap-x-6 gap-y-2">
+        <a href="/about/" class="hover:text-neutral-400 transition-colors">About</a>
+        <a href="/contact/" class="hover:text-neutral-400 transition-colors">Contact</a>
+        <a href="/privacy/" class="hover:text-neutral-400 transition-colors">Privacy</a>
+        <a href="/terms/" class="hover:text-neutral-400 transition-colors">Terms</a>
+        <a href="https://github.com/jefflitt1/health4ai" target="_blank" rel="noopener" class="hover:text-neutral-400 transition-colors">GitHub →</a>
+      </div>
+    </div>
+  </footer>
+</Layout>

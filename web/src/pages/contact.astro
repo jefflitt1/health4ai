@@ -1,0 +1,74 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout
+  title="Contact — health4.ai"
+  description="How to reach health4.ai: general questions, privacy and data requests, and where the source code lives."
+>
+  <nav class="flex items-center justify-between px-6 py-5 max-w-3xl mx-auto">
+    <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
+  </nav>
+
+  <main class="px-6 py-12 max-w-3xl mx-auto prose prose-invert prose-sm">
+    <h1 class="text-2xl font-bold text-white mb-2">Contact</h1>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">General questions</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        For anything about the app, the MCP server, the waitlist, or the TestFlight beta,
+        email{' '}
+        <a href="mailto:hello@health4.ai" class="text-green-400 hover:underline">hello@health4.ai</a>.
+        We read every message; response time varies since this is a small, free project.
+      </p>
+    </section>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">Privacy and data requests</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        health4.ai never receives, stores, or has access to your Apple Health data — it
+        syncs directly to a Supabase project you create and own, so there is nothing on
+        our side to request or delete for health data itself. For requests about the
+        waitlist email address or account data we do hold (deletion, access, or any GDPR
+        or CCPA request), email{' '}
+        <a href="mailto:privacy@health4.ai" class="text-green-400 hover:underline">privacy@health4.ai</a>.
+        Full detail on what we collect and how to exercise your rights is in the{' '}
+        <a href="/privacy/" class="text-green-400 hover:underline">Privacy Policy</a>.
+      </p>
+    </section>
+
+    <section class="mb-8">
+      <h2 class="text-white font-semibold text-base mb-3">Source code and issues</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        Bug reports, feature requests, and pull requests for the iOS app and the MCP
+        server are welcome on{' '}
+        <a href="https://github.com/jefflitt1/health4ai" target="_blank" rel="noopener" class="text-green-400 hover:underline">GitHub</a>.
+        The MCP server setup guide is on the{' '}
+        <a href="/mcp-tools/" class="text-green-400 hover:underline">MCP Tools Reference</a> page.
+      </p>
+    </section>
+
+    <section>
+      <h2 class="text-white font-semibold text-base mb-3">Who you're reaching</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed">
+        health4.ai is an independent, free software project based in Darien, Connecticut,
+        US. It is not a medical device, and it is not affiliated with Apple, Anthropic,
+        OpenAI, or Cursor. See{' '}
+        <a href="/about/" class="text-green-400 hover:underline">About</a>{' '}
+        for more on what the project is and how it works.
+      </p>
+    </section>
+  </main>
+
+  <footer class="border-t border-neutral-800/60 px-6 py-8 mt-12">
+    <div class="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-neutral-600 text-xs">
+      <span>© 2026 health4.ai · Not a medical device</span>
+      <div class="flex flex-wrap gap-x-6 gap-y-2">
+        <a href="/about/" class="hover:text-neutral-400 transition-colors">About</a>
+        <a href="/contact/" class="hover:text-neutral-400 transition-colors">Contact</a>
+        <a href="/privacy/" class="hover:text-neutral-400 transition-colors">Privacy</a>
+        <a href="/terms/" class="hover:text-neutral-400 transition-colors">Terms</a>
+        <a href="https://github.com/jefflitt1/health4ai" target="_blank" rel="noopener" class="hover:text-neutral-400 transition-colors">GitHub →</a>
+      </div>
+    </div>
+  </footer>
+</Layout>

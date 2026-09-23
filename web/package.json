@@ -5,8 +5,9 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "postbuild": "npm run test:performance",
+    "postbuild": "node seo-foundation/lib/agent-readiness/build-markdown-mirror.mjs dist --origin https://health4.ai && npm run test:performance && npm run test:agent-readiness",
     "test:performance": "node --test scripts/performance.test.mjs",
+    "test:agent-readiness": "node --test seo-foundation/tests/agent-readiness.test.mjs",
     "preview": "astro preview"
   },
   "dependencies": {
@@ -14,5 +15,8 @@
     "@tailwindcss/vite": "^4.1.8",
     "astro": "^7.2.0",
     "tailwindcss": "^4.1.8"
+  },
+  "devDependencies": {
+    "turndown": "^7.2.4"
   }
 }

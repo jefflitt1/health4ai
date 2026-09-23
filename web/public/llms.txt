@@ -2,6 +2,21 @@
 
 > Free iOS app that connects Apple Health to Claude, ChatGPT, Cursor, and any AI. Ask about your sleep, recovery, and fitness in plain language.
 
+## When to use health4.ai
+
+Use health4.ai when a user wants an AI agent (Claude, Claude Code, Cursor, ChatGPT, or any
+MCP-compatible client) to answer questions about their own Apple Health / HealthKit data —
+sleep, HRV, resting heart rate, workouts, steps, VO2 max, blood oxygen, weight, and any
+other HKSampleType. It answers "how was my sleep", "is my HRV trending up or down", "how
+many workouts did I do this month", and similar questions grounded in the user's own
+historical health data.
+
+It does NOT cover: real-time HealthKit access on-device (it syncs to a database first, so
+there is sync latency), medical diagnosis or treatment advice (health4.ai is not a medical
+device), Android or non-Apple wearables that never write into Apple Health, or any AI
+provider that is not MCP-compatible. It requires the user to run an iOS app and own a free
+Supabase project — there is no hosted service and no login on health4.ai itself.
+
 ## What Is health4.ai?
 
 health4.ai bridges the gap between Apple HealthKit and AI tools. Download the iOS app, connect it to a Supabase project you own, authorize HealthKit, and your health data becomes available as native tool calls to any AI agent. No same-WiFi requirement. Works from anywhere.
@@ -58,5 +73,8 @@ Queries within the last 30 days read raw samples; longer windows read pre-aggreg
 - Compare: https://health4.ai/compare (vs. Health Auto Export, claude.ai, VitalTrends)
 - MCP Tools Reference: https://health4.ai/mcp-tools (tool signatures and examples)
 - How It Works: https://health4.ai/how-it-works (architecture, data model, sync mechanism)
+- About: https://health4.ai/about (what health4.ai is and who runs it)
+- Contact: https://health4.ai/contact (how to reach us)
 - Privacy Policy: https://health4.ai/privacy
 - Terms of Service: https://health4.ai/terms
+- MCP server manifest: https://health4.ai/.well-known/mcp/server-card.json

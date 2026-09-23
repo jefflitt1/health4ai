@@ -48,6 +48,11 @@ inherited, so new posts do not get it. Keep an explicit `{' '}` at tag boundarie
 the build drops line-break whitespace there, and the notice rendered "written.health4.ai"
 until that was added.
 
+The same whitespace-collapse recurs on any plain inline `<p>...text<a>...</a>text...</p>`
+where the link starts or ends its own source line — not only inside the legacy-setup aside.
+Found again 2026-09-23 on `about.astro`/`contact.astro` ("see thePrivacy Policy", "license
+onGitHub"). Same fix: an explicit `{' '}` at the line boundary next to the `<a>`.
+
 ## Verification
 
 Normal builds run emitted-output performance and mocked-form tests. Review the

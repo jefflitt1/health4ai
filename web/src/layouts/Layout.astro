@@ -5,6 +5,7 @@ interface Props {
   description?: string;
   ogType?: 'website' | 'article';
   ogUrl?: string;
+  canonicalUrl?: string;
 }
 const {
   title = 'health4.ai — Apple Health MCP for Claude, Cursor & ChatGPT',
@@ -12,6 +13,15 @@ const {
   ogType = 'website',
   ogUrl = 'https://health4.ai',
 } = Astro.props;
+
+// Every page gets a canonical link without having to pass one: derived from the
+// request path unless a page overrides it. astro.config.mjs sets
+// trailingSlash: 'always' (Cloudflare 308s /x to /x/, so links and canonicals
+// must use the slashed form or Search Console reports "Page with redirect") —
+// keep the trailing slash here rather than stripping it.
+const path = Astro.url.pathname;
+const canonicalUrl = Astro.props.canonicalUrl
+  ?? `https://health4.ai${path.endsWith('/') ? path : `${path}/`}`;
 
 const clarityId   = import.meta.env.PUBLIC_CLARITY_PROJECT_ID as string | undefined;
 const metaPixelId = import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined;
@@ -30,6 +40,8 @@ const metaPixelId = import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined;
     <meta property="og:url" content={ogUrl} />
     <meta property="og:type" content={ogType} />
     <meta property="og:image" content="https://health4.ai/logo.png" />
+    <link rel="canonical" href={canonicalUrl} />
+    <meta name="is-agentic-site-type" content="app" />
     <slot name="head" />
 
     <!-- Favicon -->
@@ -48,6 +60,40 @@ const metaPixelId = import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined;
       "softwareVersion": "1.0",
       "offers": [{ "@type": "Offer", "price": "0", "priceCurrency": "USD" }],
       "sameAs": "https://github.com/jefflitt1/health4ai"
+    }
+    </script>
+
+    <!-- Organization + WebSite structured data (sitewide, every page) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "name": "health4.ai",
+          "url": "https://health4.ai",
+          "logo": "https://health4.ai/logo.png",
+          "description": "Free, open-source iOS app and MCP server that syncs Apple Health data to a Supabase project you own, for use with Claude, ChatGPT, Cursor, and any AI agent.",
+          "email": "hello@health4.ai",
+          "sameAs": ["https://github.com/jefflitt1/health4ai"],
+          "contactPoint": {
+            "@type": "ContactPoint",
+            "contactType": "customer support",
+            "email": "hello@health4.ai"
+          },
+          "address": {
+            "@type": "PostalAddress",
+            "addressLocality": "Darien",
+            "addressRegion": "CT",
+            "addressCountry": "US"
+          }
+        },
+        {
+          "@type": "WebSite",
+          "name": "health4.ai",
+          "url": "https://health4.ai"
+        }
+      ]
     }
     </script>
 
