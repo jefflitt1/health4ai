@@ -95,7 +95,7 @@ Full backfill on first launch imports your complete HealthKit history. The datab
 | VitalTrends | TestFlight | In-app only | No | BGProcessingTask | Proprietary | $5/mo |
 | Open Wearables | No (Discord TF) | Yes (self-hosted) | No | Varies | Self-hosted | Free |
 | Health Bridge | No | Yes | No | HKObserverQuery | Your Postgres | Free |
-| health4ai | Yes | Yes | Yes | HKObserverQuery | Your Postgres | Free (early access) |
+| health4ai | Yes | Yes | Yes | HKObserverQuery | Your Postgres | Free |
 
 ## Which Should You Use?
 
@@ -109,5 +109,5 @@ If you want the iOS → Postgres → MCP pipeline working without assembling it 
 
 ---
 
-health4ai: Free while in early access.  
-[Download on the App Store →](https://health4.ai)
+health4ai: free on the App Store.  
+[Download on the App Store →](https://apps.apple.com/app/health4ai/id6783074944)

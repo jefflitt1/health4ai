@@ -132,5 +132,5 @@ Despite these caveats, a simple composite score that you understand and that use
 
 ---
 
-health4ai: Free while in early access.  
-[Download on the App Store →](https://health4.ai)
+health4ai: free on the App Store.  
+[Download on the App Store →](https://apps.apple.com/app/health4ai/id6783074944)

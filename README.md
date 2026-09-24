@@ -10,6 +10,10 @@
 </p>
 
 <p align="center">
+  <a href="https://apps.apple.com/app/health4ai/id6783074944"><strong>Download health4ai on the App Store</strong></a>
+</p>
+
+<p align="center">
   <a href="https://health4.ai"><img src="https://img.shields.io/badge/website-health4.ai-ff2d78?style=flat-square" alt="Website" /></a>
   <a href="https://github.com/jefflitt1/health4ai/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/iOS-17%2B-black?style=flat-square&logo=apple" alt="iOS 17+" />
@@ -130,7 +134,7 @@ mcphost --model ollama/llama3.2 \
 The model runs on your hardware and the MCP server runs locally; your health data is read from your own Supabase project.
 </details>
 
-**Install the iOS app:** connect it to that Supabase project (Project URL + anon key), sign in as the user you created, and tap **Start Sync**. For a private TestFlight beta, follow [the tester-isolation guide](docs/TESTFLIGHT-BETA.md); never use another person's backend or credentials.
+**Install the iOS app** from the [App Store](https://apps.apple.com/app/health4ai/id6783074944), then connect it to that Supabase project (Project URL + anon key), sign in as the user you created, and tap **Start Sync**. For a TestFlight beta build, follow [the tester-isolation guide](docs/TESTFLIGHT-BETA.md); never use another person's backend or credentials.
 
 ---
 

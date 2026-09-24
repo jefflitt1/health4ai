@@ -44,7 +44,7 @@ The app signs in but does not sign up. In the dashboard, open **Authentication â
 
 ## Step 4: Connect the iOS app
 
-In the app's **Connect** tab, enter your **Project URL** and **anon key**, both in your project's API settings. If the app asks you to choose a backend, choose Supabase. Sign in as the user from Step 3, tap **Test Connection**, then start the sync.
+Install [health4ai from the App Store](https://apps.apple.com/app/health4ai/id6783074944). In the app's **Connect** tab, enter your **Project URL** and **anon key**, both in your project's API settings. If the app asks you to choose a backend, choose Supabase. Sign in as the user from Step 3, tap **Test Connection**, then start the sync.
 
 The first sync backfills your Apple Health history, so give a large archive some time.
 

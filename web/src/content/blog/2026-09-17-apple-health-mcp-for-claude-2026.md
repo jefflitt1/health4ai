@@ -73,11 +73,10 @@ The iOS app registers HealthKit observers, authenticates to *your* Supabase proj
 - You want SQL, backups, and a schema you can inspect
 - You care that health4.ai never hosts your biometrics — the project is yours
 
-**Honest constraints (read these before the waitlist):**
+**Honest constraints (read these before you install):**
 
-- The iOS app is **invite-only TestFlight** — not a public App Store listing yet
 - health4ai is **live on the App Store**: [download it here](https://apps.apple.com/app/health4ai/id6783074944)
-- There is **no npx one-liner** yet — MCP install is clone + Python
+- There is **no npx one-liner**: the MCP server installs with `pip install health4ai` (Python 3.11+)
 - Backend for the iOS app is **Supabase you own** (Auth + Edge Functions). Plain Neon/local Docker alone cannot receive app writes — details in [docs](/docs/) and the Neon clarification post
 
 If the own-DB path is what you want, the companion post [Apple Health → Postgres](/blog/apple-health-postgres/) goes deeper on schema, RLS, and why Postgres is the wedge — not just "another sync app."
@@ -118,5 +117,5 @@ Whatever you pick, skip medical claims and treat AI output as coaching-adjacent 
 
 ---
 
-health4ai: Free while in early access. Invite-only TestFlight — not on the public App Store yet.  
+health4ai: free on the App Store.  
 [Download health4ai on the App Store →](https://apps.apple.com/app/health4ai/id6783074944)

@@ -49,7 +49,7 @@ Practical recipe:
 2. Run [schema.sql](https://health4.ai/schema.sql) in the SQL editor
 3. Deploy `healthkit-ingest` with the Supabase CLI
 4. Create an Auth user; copy the UID
-5. Point the TestFlight app at Project URL + anon key and sign in
+5. Install [health4ai from the App Store](https://apps.apple.com/app/health4ai/id6783074944), point it at Project URL + anon key and sign in
 6. Point the MCP `.env` at the transaction pooler URI + that UID
 
 That is the *healthkit supabase* path end-to-end. The MCP side is still "just Postgres." Prefer the transaction pooler connection string for the MCP process if you open many short-lived tool calls; keep the database password in env, not in chat logs.
@@ -119,10 +119,9 @@ The point of the wedge is not a prettier chart. It is that Claude and Cursor bec
 
 ## Availability honesty
 
-- iOS app: **invite-only TestFlight**, no public App Store page yet
 - Live on the App Store: [download health4ai](https://apps.apple.com/app/health4ai/id6783074944)
-- MCP: clone + Python; **no npx** package yet
-- Free while in early access
+- MCP: `pip install health4ai` (Python 3.11+); **no npx** package
+- Free
 
 ## When own-DB is the wrong choice
 
@@ -132,5 +131,5 @@ If you are still choosing among MCP architectures (LAN phone, export file, own-D
 
 ---
 
-health4ai: Free while in early access. Invite-only TestFlight — not on the public App Store yet.  
+health4ai: free on the App Store.  
 [Download health4ai on the App Store →](https://apps.apple.com/app/health4ai/id6783074944)

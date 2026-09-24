@@ -55,7 +55,7 @@ Anthropic's native connector only works on claude.ai web. It does not work with 
 ## Compatibility
 
 Works with: Claude Code (claude_desktop_config.json), any FastMCP-compatible client, n8n via PostgREST.
-Price: Free download on the App Store.
+Price: Free download on the App Store: https://apps.apple.com/app/health4ai/id6783074944
 
 ## What HealthKit Data Is Synced
 

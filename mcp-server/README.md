@@ -2,6 +2,8 @@
 
 Local MCP server that queries **your** Apple Health data from a Supabase/Postgres project you own. Use it with Claude Desktop, Claude Code, Cursor, or any stdio MCP client.
 
+The data gets there from the free health4ai iOS app: [download it on the App Store](https://apps.apple.com/app/health4ai/id6783074944). Setup guide: https://health4.ai/setup/
+
 <!-- mcp-name: io.github.jefflitt1/health4ai -->
 
 ## Install

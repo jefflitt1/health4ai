@@ -76,5 +76,5 @@ If you find something in the code that concerns you, open an issue. If you see s
 
 ---
 
-health4ai: Free while in early access.  
-[Download on the App Store →](https://health4.ai)
+health4ai: free on the App Store.  
+[Download on the App Store →](https://apps.apple.com/app/health4ai/id6783074944)

@@ -69,7 +69,7 @@ psql "postgresql://postgres:yourpassword@localhost:5432/postgres" \
 
 ### 3. Install the iOS app
 
-TestFlight link: **coming soon** — the app is in review. Sign in with your Postgres connection details and tap **Start Sync**.
+Download health4ai free from the [App Store](https://apps.apple.com/app/health4ai/id6783074944). Sign in with your Postgres connection details and tap **Start Sync**.
 
 ### 4. Configure the MCP server
 
@@ -144,4 +144,4 @@ Here are prompts that work well, along with which tool they trigger:
 
 [https://github.com/jefflitt1/health4ai](https://github.com/jefflitt1/health4ai) — MIT licensed. PRs welcome.
 
-If you set it up and run into anything, open an issue. The main thing still pending is the public TestFlight link. Everything else is working.
+If you set it up and run into anything, open an issue. The iOS app is live on the App Store and everything else is working.

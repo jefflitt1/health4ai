@@ -149,5 +149,5 @@ The AI doesn't need to interpret the data for you to benefit from having it. Kno
 
 ---
 
-health4ai: Free while in early access.  
-[Download on the App Store →](https://health4.ai)
+health4ai: free on the App Store.  
+[Download on the App Store →](https://apps.apple.com/app/health4ai/id6783074944)
