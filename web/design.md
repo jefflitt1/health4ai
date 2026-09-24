@@ -22,7 +22,7 @@ classes, clipping and alternate text.
 
 ## Motion and critical content
 
-- Homepage heading, explanation, metric pills and waitlist form are visible
+- Homepage heading, explanation, metric pills and App Store CTA are visible
   immediately. Do not reintroduce staggered fade-in entrance classes.
 - Decorative ECG, floating cards, ring, peak and CTA effects retain their current
   appearance for visitors who have not requested reduced motion.
@@ -34,10 +34,13 @@ classes, clipping and alternate text.
 
 ## Preserve behavior and meaning
 
-Keep copy, disclaimers, links, analytics hooks and waitlist scripts
-unchanged. Both waitlists retain unchecked, explicit Apple/TestFlight consent,
-email → consent → submit order, and duplicate-signup messaging. No real signup
-may be created during verification; intercept the request in tests.
+Keep copy, disclaimers, links and analytics hooks unchanged unless a change is
+explicitly intended (e.g. the 2026-09-24 App Store launch copy update, which
+retired the waitlist/TestFlight-consent forms and their `WaitlistClient.astro`
+wiring — the component file is kept, unused, rather than deleted, since
+nothing else imports it). The primary CTA everywhere is now "Download on the
+App Store" linking to the App Store listing. No page should ask a visitor to
+join a waitlist for an app that already ships.
 
 ## Legacy-setup notice
 
