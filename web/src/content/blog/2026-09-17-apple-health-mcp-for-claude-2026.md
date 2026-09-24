@@ -76,7 +76,7 @@ The iOS app registers HealthKit observers, authenticates to *your* Supabase proj
 **Honest constraints (read these before the waitlist):**
 
 - The iOS app is **invite-only TestFlight** — not a public App Store listing yet
-- There is **no public TestFlight URL**; join the [waitlist](/#waitlist) and request a beta invite
+- health4ai is **live on the App Store**: [download it here](https://apps.apple.com/app/health4ai/id6783074944)
 - There is **no npx one-liner** yet — MCP install is clone + Python
 - Backend for the iOS app is **Supabase you own** (Auth + Edge Functions). Plain Neon/local Docker alone cannot receive app writes — details in [docs](/docs/) and the Neon clarification post
 
@@ -119,4 +119,4 @@ Whatever you pick, skip medical claims and treat AI output as coaching-adjacent 
 ---
 
 health4ai: Free while in early access. Invite-only TestFlight — not on the public App Store yet.  
-[Join the waitlist →](/#waitlist)
+[Download health4ai on the App Store →](https://apps.apple.com/app/health4ai/id6783074944)

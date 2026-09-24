@@ -120,7 +120,7 @@ The point of the wedge is not a prettier chart. It is that Claude and Cursor bec
 ## Availability honesty
 
 - iOS app: **invite-only TestFlight**, no public App Store page yet
-- No public TestFlight link — [waitlist](/#waitlist) + consent to request an invite
+- Live on the App Store: [download health4ai](https://apps.apple.com/app/health4ai/id6783074944)
 - MCP: clone + Python; **no npx** package yet
 - Free while in early access
 
@@ -133,4 +133,4 @@ If you are still choosing among MCP architectures (LAN phone, export file, own-D
 ---
 
 health4ai: Free while in early access. Invite-only TestFlight — not on the public App Store yet.  
-[Join the waitlist →](/#waitlist)
+[Download health4ai on the App Store →](https://apps.apple.com/app/health4ai/id6783074944)
