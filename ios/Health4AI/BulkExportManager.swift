@@ -395,6 +395,24 @@ final class BulkExportManager {
             syncState.importFailedMetricNames = failedNames
         }
 
+        // One summary row per run, not one per type: an import can touch ~120 types, and a
+        // history list of 120 rows for one tap of "Run Import" would bury every other entry.
+        // Skipped entirely when there was nothing to do this run (totalTypes == 0), so
+        // resuming an already-finished import does not log a vacuous "0/0 succeeded".
+        if totalTypes > 0 {
+            let historyCounts: [String: Int] = totalPosted > 0
+                ? ["History import": storedCountUnreliable ? totalPosted : totalStored]
+                : [:]
+            if !Task.isCancelled {
+                SyncHistoryStore.shared.record(SyncHistoryEntry(
+                    trigger: .importHistory,
+                    counts: historyCounts,
+                    success: typesCompleted == totalTypes,
+                    errorText: typesCompleted == totalTypes
+                        ? nil : "\(typesCompleted) of \(totalTypes) data types finished importing."))
+            }
+        }
+
         if !Task.isCancelled {
             if typesCompleted == totalTypes {
                 // Every outstanding type actually succeeded this run — safe to latch
@@ -485,6 +503,9 @@ final class BulkExportManager {
             }
 
             if !samples.isEmpty {
+                // Raw samples, before any merged-hours conversion — same rule as live sync.
+                SourcesTracker.shared.record(samples: samples)
+
                 // Same rule as live sync: double-counted activity types post HealthKit's merged
                 // hourly totals, only to a server that replaces per-device rows with them.
                 // See HealthKitManager.syncsAsHourlyTotals and MergedHoursCapability.

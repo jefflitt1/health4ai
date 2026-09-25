@@ -252,7 +252,7 @@ final class SyncEngine {
         syncTask = Task {
             // Reschedule first, so a kill mid-pass still leaves a request pending.
             await MainActor.run { self.scheduleBackgroundSync() }
-            let outcome = await self.runFullPass()
+            let outcome = await self.runFullPass(trigger: .backgroundTask)
             if outcome == .skipped {
                 // A pass is already running (a background launch starts one from
                 // didFinishLaunching moments before this handler fires). Hold the task
@@ -301,6 +301,12 @@ final class SyncEngine {
                 }
                 // Perform incremental sync for this type only
                 Task {
+                    // Determined before the (possibly slow) sync runs: this is what fired the
+                    // observer, and an app that returns to the foreground mid-sync must not
+                    // relabel a background-delivery-triggered run as merely foreground.
+                    let trigger: SyncTrigger = await MainActor.run {
+                        UIApplication.shared.applicationState == .background ? .backgroundDelivery : .foreground
+                    }
                     do {
                         let count = try await self.syncType(sampleType)
                         if count > 0 {
@@ -308,8 +314,15 @@ final class SyncEngine {
                                 self.syncState.recordSyncComplete(count: count)
                             }
                         }
+                        SyncHistoryStore.shared.record(SyncHistoryEntry(
+                            trigger: trigger,
+                            counts: count > 0 ? [BulkExportManager.displayName(for: sampleType.identifier): count] : [:],
+                            success: true))
                     } catch {
                         print("[SyncEngine] Sync error for \(sampleType.identifier): \(error)")
+                        SyncHistoryStore.shared.record(SyncHistoryEntry(
+                            trigger: trigger, counts: [:], success: false,
+                            errorText: error.localizedDescription))
                     }
                     completionHandler()
                 }
@@ -340,6 +353,9 @@ final class SyncEngine {
             if error != nil { completionHandler(); return }
 
             Task {
+                let trigger: SyncTrigger = await MainActor.run {
+                    UIApplication.shared.applicationState == .background ? .backgroundDelivery : .foreground
+                }
                 do {
                     let count = try await self.syncType(workoutType)
                     if count > 0 {
@@ -347,8 +363,15 @@ final class SyncEngine {
                             self.syncState.recordSyncComplete(count: count)
                         }
                     }
+                    SyncHistoryStore.shared.record(SyncHistoryEntry(
+                        trigger: trigger,
+                        counts: count > 0 ? ["Workouts": count] : [:],
+                        success: true))
                 } catch {
                     print("[SyncEngine] Workout sync error: \(error)")
+                    SyncHistoryStore.shared.record(SyncHistoryEntry(
+                        trigger: trigger, counts: [:], success: false,
+                        errorText: error.localizedDescription))
                 }
                 completionHandler()
             }
@@ -360,8 +383,8 @@ final class SyncEngine {
 
     /// Syncs all types using anchored queries (only new data since last sync).
     /// Call on every app foreground / launch.
-    func performForegroundSync() {
-        Task { await runFullPass() }
+    func performForegroundSync(trigger: SyncTrigger = .foreground) {
+        Task { await runFullPass(trigger: trigger) }
     }
 
     enum FullPassOutcome {
@@ -376,7 +399,7 @@ final class SyncEngine {
     /// handler. Publishes its outcome to `syncState` and schedules the next background
     /// refresh whatever the outcome, so a failed pass is retried rather than orphaned.
     @discardableResult
-    func runFullPass() async -> FullPassOutcome {
+    func runFullPass(trigger: SyncTrigger = .foreground) async -> FullPassOutcome {
         // Test AND set in ONE MainActor hop. Reading the flag, awaiting, then writing
         // it is check-then-act: both cold-launch callers (didFinishLaunching and
         // applicationDidBecomeActive, which fire within moments of each other) could
@@ -397,26 +420,35 @@ final class SyncEngine {
                 defer { self.scheduleBackgroundSync() }
                 if outcome.failures.isEmpty {
                     self.syncState.recordSyncComplete(count: outcome.count)
+                    SyncHistoryStore.shared.record(SyncHistoryEntry(
+                        trigger: trigger, counts: outcome.perTypeCounts, success: true))
                     return .succeeded
                 } else if outcome.failures.count == outcome.attempted {
                     // Every type failed. Reporting this as a completed sync of 0
                     // records is how a total outage looks like a quiet day.
                     let first = outcome.failures[0]
-                    self.syncState.recordSyncError(
-                        "Sync failed for all \(outcome.attempted) data types. "
-                        + "\(first.error.localizedDescription)")
+                    let message = "Sync failed for all \(outcome.attempted) data types. "
+                        + "\(first.error.localizedDescription)"
+                    self.syncState.recordSyncError(message)
+                    SyncHistoryStore.shared.record(SyncHistoryEntry(
+                        trigger: trigger, counts: outcome.perTypeCounts, success: false,
+                        errorText: message))
                     return .failed
                 } else {
                     self.syncState.recordSyncPartial(
                         count: outcome.count,
                         failed: outcome.failures.count,
                         ofTypes: outcome.attempted)
+                    SyncHistoryStore.shared.record(SyncHistoryEntry(
+                        trigger: trigger, counts: outcome.perTypeCounts, success: false,
+                        errorText: "\(outcome.failures.count) of \(outcome.attempted) data types failed to sync."))
                     return .failed
                 }
             }
         } catch is CancellationError {
             // iOS reclaimed the background task's time. Not a sync error to show the user:
             // every page already posted saved its anchor and the next pass resumes there.
+            // Not logged to history either — this is iOS reclaiming time, not a run outcome.
             await MainActor.run {
                 Self.fullSyncInFlight = false
                 self.syncState.recordSyncCancelled()
@@ -429,6 +461,9 @@ final class SyncEngine {
                 self.syncState.recordSyncError(error.localizedDescription)
                 self.scheduleBackgroundSync()
             }
+            SyncHistoryStore.shared.record(SyncHistoryEntry(
+                trigger: trigger, counts: [:], success: false,
+                errorText: error.localizedDescription))
             return .failed
         }
     }
@@ -442,9 +477,12 @@ final class SyncEngine {
     /// caller's error branch went dead and 107-of-107 failures reported as a clean sync.
     @discardableResult
     func performFullSync() async throws
-        -> (count: Int, failures: [(type: String, error: Error)], attempted: Int) {
+        -> (count: Int, failures: [(type: String, error: Error)], attempted: Int, perTypeCounts: [String: Int]) {
         let types = HealthKitManager.sampleTypes()
         var totalCount = 0
+        // Human-readable name -> records sent, for the sync history log. Only types that
+        // actually sent something this pass are included (see SyncHistoryEntry.counts).
+        var perTypeCounts: [String: Int] = [:]
 
         // Sync each type sequentially to keep memory usage bounded.
         //
@@ -459,7 +497,11 @@ final class SyncEngine {
         for sampleType in types {
             try Task.checkCancellation()
             do {
-                totalCount += try await syncType(sampleType)
+                let count = try await syncType(sampleType)
+                totalCount += count
+                if count > 0 {
+                    perTypeCounts[BulkExportManager.displayName(for: sampleType.identifier)] = count
+                }
             } catch {
                 failures.append((sampleType.identifier, error))
                 print("[SyncEngine] Sync failed for \(sampleType.identifier): \(error)")
@@ -468,7 +510,7 @@ final class SyncEngine {
         if !failures.isEmpty {
             print("[SyncEngine] \(failures.count) of \(types.count) types failed this pass")
         }
-        return (totalCount, failures, types.count)
+        return (totalCount, failures, types.count, perTypeCounts)
     }
 
     // MARK: - Merged hourly totals
@@ -526,6 +568,10 @@ final class SyncEngine {
                 if let newAnchor { syncAnchors[sampleType.identifier] = newAnchor; saveAnchors() }
                 return total
             }
+
+            // Raw samples, before any merged-hours conversion: this is the only place the
+            // real per-device source names still exist for a double-counted activity type.
+            SourcesTracker.shared.record(samples: samples)
 
             // Double-counted activity types post HealthKit's merged hourly totals, never raw
             // samples: summing raw samples counts an iPhone and a Watch twice. Only to a server

@@ -20,6 +20,11 @@
 		B0000011 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000011 /* HomeView.swift */; };
 		B0000012 /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000012 /* ConnectionView.swift */; };
 		B0000013 /* PrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000013 /* PrivacyView.swift */; };
+		B0000014 /* SyncHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000015 /* SyncHistory.swift */; };
+		B0000015 /* SourcesTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000016 /* SourcesTracker.swift */; };
+		B0000016 /* SyncHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000017 /* SyncHistoryView.swift */; };
+		B0000017 /* SourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000018 /* SourcesView.swift */; };
+		B0000018 /* ConnectAIView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000019 /* ConnectAIView.swift */; };
 		B000000A /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A000000A /* HealthKit.framework */; };
 		B000000B /* BackgroundTasks.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A000000B /* BackgroundTasks.framework */; };
 		B000000C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A000000F /* Assets.xcassets */; };
@@ -40,6 +45,11 @@
 		A0000011 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		A0000012 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
 		A0000013 /* PrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyView.swift; sourceTree = "<group>"; };
+		A0000015 /* SyncHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncHistory.swift; sourceTree = "<group>"; };
+		A0000016 /* SourcesTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesTracker.swift; sourceTree = "<group>"; };
+		A0000017 /* SyncHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncHistoryView.swift; sourceTree = "<group>"; };
+		A0000018 /* SourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesView.swift; sourceTree = "<group>"; };
+		A0000019 /* ConnectAIView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectAIView.swift; sourceTree = "<group>"; };
 		A000000A /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
 		A000000B /* BackgroundTasks.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = BackgroundTasks.framework; path = System/Library/Frameworks/BackgroundTasks.framework; sourceTree = SDKROOT; };
 		A000000C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -87,6 +97,11 @@
 				A0000011 /* HomeView.swift */,
 				A0000012 /* ConnectionView.swift */,
 				A0000013 /* PrivacyView.swift */,
+				A0000015 /* SyncHistory.swift */,
+				A0000016 /* SourcesTracker.swift */,
+				A0000017 /* SyncHistoryView.swift */,
+				A0000018 /* SourcesView.swift */,
+				A0000019 /* ConnectAIView.swift */,
 				A000000C /* Info.plist */,
 				A000000D /* Health4AI.entitlements */,
 				A000000F /* Assets.xcassets */,
@@ -195,6 +210,11 @@
 				B0000011 /* HomeView.swift in Sources */,
 				B0000012 /* ConnectionView.swift in Sources */,
 				B0000013 /* PrivacyView.swift in Sources */,
+				B0000014 /* SyncHistory.swift in Sources */,
+				B0000015 /* SourcesTracker.swift in Sources */,
+				B0000016 /* SyncHistoryView.swift in Sources */,
+				B0000017 /* SourcesView.swift in Sources */,
+				B0000018 /* ConnectAIView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

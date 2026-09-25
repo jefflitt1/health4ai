@@ -21,8 +21,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             SyncEngine.shared.registerBackgroundTasks()
             BulkExportManager.shared.registerBackgroundBackfillTask()
         }
+        #if DEBUG
+        // Screenshot fixtures for the Sync History and Your Sources screens. Launch-argument
+        // gated, DEBUG-only — Xcode Cloud archives Release, which never compiles this branch.
+        SyncHistoryStore.shared.seedForScreenshotsIfNeeded()
+        SourcesTracker.shared.seedForScreenshotsIfNeeded()
+        #endif
         Task { @MainActor in
-            self.reconnectIfAuthenticated()
+            self.reconnectIfAuthenticated(trigger: .launch)
         }
         return true
     }
@@ -31,7 +37,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         Task { @MainActor in
             let authManager = SyncEngine.sharedAuthManager
             if authManager.isSignedIn {
-                SyncEngine.shared.performForegroundSync()
+                SyncEngine.shared.performForegroundSync(trigger: .foreground)
             }
         }
     }
@@ -53,7 +59,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     // MARK: - Private helpers
 
     @MainActor
-    private func reconnectIfAuthenticated() {
+    private func reconnectIfAuthenticated(trigger: SyncTrigger) {
         let authManager = SyncEngine.sharedAuthManager
         guard authManager.isSignedIn else { return }
 
@@ -64,7 +70,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         guard HKHealthStore.isHealthDataAvailable() else { return }
         Task { @MainActor in
             SyncEngine.shared.startObserving()
-            SyncEngine.shared.performForegroundSync()
+            SyncEngine.shared.performForegroundSync(trigger: trigger)
             await BulkExportManager.shared.applyStuckTypeMigrationIfNeeded(syncState: syncState)
             await BulkExportManager.shared.applyMergedHoursResendIfNeeded(syncState: syncState)
             await BulkExportManager.shared.publishEmptyExpectedTypes(syncState: syncState)
