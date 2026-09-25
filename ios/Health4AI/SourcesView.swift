@@ -50,9 +50,15 @@ struct SourcesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { sources = SourcesTracker.shared.all() }
         // iPad: a full-width List of short rows reads as an oversized empty page. Capped and
-        // centered, same as Home and the other new 1.0.1 screens.
+        // centered, same as Home and the other new 1.0.1 screens. `.scrollContentBackground
+        // (.hidden)` + an explicit systemGroupedBackground behind it: without both, capping
+        // the List's own frame narrows the List but leaves its default white background
+        // showing only inside that narrow column, and the NavigationStack's plain white
+        // behind it shows as bare white bands on either side instead of matching gray.
+        .scrollContentBackground(.hidden)
         .frame(maxWidth: 700)
         .frame(maxWidth: .infinity)
+        .background(Color(.systemGroupedBackground))
     }
 }
 

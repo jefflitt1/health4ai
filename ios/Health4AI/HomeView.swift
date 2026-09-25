@@ -289,22 +289,48 @@ struct HomeView: View {
                 }
             }
             Divider()
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Last synced")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(syncState.formattedLastSync)
-                        .font(.subheadline.weight(.medium))
+            // Side by side, "Next sync, earliest" plus a long relative string ("in 55
+            // minutes") squeezes into half the card's width at accessibility sizes and
+            // wraps a WORD in half ("sched- / uled") rather than between words — the same
+            // class of bug design.md already flags for numeric text elsewhere in this
+            // file. Stacked instead, above accessibility1, same threshold as the rest of
+            // this file's XXXL-verified layouts.
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Last synced")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(syncState.formattedLastSync)
+                            .font(.subheadline.weight(.medium))
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Next sync, earliest")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(syncState.formattedNextSync)
+                            .font(.subheadline.weight(.medium))
+                    }
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    // "Earliest": the date is the floor iOS was given, not a promise.
-                    Text("Next sync, earliest")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(syncState.formattedNextSync)
-                        .font(.subheadline.weight(.medium))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Last synced")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(syncState.formattedLastSync)
+                            .font(.subheadline.weight(.medium))
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        // "Earliest": the date is the floor iOS was given, not a promise.
+                        Text("Next sync, earliest")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(syncState.formattedNextSync)
+                            .font(.subheadline.weight(.medium))
+                    }
                 }
             }
         }

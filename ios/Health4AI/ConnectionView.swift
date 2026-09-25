@@ -320,13 +320,19 @@ struct ConnectionView: View {
         ]
     }
 
+    // A fixed 20pt icon column doesn't scale with Dynamic Type, so at XXXL the icon
+    // (still 20pt) sits beside multi-line title text whose first line is now much
+    // taller than 20pt — with `.top` or center alignment that reads as an overlap.
+    // `@ScaledMetric` grows the column with the user's text size setting instead.
+    @ScaledMetric private var checklistIconWidth: CGFloat = 20
+
     private var checklistSection: some View {
         Section {
             ForEach(checklistItems) { item in
-                HStack(spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Image(systemName: item.symbol)
                         .foregroundStyle(item.tint)
-                        .frame(width: 20)
+                        .frame(width: checklistIconWidth)
                     Text(item.title)
                         .font(.subheadline)
                         .foregroundStyle(.primary)

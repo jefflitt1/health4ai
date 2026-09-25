@@ -280,6 +280,20 @@ final class SyncState: ObservableObject {
         }
 
         #if DEBUG
+        // Every screenshot fixture forces the SAME metric-types scope, regardless of which
+        // simulator or how many prior runs installed the app on it. `healthScope` in HomeView
+        // reads `HealthKitManager.selectedScope`, which falls back on `hkb.onboardingComplete`
+        // when no scope has ever been chosen — and that flag, plus the scope key itself, both
+        // persist in each simulator's own UserDefaults across every run this task has ever
+        // done on it. That is how the iPhone simulator (many prior runs, onboarding never
+        // actually completed through the real UI on either device) ended up on "All
+        // supported" while a less-exercised iPad simulator sat on "Core set": two devices'
+        // accumulated history disagreeing, not the app's own default. Screenshot runs must
+        // not depend on that history.
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-h4aiScreenshot") }) {
+            UserDefaults.standard.set(HealthKitManager.DataScope.complete.rawValue,
+                                       forKey: HealthKitManager.DataScope.storageKey)
+        }
         // Screenshot state for the design gate: signed in, data flowing, server without merged
         // hours. The real state needs a keychain session and an old server, which a simulator
         // does not have. DEBUG builds only, launch argument only, and nothing is persisted:

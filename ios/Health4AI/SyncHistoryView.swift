@@ -23,8 +23,13 @@ struct SyncHistoryView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { entries = SyncHistoryStore.shared.all() }
         // iPad: caps the reading width instead of a one-line row stretching edge to edge.
+        // See SourcesView for why both `.scrollContentBackground(.hidden)` and the explicit
+        // background are needed: capping the List's own frame otherwise leaves bare white
+        // bands either side of it instead of matching gray.
+        .scrollContentBackground(.hidden)
         .frame(maxWidth: 700)
         .frame(maxWidth: .infinity)
+        .background(Color(.systemGroupedBackground))
     }
 }
 

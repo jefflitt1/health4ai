@@ -91,7 +91,12 @@ struct ConnectAIView: View {
             // iPad: caps the reading width instead of stretching a config block edge to edge.
             .frame(maxWidth: 700)
         }
+        // See SourcesView for why both of these are needed together: capping the
+        // scrolling container's own frame otherwise leaves bare white bands either side
+        // of it instead of matching gray.
+        .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity)
+        .background(Color(.systemGroupedBackground))
         .navigationTitle("Connect Your AI")
         .navigationBarTitleDisplayMode(.inline)
     }
