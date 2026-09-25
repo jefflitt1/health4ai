@@ -415,14 +415,16 @@ final class SyncEngine {
 
         do {
             let outcome = try await performFullSync()
-            return await MainActor.run {
+            // The JSON encode + atomic file write inside SyncHistoryStore.record should not
+            // happen on the main actor, so MainActor.run below only decides WHAT to log
+            // (mutating syncState, which does belong there) and returns it; the actual
+            // record() call happens after the hop, same as every observer-path call site.
+            let (result, logMessage): (FullPassOutcome, String?) = await MainActor.run {
                 Self.fullSyncInFlight = false
                 defer { self.scheduleBackgroundSync() }
                 if outcome.failures.isEmpty {
                     self.syncState.recordSyncComplete(count: outcome.count)
-                    SyncHistoryStore.shared.record(SyncHistoryEntry(
-                        trigger: trigger, counts: outcome.perTypeCounts, success: true))
-                    return .succeeded
+                    return (.succeeded, nil)
                 } else if outcome.failures.count == outcome.attempted {
                     // Every type failed. Reporting this as a completed sync of 0
                     // records is how a total outage looks like a quiet day.
@@ -430,21 +432,19 @@ final class SyncEngine {
                     let message = "Sync failed for all \(outcome.attempted) data types. "
                         + "\(first.error.localizedDescription)"
                     self.syncState.recordSyncError(message)
-                    SyncHistoryStore.shared.record(SyncHistoryEntry(
-                        trigger: trigger, counts: outcome.perTypeCounts, success: false,
-                        errorText: message))
-                    return .failed
+                    return (.failed, message)
                 } else {
                     self.syncState.recordSyncPartial(
                         count: outcome.count,
                         failed: outcome.failures.count,
                         ofTypes: outcome.attempted)
-                    SyncHistoryStore.shared.record(SyncHistoryEntry(
-                        trigger: trigger, counts: outcome.perTypeCounts, success: false,
-                        errorText: "\(outcome.failures.count) of \(outcome.attempted) data types failed to sync."))
-                    return .failed
+                    return (.failed, "\(outcome.failures.count) of \(outcome.attempted) data types failed to sync.")
                 }
             }
+            SyncHistoryStore.shared.record(SyncHistoryEntry(
+                trigger: trigger, counts: outcome.perTypeCounts,
+                success: logMessage == nil, errorText: logMessage))
+            return result
         } catch is CancellationError {
             // iOS reclaimed the background task's time. Not a sync error to show the user:
             // every page already posted saved its anchor and the next pass resumes there.
@@ -819,7 +819,7 @@ enum SyncError: LocalizedError {
         case .authFailed(let m):        return "Auth failed: \(m)"
         case .invalidURL:               return "Invalid server URL"
         case .invalidResponse:          return "Invalid HTTP response"
-        case .unauthorized:             return "Unauthorized — please sign in again"
+        case .unauthorized:             return "Unauthorized, please sign in again"
         case .serverError(let code):    return "Server error \(code)"
         case .httpError(let code): return "HTTP \(code)"
         case .unknownPostFailure:       return "Unknown POST failure"
