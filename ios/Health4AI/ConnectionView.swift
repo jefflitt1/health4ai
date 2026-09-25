@@ -11,22 +11,40 @@ struct ConnectionView: View {
     @State private var showErase = false
     @State private var testResult: TestResult? = nil
     @State private var isTesting = false
+    /// Held in @State, updated from the Anon Key field's own onChange and on appear, rather
+    /// than read fresh from Keychain inside `checklistItems`. That computed property is not
+    /// observed by SwiftUI (Keychain access publishes nothing), so the checklist row could
+    /// show "not yet" while the field right above it plainly held a key — exactly the kind
+    /// of contradiction a checklist exists to prevent.
+    @State private var anonKeyPresent = false
     /// The in-flight Last year → Everything switch, so a second flip cancels the first
     /// instead of running two cancel/re-arm sequences over each other.
     @State private var horizonSwitchTask: Task<Void, Never>? = nil
     var body: some View {
         NavigationStack {
             List {
+                checklistSection
                 configSection
                 authSection
                 historySection
-                checklistSection
                 testSection
                 aiSection
                 privacySection
             }
             .navigationTitle("Connection")
             .navigationBarTitleDisplayMode(.large)
+            // Seeds `anonKeyPresent` from a container-level onAppear, which always fires,
+            // rather than relying only on SecureFieldToggle's own onAppear inside
+            // configSection. List rows can be lazy: at accessibility text sizes the
+            // checklist section alone can fill the visible viewport, and the Anon Key
+            // field several sections down never gets laid out (so its onAppear never
+            // fires) until the user scrolls to it — which left the checklist reporting
+            // "not yet" for a key that was genuinely already stored. This runs once,
+            // unconditionally, on the same List/NavigationStack the checklist itself
+            // lives in; the field's own onChange still keeps it live while visible.
+            .onAppear {
+                anonKeyPresent = !(CredentialKeychain.load(forKey: "hkb.supabaseAnonKey") ?? "").isEmpty
+            }
         }
         .onChange(of: syncState.importHorizon) { oldValue, newValue in
             guard oldValue == .lastYear, newValue == .everything else {
@@ -127,7 +145,9 @@ struct ConnectionView: View {
                     .font(.system(.caption, design: .monospaced))
             }
             AdaptiveLabeledField("Anon Key") {
-                SecureFieldToggle(placeholder: "eyJ…", userDefaultsKey: "hkb.supabaseAnonKey")
+                SecureFieldToggle(placeholder: "eyJ…", userDefaultsKey: "hkb.supabaseAnonKey") { newValue in
+                    anonKeyPresent = !newValue.isEmpty
+                }
             }
         } header: {
             Text("Supabase")
@@ -270,12 +290,21 @@ struct ConnectionView: View {
             case .unknown: return .secondary
             }
         }
+        /// Distinct from the visible title: VoiceOver hears the step name once and then a
+        /// plain verdict, rather than re-parsing the same sentence for a state word buried
+        /// inside it.
+        var accessibilityValue: String {
+            switch state {
+            case .ok:      return "done"
+            case .notYet:  return "not yet"
+            case .unknown: return "not checked yet"
+            }
+        }
     }
 
     private var checklistItems: [ChecklistItem] {
         let trimmedURL = syncState.supabaseProjectURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let urlValid = URL(string: trimmedURL)?.scheme == "https" && !trimmedURL.isEmpty
-        let keyPresent = !(CredentialKeychain.load(forKey: "hkb.supabaseAnonKey") ?? "").isEmpty
         let ingestState: ChecklistItem.State
         switch testResult?.kind {
         case .ok:                 ingestState = .ok
@@ -285,7 +314,7 @@ struct ConnectionView: View {
         return [
             ChecklistItem(title: "Project URL looks right (https://…supabase.co)",
                           state: urlValid ? .ok : .notYet),
-            ChecklistItem(title: "Anon key entered", state: keyPresent ? .ok : .notYet),
+            ChecklistItem(title: "Anon key entered", state: anonKeyPresent ? .ok : .notYet),
             ChecklistItem(title: "Signed in", state: syncState.isAuthenticated ? .ok : .notYet),
             ChecklistItem(title: "Ingest function reachable", state: ingestState),
         ]
@@ -303,11 +332,12 @@ struct ConnectionView: View {
                         .foregroundStyle(.primary)
                 }
                 .accessibilityElement(children: .combine)
+                .accessibilityValue(item.accessibilityValue)
             }
         } header: {
             Text("Setup Checklist")
         } footer: {
-            Text("Ingest function reachable turns green after you tap Test Connection below. It never sends your health data — only a ping.")
+            Text("Ingest function reachable turns green after you tap Test Connection below. It never sends your health data, only a ping.")
         }
     }
 

@@ -4,6 +4,7 @@ import UIKit
 struct HomeView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject var syncState: SyncState
+    @EnvironmentObject var tabRouter: TabRouter
     @Environment(\.scenePhase) private var scenePhase
     @State private var showMCPSetup = false
     @State private var isRequestingHealth = false
@@ -103,11 +104,16 @@ struct HomeView: View {
                         statusCard
                         // Testers found several interconnected options (sync now / import /
                         // resume) confusing before the first sync ever finished. Before that
-                        // point, Import History IS the one primary action — it is what
-                        // actually gets data flowing — so everything else moves under
-                        // Advanced rather than competing with it. Nothing is removed: the
-                        // same cards render, just re-homed, and the moment a sync completes
-                        // this reverts to the original always-expanded layout.
+                        // point there is exactly one primary action, and which one depends
+                        // on what is actually still missing:
+                        //   - not signed in: nothing else on this screen can do anything yet,
+                        //     so the one action is connecting a database, on the Connect tab.
+                        //   - signed in, not yet synced: Import History IS the one primary
+                        //     action — it is what actually gets data flowing.
+                        // Everything else moves under Advanced rather than competing with the
+                        // one action that matters. Nothing is removed: the same cards render,
+                        // just re-homed, and the moment a sync completes this reverts to the
+                        // original always-expanded layout.
                         if hasSyncedOnce {
                             scopeCard
                             mcpCard
@@ -115,8 +121,10 @@ struct HomeView: View {
                             backfillCard
                                 .id(Self.backfillCardID)
                             actionsCard
+                        } else if !syncState.isAuthenticated {
+                            connectDatabaseCard
+                            advancedDisclosure
                         } else {
-                            healthAccessCard
                             backfillCard
                                 .id(Self.backfillCardID)
                             advancedDisclosure
@@ -124,7 +132,11 @@ struct HomeView: View {
                         moreCard
                     }
                     .padding()
+                    // iPad: caps the reading width instead of a card row stretching edge to
+                    // edge on an 11"+ screen, same as the other new 1.0.1 screens.
+                    .frame(maxWidth: 700)
                 }
+                .frame(maxWidth: .infinity)
                 #if DEBUG
                 // Design-gate screenshots only: the import card sits below the fold, and simctl
                 // cannot scroll. Paired with the launch arguments in SyncState.init.
@@ -161,14 +173,41 @@ struct HomeView: View {
     /// the "which button do I even press" confusion this simplification exists for.
     private var hasSyncedOnce: Bool { syncState.lastSyncDate != nil }
 
+    // MARK: - Connect prompt (not signed in, pre-first-sync only)
+
+    /// The single card shown before ANY database is connected: nothing else on Home can do
+    /// anything useful yet (Import needs a signed-in session, Sync Now needs one too), so this
+    /// is the one primary action, and it leads straight to where that action lives.
+    private var connectDatabaseCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Connect Your Database", systemImage: "server.rack")
+                .font(.headline)
+            Text("health4ai syncs your health data to a Supabase project you own. Connect yours to start syncing.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button {
+                tabRouter.selectedTab = 1
+            } label: {
+                Text("Connect your database")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
     // MARK: - Advanced (pre-first-sync only)
 
-    /// Everything the simplified pre-first-sync Home hides: metric scope, the "Ask any AI"
-    /// card, and Sync Now / Resume / Start Over. All still fully reachable, one tap away —
-    /// "move into an Advanced disclosure", not "remove any capability".
+    /// Everything the simplified pre-first-sync Home hides: Apple Health access, metric
+    /// scope, the "Ask any AI" card, and Sync Now / Resume / Start Over. All still fully
+    /// reachable, one tap away — "move into an Advanced disclosure", not "remove any
+    /// capability".
     private var advancedDisclosure: some View {
         DisclosureGroup("Advanced") {
             VStack(spacing: 20) {
+                healthAccessCard
                 scopeCard
                 mcpCard
                 actionsCard
@@ -440,7 +479,7 @@ struct HomeView: View {
                         .foregroundStyle(.tertiary)
                 }
                 Text(syncState.backfillEarliestDate != nil || syncState.lastSyncDate != nil
-                     ? "Your health data is live — query with Claude, Ollama, ChatGPT, or any MCP-compatible AI"
+                     ? "Your health data is live. Ask Claude, Ollama, ChatGPT, or any MCP-compatible AI."
                      : "Sync your data, then ask any AI natural-language questions about any metric")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -888,7 +927,7 @@ struct MCPSetupView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("How it works")
                 .font(.headline)
-            Text("Your synced health data lives in your own database. The health4ai MCP server connects it to any AI you choose — local models like Ollama stay fully on-device. No SQL required.")
+            Text("Your synced health data lives in your own database. The health4ai MCP server connects it to any AI you choose. Local models like Ollama stay fully on-device. No SQL required.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -901,7 +940,7 @@ struct MCPSetupView: View {
                 MCPFlowArrow()
                 MCPFlowRow(icon: "hammer", label: "health4ai MCP server", sublabel: "runs on your Mac (open source)", color: .orange)
                 MCPFlowArrow()
-                MCPFlowRow(icon: "brain", label: "Your AI", sublabel: "Claude, Ollama, ChatGPT, Gemini — your choice", color: .blue)
+                MCPFlowRow(icon: "brain", label: "Your AI", sublabel: "Claude, Ollama, ChatGPT, Gemini: your choice", color: .blue)
             }
         }
         .padding()
@@ -919,7 +958,7 @@ struct MCPSetupView: View {
             MCPStep(
                 number: 1,
                 title: "Clone the repo",
-                detail: "github.com/jefflitt1/health4ai — the MCP server is in the mcp-server/ folder."
+                detail: "github.com/jefflitt1/health4ai (the MCP server is in the mcp-server/ folder)."
             )
             Divider().padding(.leading, 36)
             MCPStep(
@@ -931,7 +970,7 @@ struct MCPSetupView: View {
             MCPStep(
                 number: 3,
                 title: "Connect your AI client",
-                detail: "Works with any MCP-compatible client — Claude Desktop, Cursor, Continue, or a local Ollama setup. Config snippets for each in the README."
+                detail: "Works with any MCP-compatible client: Claude Desktop, Cursor, Continue, or a local Ollama setup. Config snippets for each in the README."
             )
         }
         .padding()
@@ -950,7 +989,7 @@ struct MCPSetupView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Fully private with a local model")
                     .font(.subheadline.weight(.semibold))
-                Text("Run Ollama locally and your health data never leaves your Mac — the app syncs to your own database, and the AI runs on your own hardware.")
+                Text("Run Ollama locally and your health data never leaves your Mac. The app syncs to your own database, and the AI runs on your own hardware.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

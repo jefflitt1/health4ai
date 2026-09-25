@@ -4,9 +4,19 @@ import Security
 
 // MARK: - Root view
 
+// MARK: - TabRouter
+
+/// Lets a view outside `MainTabView` (Home's "Connect your database" button) switch tabs
+/// without owning the `TabView`'s own selection state. A single shared instance, injected
+/// alongside `syncState`/`authManager`.
+final class TabRouter: ObservableObject {
+    @Published var selectedTab: Int = 0
+}
+
 struct ContentView: View {
     @EnvironmentObject var syncState: SyncState
     @EnvironmentObject var authManager: AuthManager
+    @StateObject private var tabRouter = TabRouter()
     @AppStorage("hkb.onboardingComplete") private var onboardingComplete = false
 
     var body: some View {
@@ -34,6 +44,7 @@ struct ContentView: View {
         }
         .environmentObject(syncState)
         .environmentObject(authManager)
+        .environmentObject(tabRouter)
     }
 
     #if DEBUG
@@ -58,14 +69,17 @@ struct ContentView: View {
 struct MainTabView: View {
     @EnvironmentObject var syncState: SyncState
     @EnvironmentObject var authManager: AuthManager
+    @EnvironmentObject var tabRouter: TabRouter
 
     var body: some View {
-        TabView {
+        TabView(selection: $tabRouter.selectedTab) {
             HomeView()
                 .tabItem {
                     Label("Home", systemImage: "waveform.path.ecg")
                 }
                 .environmentObject(syncState)
+                .environmentObject(tabRouter)
+                .tag(0)
 
             ConnectionView()
                 .tabItem {
@@ -73,11 +87,13 @@ struct MainTabView: View {
                 }
                 .environmentObject(syncState)
                 .environmentObject(authManager)
+                .tag(1)
 
             PrivacyView()
                 .tabItem {
                     Label("Privacy", systemImage: "lock.shield")
                 }
+                .tag(2)
         }
     }
 }
@@ -148,15 +164,21 @@ enum CredentialKeychain {
 struct SecureFieldToggle: View {
     let placeholder: String
     let userDefaultsKey: String
+    /// Called after every persisted change, in addition to the Keychain/UserDefaults write
+    /// below — so a caller that needs to know "is this field non-empty right now" (the
+    /// Connect setup checklist) can hold that in its own @State instead of re-reading
+    /// Keychain from an unobserved computed property, which SwiftUI never re-evaluates.
+    var onValueChange: ((String) -> Void)? = nil
 
     @State private var value: String
     @State private var isVisible = false
 
     private var isSensitive: Bool { CredentialKeychain.sensitiveKeys.contains(userDefaultsKey) }
 
-    init(placeholder: String, userDefaultsKey: String) {
+    init(placeholder: String, userDefaultsKey: String, onValueChange: ((String) -> Void)? = nil) {
         self.placeholder = placeholder
         self.userDefaultsKey = userDefaultsKey
+        self.onValueChange = onValueChange
         let sensitive = CredentialKeychain.sensitiveKeys.contains(userDefaultsKey)
         _value = State(initialValue: sensitive
             ? CredentialKeychain.load(forKey: userDefaultsKey) ?? ""
@@ -181,7 +203,9 @@ struct SecureFieldToggle: View {
                 } else {
                     UserDefaults.standard.set(newValue, forKey: userDefaultsKey)
                 }
+                onValueChange?(newValue)
             }
+            .onAppear { onValueChange?(value) }
             Button {
                 isVisible.toggle()
             } label: {

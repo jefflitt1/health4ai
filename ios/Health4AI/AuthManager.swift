@@ -62,7 +62,7 @@ final class AuthManager: ObservableObject {
             case .invalidURL:        return "Invalid server URL"
             case .encodingFailed:    return "Failed to encode request"
             case .serverError(let m): return m
-            case .tokenMissing:      return "No auth token found — please sign in again"
+            case .tokenMissing:      return "No auth token found, please sign in again"
             case .missingAnonKey:    return "Supabase anon key not configured"
             case .keychainError(let s): return "Keychain error: \(s)"
             }

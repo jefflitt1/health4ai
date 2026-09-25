@@ -314,6 +314,24 @@ final class SyncState: ObservableObject {
             self.supabaseProjectURL = "https://fixture-project.supabase.co"
             CredentialKeychain.save("eyJfixtureAnonKeyForScreenshot", forKey: "hkb.supabaseAnonKey")
         }
+        // Pre-first-sync Home, forced clean. Every other `-h4aiScreenshot*` fixture above
+        // WRITES through `didSet` into real UserDefaults, so a simulator that ran one of
+        // them earlier in the same install carries that state into a later "fresh install"
+        // screenshot pass — measured directly: `lastSyncDate` from a prior
+        // `-h4aiScreenshotServerUpdateNeeded` run survived into a later "fresh" capture and
+        // rendered "Last synced: 34 seconds ago" over a status card that still said "Not
+        // connected". Explicit reset, not reliance on a truly empty install.
+        if ProcessInfo.processInfo.arguments.contains("-h4aiScreenshotHomeFresh") {
+            self.isAuthenticated = false
+            self.lastSyncDate = nil
+            self.lifetimeSyncedRecords = 0
+            self.backfillCompleted = false
+            self.backfillSyncedRecords = 0
+            self.serverLacksMergedHours = false
+            self.backgroundDeliveryFailedTypes = []
+            self.emptyExpectedMetricNames = []
+            self.importFailedMetricNames = []
+        }
         #endif
     }
 
@@ -483,9 +501,22 @@ final class SyncState: ObservableObject {
 
     var formattedLastSync: String {
         guard let date = lastSyncDate else { return "Never" }
+        let now = Date()
+        // Within a minute either way: "Just now", never a signed duration. Two distinct
+        // bugs this guards against. First, a sync that just completed a moment ago
+        // rendered "in 0 seconds" — future tense, for something already in the past.
+        // Second, clock skew between when the sync's timestamp was written and when this
+        // is read (both device-local, but not necessarily the same instant) can put `date`
+        // a hair AFTER `now`, and RelativeDateTimeFormatter reads any date after `now` as
+        // future no matter how the app got there.
+        guard abs(now.timeIntervalSince(date)) >= 60 else { return "Just now" }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
-        return formatter.localizedString(for: date, relativeTo: Date())
+        // min(date, now): a `date` that is still after `now` past the one-minute guard
+        // above (clock skew larger than a minute, or a fixture date set slightly ahead)
+        // must never be formatted as-is, since that renders "in N minutes" for a sync
+        // that has already happened.
+        return formatter.localizedString(for: min(date, now), relativeTo: now)
     }
 
     /// The scheduled date is a floor, not an appointment: iOS runs the task some time at or

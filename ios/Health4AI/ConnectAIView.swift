@@ -56,9 +56,13 @@ struct ConnectAIView: View {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Ask any AI about your health data")
                     .font(.headline)
-                Text("These configs point your AI client at the health4ai MCP server (pip install health4ai), which reads from your own database. Fill in your database password before using it, and never share it.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 10) {
+                    NumberedStep(number: 1, text: "Install the server: pip install health4ai")
+                    NumberedStep(number: 2, text: "Copy the config below for your AI app")
+                    NumberedStep(number: 3, text: "Replace <YOUR-DB-PASSWORD> with your database password")
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
 
                 configCard(
                     id: "desktop",
@@ -84,7 +88,10 @@ struct ConnectAIView: View {
                     .foregroundStyle(.secondary)
             }
             .padding()
+            // iPad: caps the reading width instead of stretching a config block edge to edge.
+            .frame(maxWidth: 700)
         }
+        .frame(maxWidth: .infinity)
         .navigationTitle("Connect Your AI")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -118,6 +125,19 @@ struct ConnectAIView: View {
         .padding()
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+private struct NumberedStep: View {
+    let number: Int
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("\(number).")
+                .fontWeight(.semibold)
+            Text(text)
+        }
     }
 }
 

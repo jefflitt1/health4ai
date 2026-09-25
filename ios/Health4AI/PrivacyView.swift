@@ -29,7 +29,7 @@ struct PrivacyView: View {
                 FlowNode(icon: "applewatch", label: "Apple Watch / Wearables", color: .primary)
                 FlowArrow(label: "HealthKit API")
                 FlowNode(icon: "iphone", label: "Your iPhone", color: .primary)
-                FlowArrow(label: "HTTPS — your endpoint only")
+                FlowArrow(label: "HTTPS (your endpoint only)")
                 FlowNode(icon: "server.rack", label: "Your Supabase / API", color: .green)
                 FlowArrow(label: "MCP protocol")
                 FlowNode(icon: "brain", label: "Your AI agent (Claude, etc.)", color: .blue)

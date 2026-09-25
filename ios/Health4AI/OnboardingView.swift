@@ -40,7 +40,7 @@ private struct WelcomeStep: View {
                 // Names Supabase and the time cost up front. Onboarding used to run three
                 // screens without once saying what the app actually needs, then land the
                 // user on Home reading "Not connected" with nothing pointing anywhere.
-                Text("Sync HealthKit to a Supabase project you own, then query it with any AI. You’ll need a free Supabase account — setup takes about five minutes.")
+                Text("Sync HealthKit to a Supabase project you own, then query it with any AI. You’ll need a free Supabase account, and setup takes about five minutes.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -97,10 +97,10 @@ private struct PrivacyStep: View {
             }
             .padding(.horizontal, 48)
             VStack(alignment: .leading, spacing: 10) {
-                PrivacyBullet(text: "No export files — ever")
+                PrivacyBullet(text: "No export files, ever")
                 PrivacyBullet(text: "Your own database and account")
                 PrivacyBullet(text: "No analytics or crash reporting")
-                PrivacyBullet(text: "Open source — audit every line")
+                PrivacyBullet(text: "Open source: audit every line")
                 PrivacyBullet(text: "You choose whether an AI runs locally or in the cloud")
             }
             .padding(.horizontal, 32)

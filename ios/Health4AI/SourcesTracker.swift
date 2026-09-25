@@ -1,5 +1,6 @@
 import Foundation
 import HealthKit
+import os
 
 // MARK: - HealthSourceInfo
 
@@ -23,6 +24,8 @@ struct HealthSourceInfo: Codable, Equatable {
 final class SourcesTracker: @unchecked Sendable {
     static let shared = SourcesTracker()
 
+    private static let logger = Logger(subsystem: "com.jglittell.health4ai", category: "SourcesTracker")
+
     private let lock = NSLock()
     private var sources: [String: HealthSourceInfo]
     private let fileURL: URL
@@ -33,11 +36,17 @@ final class SourcesTracker: @unchecked Sendable {
         self.sources = Self.load(from: fileURL)
     }
 
+    /// See `SyncHistoryStore.load` for why a missing file is silent and a corrupt one is not.
     private static func load(from url: URL) -> [String: HealthSourceInfo] {
         guard let data = try? Data(contentsOf: url) else { return [:] }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode([String: HealthSourceInfo].self, from: data)) ?? [:]
+        do {
+            return try decoder.decode([String: HealthSourceInfo].self, from: data)
+        } catch {
+            logger.error("Corrupt sources.json, resetting to empty: \(error.localizedDescription, privacy: .public)")
+            return [:]
+        }
     }
 
     /// Called only while `lock` is held.

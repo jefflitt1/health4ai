@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 // MARK: - SyncTrigger
 
@@ -15,11 +16,11 @@ enum SyncTrigger: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .launch:             return "App launch"
-        case .foreground:         return "Foreground"
-        case .backgroundDelivery: return "Background delivery"
-        case .backgroundTask:     return "Background refresh"
-        case .manual:             return "Sync Now"
+        case .launch:             return "When you opened the app"
+        case .foreground:         return "When you opened the app"
+        case .backgroundDelivery: return "Automatic, app closed"
+        case .backgroundTask:     return "Scheduled, app closed"
+        case .manual:             return "You tapped Sync Now"
         case .importHistory:     return "History import"
         }
     }
@@ -81,6 +82,8 @@ final class SyncHistoryStore: @unchecked Sendable {
     /// diagnostic tail, not an audit log.
     static let cap = 50
 
+    private static let logger = Logger(subsystem: "com.jglittell.health4ai", category: "SyncHistoryStore")
+
     private let lock = NSLock()
     private var entries: [SyncHistoryEntry]
     private let fileURL: URL
@@ -100,11 +103,22 @@ final class SyncHistoryStore: @unchecked Sendable {
         return dir
     }
 
+    /// A missing file (first launch, nothing ever written) is normal and logs nothing.
+    /// A PRESENT file that fails to decode is corruption, and silently resetting to an
+    /// empty log without a trace was a real gap — nothing pointed at why history had
+    /// vanished. Logged via os.Logger, not print(): print output is not retrievable from
+    /// a device after the fact, and this is exactly the kind of report-worthy state a
+    /// field diagnosis needs.
     private static func load(from url: URL) -> [SyncHistoryEntry] {
         guard let data = try? Data(contentsOf: url) else { return [] }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode([SyncHistoryEntry].self, from: data)) ?? []
+        do {
+            return try decoder.decode([SyncHistoryEntry].self, from: data)
+        } catch {
+            logger.error("Corrupt sync-history.json, resetting to empty: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
     }
 
     /// Called only while `lock` is held.
