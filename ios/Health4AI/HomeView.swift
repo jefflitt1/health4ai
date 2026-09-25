@@ -101,12 +101,27 @@ struct HomeView: View {
                 ScrollView {
                     VStack(spacing: 20) {
                         statusCard
-                        scopeCard
-                        mcpCard
-                        healthAccessCard
-                        backfillCard
-                            .id(Self.backfillCardID)
-                        actionsCard
+                        // Testers found several interconnected options (sync now / import /
+                        // resume) confusing before the first sync ever finished. Before that
+                        // point, Import History IS the one primary action — it is what
+                        // actually gets data flowing — so everything else moves under
+                        // Advanced rather than competing with it. Nothing is removed: the
+                        // same cards render, just re-homed, and the moment a sync completes
+                        // this reverts to the original always-expanded layout.
+                        if hasSyncedOnce {
+                            scopeCard
+                            mcpCard
+                            healthAccessCard
+                            backfillCard
+                                .id(Self.backfillCardID)
+                            actionsCard
+                        } else {
+                            healthAccessCard
+                            backfillCard
+                                .id(Self.backfillCardID)
+                            advancedDisclosure
+                        }
+                        moreCard
                     }
                     .padding()
                 }
@@ -141,6 +156,79 @@ struct HomeView: View {
 
     private static let backfillCardID = "backfillCard"
 
+    /// True once ANY sync has actually landed. Not `backfillCompleted`: a user who has never
+    /// finished the history import but whose live sync has already posted once has moved past
+    /// the "which button do I even press" confusion this simplification exists for.
+    private var hasSyncedOnce: Bool { syncState.lastSyncDate != nil }
+
+    // MARK: - Advanced (pre-first-sync only)
+
+    /// Everything the simplified pre-first-sync Home hides: metric scope, the "Ask any AI"
+    /// card, and Sync Now / Resume / Start Over. All still fully reachable, one tap away —
+    /// "move into an Advanced disclosure", not "remove any capability".
+    private var advancedDisclosure: some View {
+        DisclosureGroup("Advanced") {
+            VStack(spacing: 20) {
+                scopeCard
+                mcpCard
+                actionsCard
+            }
+            .padding(.top, 12)
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    // MARK: - More (Sync History / Your Sources)
+
+    private var moreCard: some View {
+        VStack(spacing: 0) {
+            // `.buttonStyle(.plain)` on each link: outside a List, NavigationLink otherwise
+            // tints its ENTIRE label content — icon and title both — system blue regardless
+            // of an explicit `.foregroundStyle(.primary)` on the Text inside it, which is
+            // exactly what made this row look like the disabled-Button mis-tint design.md
+            // already warns about elsewhere in this file, just via a different control.
+            NavigationLink {
+                SyncHistoryView()
+            } label: {
+                HStack {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .frame(width: 28)
+                        .foregroundStyle(.primary)
+                    Text("Sync History").foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding()
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Divider().padding(.leading, 44)
+            NavigationLink {
+                SourcesView()
+            } label: {
+                HStack {
+                    Image(systemName: "list.bullet.rectangle")
+                        .frame(width: 28)
+                        .foregroundStyle(.primary)
+                    Text("Your Sources").foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding()
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
     // MARK: - Status card
 
     private var statusCard: some View {
@@ -164,7 +252,7 @@ struct HomeView: View {
             Divider()
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Last sync")
+                    Text("Last synced")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(syncState.formattedLastSync)
@@ -695,7 +783,7 @@ struct HomeView: View {
     private var actionsCard: some View {
         VStack(spacing: 0) {
             Button {
-                SyncEngine.shared.performForegroundSync()
+                SyncEngine.shared.performForegroundSync(trigger: .manual)
             } label: {
                 HStack {
                     Image(systemName: "arrow.clockwise")
