@@ -312,7 +312,7 @@ struct ConnectionView: View {
         case nil:                 ingestState = .unknown
         }
         return [
-            ChecklistItem(title: "Project URL looks right (https://…supabase.co)",
+            ChecklistItem(title: "Project URL looks right",
                           state: urlValid ? .ok : .notYet),
             ChecklistItem(title: "Anon key entered", state: anonKeyPresent ? .ok : .notYet),
             ChecklistItem(title: "Signed in", state: syncState.isAuthenticated ? .ok : .notYet),
@@ -343,7 +343,7 @@ struct ConnectionView: View {
         } header: {
             Text("Setup Checklist")
         } footer: {
-            Text("Ingest function reachable turns green after you tap Test Connection below. It never sends your health data, only a ping.")
+            Text("The Project URL looks like https://your-project.supabase.co. Ingest function reachable turns green after you tap Test Connection below. It never sends your health data, only a ping.")
         }
     }
 

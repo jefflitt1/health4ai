@@ -296,8 +296,8 @@ final class SyncState: ObservableObject {
         }
         // Screenshot state for the design gate: signed in, data flowing, server without merged
         // hours. The real state needs a keychain session and an old server, which a simulator
-        // does not have. DEBUG builds only, launch argument only, and nothing is persisted:
-        // didSet does not fire during init. Xcode Cloud archives Release, which never compiles it.
+        // does not have. DEBUG builds only, launch argument only. Apart from the scope key
+        // written just above, nothing is persisted: didSet does not fire during init. Xcode Cloud archives Release, which never compiles it.
         if ProcessInfo.processInfo.arguments.contains("-h4aiScreenshotServerUpdateNeeded") {
             self.isAuthenticated = true
             self.lifetimeSyncedRecords = max(self.lifetimeSyncedRecords, 1)
