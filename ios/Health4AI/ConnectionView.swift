@@ -20,8 +20,10 @@ struct ConnectionView: View {
                 configSection
                 authSection
                 historySection
-                privacySection
+                checklistSection
                 testSection
+                aiSection
+                privacySection
             }
             .navigationTitle("Connection")
             .navigationBarTitleDisplayMode(.large)
@@ -237,6 +239,91 @@ struct ConnectionView: View {
             Text("Device Privacy")
         } footer: {
             Text("Use before giving this device to someone else. Your database is never shared automatically.")
+        }
+    }
+
+    // MARK: - Setup checklist
+    //
+    // Validates each setup step with a clear success state, reusing the existing Test
+    // Connection / capability check rather than adding a second network call — it never
+    // sends data on its own. "Ingest function reachable" only turns green once the user has
+    // actually pressed Test Connection this session; showing it green from a stale prior
+    // result would misreport the CURRENT configuration if the URL or key changed since.
+
+    private struct ChecklistItem: Identifiable {
+        enum State { case ok, notYet, unknown }
+        let id = UUID()
+        let title: String
+        let state: State
+
+        var symbol: String {
+            switch state {
+            case .ok:      return "checkmark.circle.fill"
+            case .notYet:  return "circle"
+            case .unknown: return "questionmark.circle"
+            }
+        }
+        var tint: Color {
+            switch state {
+            case .ok:      return .green
+            case .notYet:  return .secondary
+            case .unknown: return .secondary
+            }
+        }
+    }
+
+    private var checklistItems: [ChecklistItem] {
+        let trimmedURL = syncState.supabaseProjectURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let urlValid = URL(string: trimmedURL)?.scheme == "https" && !trimmedURL.isEmpty
+        let keyPresent = !(CredentialKeychain.load(forKey: "hkb.supabaseAnonKey") ?? "").isEmpty
+        let ingestState: ChecklistItem.State
+        switch testResult?.kind {
+        case .ok:                 ingestState = .ok
+        case .info, .failure:     ingestState = .notYet
+        case nil:                 ingestState = .unknown
+        }
+        return [
+            ChecklistItem(title: "Project URL looks right (https://…supabase.co)",
+                          state: urlValid ? .ok : .notYet),
+            ChecklistItem(title: "Anon key entered", state: keyPresent ? .ok : .notYet),
+            ChecklistItem(title: "Signed in", state: syncState.isAuthenticated ? .ok : .notYet),
+            ChecklistItem(title: "Ingest function reachable", state: ingestState),
+        ]
+    }
+
+    private var checklistSection: some View {
+        Section {
+            ForEach(checklistItems) { item in
+                HStack(spacing: 10) {
+                    Image(systemName: item.symbol)
+                        .foregroundStyle(item.tint)
+                        .frame(width: 20)
+                    Text(item.title)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                }
+                .accessibilityElement(children: .combine)
+            }
+        } header: {
+            Text("Setup Checklist")
+        } footer: {
+            Text("Ingest function reachable turns green after you tap Test Connection below. It never sends your health data — only a ping.")
+        }
+    }
+
+    // MARK: - Connect your AI
+
+    private var aiSection: some View {
+        Section {
+            NavigationLink {
+                ConnectAIView().environmentObject(syncState)
+            } label: {
+                Label("Connect Your AI", systemImage: "brain")
+            }
+        } header: {
+            Text("AI Access")
+        } footer: {
+            Text("Copy-and-paste MCP configs for Claude Desktop, Claude Code, and Cursor.")
         }
     }
 

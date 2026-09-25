@@ -10,16 +10,47 @@ struct ContentView: View {
     @AppStorage("hkb.onboardingComplete") private var onboardingComplete = false
 
     var body: some View {
-        if onboardingComplete {
-            MainTabView()
-                .environmentObject(syncState)
-                .environmentObject(authManager)
-        } else {
-            OnboardingView()
-                .environmentObject(syncState)
-                .environmentObject(authManager)
+        Group {
+            #if DEBUG
+            // Design-gate screenshots only: jumps straight past onboarding and, for the new
+            // screens added in 1.0.1, straight past their own tab too, since a simulator
+            // screenshot run has no UI-automation harness to tap through to them. Same
+            // DEBUG + launch-argument gating as every other `-h4aiScreenshot…` fixture in
+            // this app; none of this compiles into Release.
+            if let screen = Self.debugDirectScreen() {
+                NavigationStack { screen }
+            } else if onboardingComplete || Self.isScreenshotRun {
+                MainTabView()
+            } else {
+                OnboardingView()
+            }
+            #else
+            if onboardingComplete {
+                MainTabView()
+            } else {
+                OnboardingView()
+            }
+            #endif
         }
+        .environmentObject(syncState)
+        .environmentObject(authManager)
     }
+
+    #if DEBUG
+    private static var isScreenshotRun: Bool {
+        ProcessInfo.processInfo.arguments.contains { $0.hasPrefix("-h4aiScreenshot") }
+    }
+
+    @MainActor
+    private static func debugDirectScreen() -> AnyView? {
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("-h4aiScreenshotSyncHistory") { return AnyView(SyncHistoryView()) }
+        if args.contains("-h4aiScreenshotSources") { return AnyView(SourcesView()) }
+        if args.contains("-h4aiScreenshotConnectAI") { return AnyView(ConnectAIView()) }
+        if args.contains("-h4aiScreenshotSetupChecklist") { return AnyView(ConnectionView()) }
+        return nil
+    }
+    #endif
 }
 
 // MARK: - Tab container
@@ -240,6 +271,10 @@ struct SignInView: View {
                 await MainActor.run {
                     syncState.isAuthenticated = true
                     syncState.userEmail = response.user.email
+                    // Not a secret (a Supabase Auth user id), and the only place ConnectAIView
+                    // can get it to prefill HEALTHKIT_USER_ID without asking the user to dig
+                    // it out of the Supabase dashboard themselves.
+                    UserDefaults.standard.set(response.user.id, forKey: "hkb.healthkitUserID")
                     isSigningIn = false
                 }
                 try? await HealthKitManager.shared.requestAuthorization()

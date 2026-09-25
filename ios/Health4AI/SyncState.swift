@@ -305,6 +305,15 @@ final class SyncState: ObservableObject {
                    "VO2 Max", "Walking + Running Distance", "Workouts"]
                 : ["Walking + Running Distance"]
         }
+        // Setup Checklist screenshot: three of four steps done (URL, key, signed in); the
+        // fourth (ingest reachable) is deliberately left `.unknown` until the user actually
+        // taps Test Connection, so this is the checklist's honest untested-fourth-step state,
+        // not a faked all-green.
+        if ProcessInfo.processInfo.arguments.contains("-h4aiScreenshotSetupChecklist") {
+            self.isAuthenticated = true
+            self.supabaseProjectURL = "https://fixture-project.supabase.co"
+            CredentialKeychain.save("eyJfixtureAnonKeyForScreenshot", forKey: "hkb.supabaseAnonKey")
+        }
         #endif
     }
 
