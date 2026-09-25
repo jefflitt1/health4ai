@@ -61,3 +61,20 @@ for (const [route, label] of [
     assert.ok(!page.includes('Join the waitlist') && !page.includes('Join waitlist'), `${route} has no waitlist CTA`);
   });
 }
+
+const PROOF_LINE = "One real database: 40 devices and apps. The biggest source isn't Apple Watch. It's Oura.";
+
+for (const [route, label] of [
+  ['', 'homepage'],
+  ['how-it-works', 'how-it-works'],
+]) {
+  test(`tracker flow section and proof line render on ${label}`, () => {
+    const page = html(route);
+    assert.ok(page.includes('id="tracker-flow"'), `${label} renders the tracker-flow section`);
+    assert.ok(page.includes('Every tracker that shares with Apple Health'), `${label} has the tracker-flow heading`);
+    assert.ok(page.includes(PROOF_LINE), `${label} renders the approved proof line`);
+    assert.ok(page.includes('Oura'), `${label} names Oura as a tracker source`);
+    assert.match(page, /WHOOP does not share Recovery or Strain/, `${label} keeps the honest footnote`);
+  });
+}
+

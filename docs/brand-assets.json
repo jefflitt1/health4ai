@@ -1,0 +1,119 @@
+{
+  "_meta": {
+    "venture": "health4ai",
+    "venture_id": "JGLV-008",
+    "display_name": "health4.ai",
+    "last_updated": "2026-09-25",
+    "maintained_by": "Sasha Kim (SS UX) / Victoria Park (Group CTO)",
+    "authority": "Jeff Littell (Group CEO)",
+    "repo_root": "ventures/health4ai/web/"
+  },
+
+  "color_tokens": {
+    "accent":       { "hex": "#ff2d78", "css_var": "--accent",       "usage": "Primary brand accent — CTAs, active states, key node borders" },
+    "accent_light": { "hex": "#ff6b9d", "css_var": "--accent-light", "usage": "Secondary accent — links, connector lines, chip text on dark" },
+    "accent_glow":  { "hex": "rgba(255, 45, 120, 0.22)", "css_var": "--accent-glow", "usage": "Existing decorative glow (CTA button pulse) — do not add new instances" },
+    "surface":      { "hex": "#0f1225", "css_var": "--surface",      "usage": "Card / node background fill on the dark page" },
+    "border":       { "hex": "rgba(255, 45, 120, 0.14)", "css_var": "--border", "usage": "Default hairline borders on cards, nodes, chips" },
+    "muted":        { "hex": "#9ba5c4", "css_var": "--muted",        "usage": "Secondary/supporting text, labels, footnotes" },
+    "page_bg":      { "hex": "#0a0c1a", "css_var": null, "usage": "Body background (set directly on <body> in Layout.astro, not a CSS var)" }
+  },
+
+  "typography": {
+    "body": {
+      "family": "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      "usage": "Set on <body> in Layout.astro; all page and component text inherits this stack"
+    },
+    "heading_weight": "800 (font-extrabold), tracking-tight",
+    "scale_note": "Tailwind v4 utility scale (text-xs through text-[3.25rem]) — no separate custom type scale file. New components should reuse existing utility classes or match their computed sizes."
+  },
+
+  "logo_rules": {
+    "source_file": "public/logo.png",
+    "delivery_component": "src/components/BrandLogo.astro",
+    "prohibited_treatments": [
+      "recolor any element of logo.png",
+      "regenerate or reproduce the logo via an AI image generator",
+      "stretch or distort proportions",
+      "add a drop shadow or outline not already produced by BrandLogo.astro"
+    ],
+    "notes": "BrandLogo.astro uses Astro's build-time image pipeline against public/logo.png to emit WebP at 32/64/96px widths. No third-party tracker/vendor logos are used anywhere on the site (design.md, TrackerFlow.astro) — sources are rendered as plain text chips."
+  },
+
+  "motion_rules": {
+    "pattern": "stroke-dasharray/stroke-dashoffset 'draw-on' animation (see .ecg-main/.ecg-glow in index.astro, .tf-flow-line in TrackerFlow.astro), plus gentle opacity/translate loops (ring-breathe, peak-pulse, float-up, glow-pulse).",
+    "reduced_motion": "Every decorative animation is disabled under prefers-reduced-motion: reduce, and every dash-offset animation resolves to stroke-dashoffset: 0 so the line stays visible rather than disappearing.",
+    "prohibited": "No staggered entrance/fade-in animation on critical above-the-fold content (design.md). No new decorative gradient glows or blurred-blob shapes (ai-tells-rubric.md T1) beyond what already exists in index.astro's hero."
+  },
+
+  "canonical_assets": [
+    {
+      "id": "h4a-logo-source",
+      "description": "Source app icon / mark, square PNG",
+      "path": "web/public/logo.png",
+      "format": "PNG",
+      "color_mode": "sRGB",
+      "dimensions_px": "1024×1024",
+      "dpi": 72,
+      "print_ready": false,
+      "svg_available": false,
+      "usage": "Source for BrandLogo.astro's build-time WebP pipeline (32/64/96px). Never referenced directly at full size."
+    },
+    {
+      "id": "h4a-tracker-flow-appstore-screenshot-2",
+      "description": "App Store 6.9\" screenshot, slot 2 — 'Every tracker that shares with Apple Health' marketing poster (full tracker-flow diagram, proof line, footnote)",
+      "path": "docs/marketing-assets/app-store/tracker-flow-screenshot-2.png",
+      "format": "PNG",
+      "color_mode": "sRGB",
+      "dimensions_px": "1290×2796",
+      "dpi": 72,
+      "print_ready": false,
+      "svg_available": false,
+      "generated_by": "Headless Chrome (Playwright, channel: chrome) render of a standalone HTML export of the TrackerFlow composition",
+      "date_added": "2026-09-25",
+      "usage": "App Store Connect screenshot upload, slot 2 (6.9\" display class). Not referenced by any website page."
+    },
+    {
+      "id": "h4a-tracker-flow-social",
+      "description": "Social share image — 'Every tracker that shares with Apple Health' condensed flow + proof line",
+      "path": "web/public/brand/tracker-flow-social.png",
+      "format": "PNG",
+      "color_mode": "sRGB",
+      "dimensions_px": "1200×630 (standard OG)",
+      "dpi": 72,
+      "print_ready": false,
+      "svg_available": false,
+      "generated_by": "Headless Chrome (Playwright, channel: chrome) render of a standalone HTML export",
+      "date_added": "2026-09-25",
+      "usage": "Available for future og:image / social-card use. Not wired into any page's <meta property=\"og:image\"> yet — the sitewide default remains https://health4.ai/logo.png (Layout.astro)."
+    }
+  ],
+
+  "component_registry": {
+    "TrackerFlow.astro": {
+      "path": "web/src/components/TrackerFlow.astro",
+      "description": "Animated inline-SVG/HTML flow diagram: many tracker brands (grouped by category) -> Apple Health -> health4ai -> your own database -> AI clients (Claude, ChatGPT, Cursor, Ollama). Text chips only, no third-party logos.",
+      "used_on": ["/ (homepage, directly below HomeHero)", "/how-it-works/ (above the setup guide)"],
+      "accessibility": "Visual diagram is aria-hidden; a sr-only <ul> describes the same flow for assistive tech. Animation (SVG stroke-dashoffset flow) is disabled under prefers-reduced-motion, with the diagram left fully visible.",
+      "approved_by": "Jeff 2026-09-25"
+    }
+  },
+
+  "audit_summary": {
+    "date": "2026-09-25",
+    "conducted_by": "Claude Code (web/tracker-visual branch), Sasha Kim UX gate",
+    "findings": [
+      {
+        "severity": "LOW",
+        "finding": "logo.png has no SVG source, matching the GrandkidsGuide finding pattern",
+        "impact": "Fine for current web/App-Store use (all raster targets); would limit large-format print",
+        "action": "No action needed unless a print use case emerges",
+        "priority": "P3"
+      }
+    ],
+    "assets_confirmed": 3,
+    "assets_with_svg": 0,
+    "print_ready_count": 0,
+    "next_review": "on next visual asset addition"
+  }
+}

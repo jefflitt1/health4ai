@@ -1,5 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import TrackerFlow from '../components/TrackerFlow.astro';
 ---
 <Layout
   title="How health4.ai works — connect your Apple Health data to any AI"
@@ -25,6 +26,8 @@ import Layout from '../layouts/Layout.astro';
       Postgres database you control, then an open-source MCP server gives any AI structured access to it.
       Your data never touches health4.ai's servers.
     </p>
+
+    <TrackerFlow />
 
     <!-- Setup guide -->
     <section class="mb-14">
