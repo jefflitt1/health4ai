@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 import UIKit
 
@@ -6,6 +7,7 @@ struct HomeView: View {
     @EnvironmentObject var syncState: SyncState
     @EnvironmentObject var tabRouter: TabRouter
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.requestReview) private var requestReview
     @State private var showMCPSetup = false
     @State private var isRequestingHealth = false
     @State private var healthAccessError: String?
@@ -155,6 +157,11 @@ struct HomeView: View {
                         .environmentObject(syncState)
                 }
                 .task { await refreshHealthPromptState() }
+                // Ask for a rating at the end of a sync the person can see succeed, not on a
+                // cold launch where they may have opened the app to do something else.
+                .onChange(of: syncState.lastSyncDate) { _, _ in
+                    if scenePhase == .active { requestReviewIfEarned() }
+                }
                 .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { tick = $0 }
                 .onChange(of: scenePhase) { _, phase in
                     // Coming back from Settings or the Health app can change access.
@@ -172,6 +179,37 @@ struct HomeView: View {
     /// finished the history import but whose live sync has already posted once has moved past
     /// the "which button do I even press" confusion this simplification exists for.
     private var hasSyncedOnce: Bool { syncState.lastSyncDate != nil }
+
+    /// The orange "Partial data" / "Update needed" conditions the status card warns about.
+    /// Shared with `requestReviewIfEarned` so a rating is never asked for while one shows.
+    private var hasStatusWarning: Bool {
+        !syncState.emptyExpectedMetricNames.isEmpty
+            || syncState.serverLacksMergedHours
+            || !syncState.backgroundDeliveryFailedTypes.isEmpty
+    }
+
+    private static let reviewRequestedVersionKey = "reviewRequestedForVersion"
+
+    /// Asks for an App Store rating at most once per app version, and only once the sync
+    /// history shows the app working for this person (`showsSustainedSuccess`) with nothing
+    /// currently wrong on screen. iOS itself further caps the prompt at three a year and may
+    /// show nothing; that is expected, so the version is recorded either way.
+    private func requestReviewIfEarned() {
+        guard hasSyncedOnce,
+              syncState.connectionHealth == .connected,
+              !hasStatusWarning,
+              !needsHealthPrompt,
+              !syncState.isSyncing,
+              !syncState.isBackfilling,
+              syncState.syncError == nil,
+              syncState.importFailedMetricNames.isEmpty,
+              SyncHistoryStore.shared.showsSustainedSuccess() else { return }
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        let defaults = UserDefaults.standard
+        guard defaults.string(forKey: Self.reviewRequestedVersionKey) != version else { return }
+        defaults.set(version, forKey: Self.reviewRequestedVersionKey)
+        requestReview()
+    }
 
     // MARK: - Connect prompt (not signed in, pre-first-sync only)
 
@@ -456,10 +494,7 @@ struct HomeView: View {
             // In a warning state the label's own symbol already says it in orange; a second orange
             // symbol in the same card repeats one fact twice. Healthy, stalled and disconnected
             // keep the status colour, where the antenna is the only symbol saying it.
-            let isWarning = syncState.connectionHealth == .connected
-                && (!syncState.emptyExpectedMetricNames.isEmpty
-                    || syncState.serverLacksMergedHours
-                    || !syncState.backgroundDeliveryFailedTypes.isEmpty)
+            let isWarning = syncState.connectionHealth == .connected && hasStatusWarning
             Image(systemName: syncState.connectionHealth == .disconnected
                   ? "antenna.radiowaves.left.and.right.slash"
                   : "antenna.radiowaves.left.and.right")

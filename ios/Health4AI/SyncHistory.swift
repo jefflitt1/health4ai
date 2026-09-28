@@ -153,6 +153,18 @@ final class SyncHistoryStore: @unchecked Sendable {
         return entries.first
     }
 
+    /// Whether the history shows someone for whom the app is plainly working, which is the
+    /// only moment worth asking for an App Store rating: at least 5 successful runs that
+    /// actually sent data, spread over at least 3 calendar days, and the latest run not a
+    /// failure. Asking right after setup, or while something is broken, invites a bad review.
+    func showsSustainedSuccess(calendar: Calendar = .current) -> Bool {
+        let snapshot = all()
+        guard let latest = snapshot.first, latest.success else { return false }
+        let good = snapshot.filter { $0.success && $0.totalCount > 0 }
+        let days = Set(good.map { calendar.startOfDay(for: $0.date) })
+        return good.count >= 5 && days.count >= 3
+    }
+
     #if DEBUG
     /// Screenshot fixture only. Launch-argument gated and DEBUG-only, matching the pattern in
     /// `SyncState.init` — Xcode Cloud archives Release, which never compiles this.
