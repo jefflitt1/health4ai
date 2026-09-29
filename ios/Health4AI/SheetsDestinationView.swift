@@ -192,6 +192,19 @@ struct SheetsConnectSection: View {
         case .healthAccess:
             syncState.sheetsNeedsAttention = nil
             SyncEngine.shared.performForegroundSync(trigger: .manual)
+        case .healthPermission:
+            working = true
+            errorText = nil
+            Task { @MainActor in
+                defer { working = false }
+                do {
+                    try await HealthKitManager.shared.requestAuthorization(adding: DailySummaryBuilder.readTypes)
+                    syncState.sheetsNeedsAttention = nil
+                    SyncEngine.shared.performForegroundSync(trigger: .manual)
+                } catch {
+                    errorText = error.localizedDescription
+                }
+            }
         }
     }
 
@@ -201,7 +214,7 @@ struct SheetsConnectSection: View {
         Task { @MainActor in
             defer { working = false }
             do {
-                try await HealthKitManager.shared.requestAuthorization()
+                try await HealthKitManager.shared.requestAuthorization(adding: DailySummaryBuilder.readTypes)
                 try await coordinator.signIn()
                 if !keepSheet { SheetsDestinationState.clear() }
                 syncState.sheetsNeedsAttention = nil
@@ -284,7 +297,7 @@ struct SheetsHomeCard: View {
 // MARK: - Screenshot fixture (DEBUG only)
 
 /// Design-gate screenshots of the Sheets states. `-h4aiScreenshotSheets <state>` where state
-/// is connected | attention | nohealth | missing | disconnected. Same DEBUG + launch-argument
+/// is connected | attention | nohealth | permission | missing | disconnected. Same DEBUG + launch-argument
 /// gating as the app's other `-h4aiScreenshot…` fixtures; none of this compiles into Release.
 /// There is no Google token in a simulator run, so no sync ever overwrites the fixture.
 enum SheetsScreenshotFixture {
@@ -311,6 +324,10 @@ enum SheetsScreenshotFixture {
             SheetsDestinationState.clear()
             syncState.isAuthenticated = true
             syncState.sheetsNeedsAttention = .healthAccess
+        case "permission":
+            sheet.save()
+            syncState.isAuthenticated = true
+            syncState.sheetsNeedsAttention = .healthPermission
         case "missing":
             SheetsDestinationState.clear()
             syncState.isAuthenticated = true

@@ -218,11 +218,14 @@ final class HealthKitManager {
     ///
     /// The scope is persisted only after the request succeeds: a failed request must not
     /// leave SyncEngine querying a scope the user never actually authorized.
-    func requestAuthorization(scope: DataScope = HealthKitManager.selectedScope) async throws {
+    /// `adding` is for a destination that reads types outside the scope (the Sheets daily
+    /// summary reads stand hours, for one).
+    func requestAuthorization(scope: DataScope = HealthKitManager.selectedScope,
+                              adding extra: Set<HKSampleType> = []) async throws {
         guard HKHealthStore.isHealthDataAvailable() else {
             throw HKError(.errorHealthDataUnavailable)
         }
-        let readTypes = Self.sampleTypes(for: scope)
+        let readTypes = Self.sampleTypes(for: scope).union(extra)
         try await store.requestAuthorization(toShare: [], read: readTypes)
         UserDefaults.standard.set(scope.rawValue, forKey: DataScope.storageKey)
     }

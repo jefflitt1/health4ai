@@ -58,6 +58,20 @@ enum SheetLayout {
 }
 
 final class DailySummaryBuilder {
+    /// Every type this builder queries. HealthKit THROWS "Authorization not determined" for a
+    /// type the app never asked about (it only hides a DENIED read as empty), so the Sheets
+    /// connect flow requests this set on top of the chosen scope, and SheetsSink checks it
+    /// before a pass. Stand hours are in neither scope, which is how build 54 failed.
+    static let readTypes: Set<HKSampleType> = [
+        HKQuantityType(.stepCount), HKQuantityType(.distanceWalkingRunning),
+        HKQuantityType(.activeEnergyBurned), HKQuantityType(.appleExerciseTime),
+        HKQuantityType(.flightsClimbed), HKQuantityType(.restingHeartRate),
+        HKQuantityType(.heartRate), HKQuantityType(.heartRateVariabilitySDNN),
+        HKQuantityType(.bodyMass), HKQuantityType(.vo2Max),
+        HKCategoryType(.appleStandHour), HKCategoryType(.sleepAnalysis),
+        HKWorkoutType.workoutType()
+    ]
+
     private let store: HKHealthStore
     private let calendar: Calendar
 
@@ -169,6 +183,7 @@ final class DailySummaryBuilder {
 
     private func collection(_ id: HKQuantityTypeIdentifier, _ options: HKStatisticsOptions,
                             _ start: Date, _ end: Date) async throws -> HKStatisticsCollection {
+        assert(Self.readTypes.contains(HKQuantityType(id)), "\(id.rawValue) missing from readTypes")
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end)
         let descriptor = HKStatisticsCollectionQueryDescriptor(
             predicate: .quantitySample(type: HKQuantityType(id), predicate: predicate),
@@ -186,6 +201,7 @@ final class DailySummaryBuilder {
     }
 
     private func standHours(_ start: Date, _ end: Date) async throws -> [String: Int] {
+        assert(Self.readTypes.contains(HKCategoryType(.appleStandHour)), "appleStandHour missing from readTypes")
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end)
         let d = HKSampleQueryDescriptor(predicates: [.categorySample(type: HKCategoryType(.appleStandHour), predicate: predicate)],
                                         sortDescriptors: [])

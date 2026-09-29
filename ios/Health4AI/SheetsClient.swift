@@ -11,6 +11,9 @@ enum SheetsError: LocalizedError {
     /// result, so this is usually missing Health access, not an empty history; treating it as
     /// success is how this app once showed a green "Complete" for three months with no data.
     case noHealthData
+    /// iOS has never been asked for some type the daily summary reads. Unlike a denial this
+    /// makes HealthKit throw, so it gets its own fix: ask, then sync.
+    case healthNotAsked
     case http(status: Int, detail: String)
     case badResponse
 
@@ -18,6 +21,7 @@ enum SheetsError: LocalizedError {
         switch self {
         case .spreadsheetMissing: return "Your health4ai sheet was deleted or moved out of reach."
         case .noHealthData: return "No health data found to add to your sheet."
+        case .healthNotAsked: return "health4ai has not yet asked for all the Health data your sheet uses."
         case .http(let status, _): return "Google Sheets returned an error (HTTP \(status))."
         case .badResponse: return "Google Sheets returned an unexpected response."
         }

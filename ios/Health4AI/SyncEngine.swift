@@ -487,12 +487,29 @@ final class SyncEngine {
 
     // MARK: - Google Sheets pass
 
+    /// The Health prompt can be answered while a pass is running; the resolve button's own
+    /// sync is then skipped as in-flight, and this pass fails on the check made before the
+    /// answer. One retry inside the same pass, with the in-flight flag still held, so no
+    /// second pass races this one and a stale "Allow Health access" is never re-raised
+    /// (Reviewboard + Codex, 2026-09-28).
+    private func runSheetsSink() async throws -> SheetsPassResult {
+        let sink = SheetsSink(store: hkManager.store)
+        do {
+            return try await sink.run()
+        } catch SheetsError.healthNotAsked {
+            let status = try await hkManager.store.statusForAuthorizationRequest(
+                toShare: [], read: DailySummaryBuilder.readTypes)
+            guard status == .unnecessary else { throw SheetsError.healthNotAsked }
+            return try await sink.run()
+        }
+    }
+
     /// Runs SheetsSink with the in-flight flag already claimed by runFullPass. Outcomes are
     /// published exactly like the database pass, so Home, Sync History and the review
     /// prompt's success history all read the same way in both modes.
     private func runSheetsPass(trigger: SyncTrigger) async -> FullPassOutcome {
         do {
-            let result = try await SheetsSink(store: hkManager.store).run()
+            let result = try await runSheetsSink()
             await MainActor.run {
                 Self.fullSyncInFlight = false
                 self.syncState.sheetsNeedsAttention = nil
