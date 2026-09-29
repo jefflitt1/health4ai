@@ -23,13 +23,21 @@ struct ConnectionView: View {
     var body: some View {
         NavigationStack {
             List {
-                checklistSection
-                configSection
-                authSection
-                historySection
-                testSection
-                aiSection
-                privacySection
+                if SheetsFeature.isAvailable {
+                    DestinationPickerSection()
+                }
+                if syncState.connectionType == .googleSheets {
+                    SheetsConnectSection()
+                    privacySection
+                } else {
+                    checklistSection
+                    configSection
+                    authSection
+                    historySection
+                    testSection
+                    aiSection
+                    privacySection
+                }
             }
             .navigationTitle("Connection")
             .navigationBarTitleDisplayMode(.large)
@@ -129,6 +137,9 @@ struct ConnectionView: View {
             // Unreachable: SyncState.init coerces a stored `.rest` back to `.supabase`.
             // The case stays only to keep the switch exhaustive.
             supabaseConfigSection
+        case .googleSheets:
+            // Unreachable: the body shows SheetsConnectSection instead in Sheets mode.
+            EmptyView()
         }
     }
 
@@ -258,7 +269,9 @@ struct ConnectionView: View {
         } header: {
             Text("Device Privacy")
         } footer: {
-            Text("Use before giving this device to someone else. Your database is never shared automatically.")
+            Text(syncState.connectionType == .googleSheets
+                 ? "Use before giving this device to someone else. This removes your Google connection from this device. Your sheet stays in your Drive."
+                 : "Use before giving this device to someone else. Your database is never shared automatically.")
         }
     }
 

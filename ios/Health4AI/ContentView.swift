@@ -59,6 +59,10 @@ struct ContentView: View {
         if args.contains("-h4aiScreenshotSources") { return AnyView(SourcesView()) }
         if args.contains("-h4aiScreenshotConnectAI") { return AnyView(ConnectAIView()) }
         if args.contains("-h4aiScreenshotSetupChecklist") { return AnyView(ConnectionView()) }
+        if args.contains("-h4aiScreenshotSheetsConnect") { return AnyView(ConnectionView()) }
+        // At accessibility sizes the Sheets section sits below the fold of the full
+        // Connection screen, and simctl cannot scroll; this shows the section on its own.
+        if args.contains("-h4aiScreenshotSheetsSection") { return AnyView(List { SheetsConnectSection() }) }
         return nil
     }
     #endif
@@ -109,6 +113,7 @@ enum CredentialKeychain {
         "hkb.supabaseAnonKey",
         "hkb.restBearerToken",
         "hkb.restApiKeyValue",
+        "hkb.googleRefreshToken",
     ]
 
     static func save(_ value: String, forKey key: String) {

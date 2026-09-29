@@ -307,6 +307,14 @@ final class SyncEngine {
                     let trigger: SyncTrigger = await MainActor.run {
                         UIApplication.shared.applicationState == .background ? .backgroundDelivery : .foreground
                     }
+                    if await MainActor.run(body: { self.syncState.connectionType == .googleSheets }) {
+                        // Sheets mode has no per-type upload: the pass rebuilds recent days
+                        // from HealthKit. Concurrent observers collapse to one pass via the
+                        // in-flight guard in runFullPass.
+                        await self.runFullPass(trigger: trigger)
+                        completionHandler()
+                        return
+                    }
                     do {
                         let count = try await self.syncType(sampleType)
                         if count > 0 {
@@ -355,6 +363,11 @@ final class SyncEngine {
             Task {
                 let trigger: SyncTrigger = await MainActor.run {
                     UIApplication.shared.applicationState == .background ? .backgroundDelivery : .foreground
+                }
+                if await MainActor.run(body: { self.syncState.connectionType == .googleSheets }) {
+                    await self.runFullPass(trigger: trigger)
+                    completionHandler()
+                    return
                 }
                 do {
                     let count = try await self.syncType(workoutType)
@@ -413,6 +426,10 @@ final class SyncEngine {
         }
         guard claimed else { return .skipped }
 
+        if await MainActor.run(body: { self.syncState.connectionType == .googleSheets }) {
+            return await runSheetsPass(trigger: trigger)
+        }
+
         do {
             let outcome = try await performFullSync()
             // The JSON encode + atomic file write inside SyncHistoryStore.record should not
@@ -464,6 +481,52 @@ final class SyncEngine {
             SyncHistoryStore.shared.record(SyncHistoryEntry(
                 trigger: trigger, counts: [:], success: false,
                 errorText: error.localizedDescription))
+            return .failed
+        }
+    }
+
+    // MARK: - Google Sheets pass
+
+    /// Runs SheetsSink with the in-flight flag already claimed by runFullPass. Outcomes are
+    /// published exactly like the database pass, so Home, Sync History and the review
+    /// prompt's success history all read the same way in both modes.
+    private func runSheetsPass(trigger: SyncTrigger) async -> FullPassOutcome {
+        do {
+            let result = try await SheetsSink(store: hkManager.store).run()
+            await MainActor.run {
+                Self.fullSyncInFlight = false
+                self.syncState.sheetsNeedsAttention = nil
+                self.syncState.recordSyncComplete(count: result.daysWritten)
+                self.scheduleBackgroundSync()
+            }
+            var counts = ["Days written to your sheet": result.daysWritten]
+            if result.workoutsAdded > 0 { counts["Workouts added"] = result.workoutsAdded }
+            SyncHistoryStore.shared.record(SyncHistoryEntry(trigger: trigger, counts: counts, success: true))
+            return .succeeded
+        } catch is CancellationError {
+            await MainActor.run {
+                Self.fullSyncInFlight = false
+                self.syncState.recordSyncCancelled()
+                self.scheduleBackgroundSync()
+            }
+            return .failed
+        } catch {
+            // Problems only the person can fix get ONE owner: the "needs attention" state,
+            // which Home and the Sheets card show once, with its own action. They are not
+            // also recorded as a sync error, which would repeat the words in red.
+            let attention = SheetsAttention.from(error)
+            await MainActor.run {
+                Self.fullSyncInFlight = false
+                if let attention {
+                    self.syncState.sheetsNeedsAttention = attention
+                    self.syncState.isSyncing = false
+                } else {
+                    self.syncState.recordSyncError(error.localizedDescription)
+                }
+                self.scheduleBackgroundSync()
+            }
+            SyncHistoryStore.shared.record(SyncHistoryEntry(
+                trigger: trigger, counts: [:], success: false, errorText: error.localizedDescription))
             return .failed
         }
     }

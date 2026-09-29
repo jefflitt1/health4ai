@@ -116,7 +116,12 @@ struct HomeView: View {
                         // one action that matters. Nothing is removed: the same cards render,
                         // just re-homed, and the moment a sync completes this reverts to the
                         // original always-expanded layout.
-                        if hasSyncedOnce {
+                        if syncState.connectionType == .googleSheets && syncState.isAuthenticated {
+                            // Sheets mode: none of the database cards (import, MCP, scope,
+                            // server actions) apply. Health access still does.
+                            SheetsHomeCard()
+                            healthAccessCard
+                        } else if hasSyncedOnce {
                             scopeCard
                             mcpCard
                             healthAccessCard
@@ -202,6 +207,7 @@ struct HomeView: View {
               !syncState.isSyncing,
               !syncState.isBackfilling,
               syncState.syncError == nil,
+              syncState.sheetsNeedsAttention == nil,
               syncState.importFailedMetricNames.isEmpty,
               SyncHistoryStore.shared.showsSustainedSuccess() else { return }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
@@ -218,15 +224,18 @@ struct HomeView: View {
     /// is the one primary action, and it leads straight to where that action lives.
     private var connectDatabaseCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Connect Your Database", systemImage: "server.rack")
+            Label(SheetsFeature.isAvailable ? "Choose Where Your Data Goes" : "Connect Your Database",
+                  systemImage: SheetsFeature.isAvailable ? "square.and.arrow.down" : "server.rack")
                 .font(.headline)
-            Text("health4ai syncs your health data to a Supabase project you own. Connect yours to start syncing.")
+            Text(SheetsFeature.isAvailable
+                 ? "Save to a Google Sheet in your own Drive (easiest), or to a database you run."
+                 : "health4ai syncs your health data to a Supabase project you own. Connect yours to start syncing.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button {
                 tabRouter.selectedTab = 1
             } label: {
-                Text("Connect your database")
+                Text(SheetsFeature.isAvailable ? "Get started" : "Connect your database")
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
@@ -388,6 +397,9 @@ struct HomeView: View {
     private var statusColor: Color {
         if syncState.isSyncing { return .blue }
         if syncState.syncError != nil { return .red }
+        // Sheets mode: one signal for a problem only the person can fix. The Sheets card
+        // carries the message and the action; this headline only says it needs attention.
+        if syncState.sheetsNeedsAttention != nil { return .orange }
         // Metrics known to be missing outrank a healthy connection: the transport can be
         // fine while the data is not arriving, and the headline must not read green while
         // the app already knows core metrics returned nothing.
@@ -419,6 +431,14 @@ struct HomeView: View {
             Label(error, systemImage: "exclamationmark.circle.fill")
                 .font(.caption)
                 .foregroundStyle(statusColor)
+        } else if syncState.sheetsNeedsAttention != nil {
+            // Colour on the symbol only: orange headline text is 2.31:1 (design.md rule 1).
+            Label {
+                Text("Needs attention").foregroundStyle(.primary)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(statusColor)
+            }
+            .font(.title3.weight(.semibold))
         } else {
             let missingCount = syncState.emptyExpectedMetricNames.count
             let isPartial = missingCount > 0 && syncState.connectionHealth == .connected

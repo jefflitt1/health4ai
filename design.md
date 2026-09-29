@@ -48,8 +48,12 @@ and increased-contrast for free.
 
 `statusColor` in `HomeView.swift` is the one place that maps state to colour. The status
 card's icon and border read from it; its title and caption stay `.primary` and `.secondary`
-(rule 1 above). Precedence, highest first: syncing → error → **partial data** →
-**server update needed** → **background sync unavailable** → connection health. Partial data,
+(rule 1 above). Precedence, highest first: syncing → error → **Sheets needs attention** →
+**partial data** → **server update needed** → **background sync unavailable** → connection
+health. Sheets needs attention (Google access removed, sheet missing, no Health data readable)
+is a problem only the person can fix. It is never also recorded as `syncError`. The status card
+shows only the headline "Needs attention" with an orange icon and border, and the Google Sheet
+card owns the message and the one action that resolves it. Partial data,
 server update needed and background sync unavailable are shown, and coloured, only while the
 connection is healthy. Background sync unavailable means `enableBackgroundDelivery` failed for
 at least one type on this device; the app still syncs on every open, so it is attention, not

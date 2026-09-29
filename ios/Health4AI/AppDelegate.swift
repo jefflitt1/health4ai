@@ -26,6 +26,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // gated, DEBUG-only — Xcode Cloud archives Release, which never compiles this branch.
         SyncHistoryStore.shared.seedForScreenshotsIfNeeded()
         SourcesTracker.shared.seedForScreenshotsIfNeeded()
+        MainActor.assumeIsolated { SheetsScreenshotFixture.applyIfRequested(SyncEngine.sharedSyncState) }
         #endif
         Task { @MainActor in
             self.reconnectIfAuthenticated(trigger: .launch)
@@ -35,8 +36,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         Task { @MainActor in
-            let authManager = SyncEngine.sharedAuthManager
-            if authManager.isSignedIn {
+            if Self.destinationConnected {
                 SyncEngine.shared.performForegroundSync(trigger: .foreground)
             }
         }
@@ -45,6 +45,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func applicationDidEnterBackground(_ application: UIApplication) {
         Task { @MainActor in
             SyncEngine.shared.scheduleBackgroundSync()
+            // The history import uploads to the database; Sheets mode has its own sweep.
+            guard !Self.isSheetsMode else { return }
             BulkExportManager.shared.requestBackgroundTime()
             BulkExportManager.shared.scheduleBackgroundBackfill()
         }
@@ -58,8 +60,26 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     // MARK: - Private helpers
 
+    /// Sheets mode: the destination is the person's Google Sheet, not a database.
+    @MainActor
+    private static var isSheetsMode: Bool { SyncEngine.sharedSyncState.connectionType == .googleSheets }
+
+    /// Whether the chosen destination can receive data: a Google sign-in in Sheets mode,
+    /// the Supabase session otherwise (unchanged for every existing install).
+    @MainActor
+    private static var destinationConnected: Bool {
+        isSheetsMode ? GoogleTokenStore.shared.isSignedIn : SyncEngine.sharedAuthManager.isSignedIn
+    }
+
     @MainActor
     private func reconnectIfAuthenticated(trigger: SyncTrigger) {
+        if Self.isSheetsMode {
+            guard GoogleTokenStore.shared.isSignedIn, HKHealthStore.isHealthDataAvailable() else { return }
+            SyncEngine.sharedSyncState.isAuthenticated = true
+            SyncEngine.shared.startObserving()
+            SyncEngine.shared.performForegroundSync(trigger: trigger)
+            return
+        }
         let authManager = SyncEngine.sharedAuthManager
         guard authManager.isSignedIn else { return }
 
