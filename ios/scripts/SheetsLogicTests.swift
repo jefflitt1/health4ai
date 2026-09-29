@@ -1,0 +1,79 @@
+import Foundation
+
+// Off-device tests for Health4AI/SheetsLogic.swift. Run: ios/scripts/test_sheets_logic.sh
+// There is no Xcode test target yet, so this compiles the pure file plus these checks into
+// a macOS executable. Every check must fail against a deliberately broken implementation
+// (the script's --mutants mode proves it) or it is not guarding anything.
+
+var failures = 0
+func check(_ ok: Bool, _ name: String) {
+    print(ok ? "PASS \(name)" : "FAIL \(name)")
+    if !ok { failures += 1 }
+}
+
+var ny = Calendar(identifier: .gregorian)
+ny.timeZone = TimeZone(identifier: "America/New_York")!
+
+func at(_ s: String) -> Date {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime]
+    return f.date(from: s)!
+}
+func hours(_ t: TimeInterval) -> Double { (t / 3600 * 100).rounded() / 100 }
+
+// PKCE: RFC 7636 appendix B test vector.
+check(PKCE.challenge(for: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk") == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+      "pkce_rfc7636_vector")
+let v = PKCE.makeVerifier()
+check(v.count == 43 && !v.contains("=") && !v.contains("+") && !v.contains("/"), "pkce_verifier_shape")
+check(PKCE.makeVerifier() != v, "pkce_verifier_random")
+
+// Sleep window: noon to noon, owned by the wake-up date.
+let w = SleepMath.window(for: at("2026-09-28T09:00:00-04:00"), calendar: ny)
+check(w.start == at("2026-09-27T12:00:00-04:00") && w.end == at("2026-09-28T12:00:00-04:00"), "sleep_window_noon_to_noon")
+
+// Two sources recording the same night overlap: count it once.
+let watch = DateInterval(start: at("2026-09-27T23:00:00-04:00"), end: at("2026-09-28T06:00:00-04:00"))
+let ring = DateInterval(start: at("2026-09-27T23:30:00-04:00"), end: at("2026-09-28T06:30:00-04:00"))
+check(hours(SleepMath.unionDuration([watch, ring], clippedTo: w)) == 7.5, "sleep_overlap_counted_once")
+
+// Disjoint segments add; contained segments do not.
+let nap = DateInterval(start: at("2026-09-28T10:00:00-04:00"), end: at("2026-09-28T10:30:00-04:00"))
+let inner = DateInterval(start: at("2026-09-28T01:00:00-04:00"), end: at("2026-09-28T02:00:00-04:00"))
+check(hours(SleepMath.unionDuration([watch, nap, inner], clippedTo: w)) == 7.5, "sleep_disjoint_add_contained_not")
+
+// Adjacent segments (stage boundaries) join without a gap or double count.
+let a1 = DateInterval(start: at("2026-09-28T00:00:00-04:00"), end: at("2026-09-28T01:00:00-04:00"))
+let a2 = DateInterval(start: at("2026-09-28T01:00:00-04:00"), end: at("2026-09-28T02:00:00-04:00"))
+check(hours(SleepMath.unionDuration([a2, a1], clippedTo: w)) == 2.0, "sleep_adjacent_unsorted")
+
+// Sleep that starts before the window only counts from noon.
+let early = DateInterval(start: at("2026-09-27T10:00:00-04:00"), end: at("2026-09-27T13:00:00-04:00"))
+check(hours(SleepMath.unionDuration([early], clippedTo: w)) == 1.0, "sleep_clipped_to_window")
+check(SleepMath.unionDuration([], clippedTo: w) == 0, "sleep_empty")
+
+// DST: 2026-11-01 is 25 hours long in New York; the fall-back night still gets one window.
+let dst = SleepMath.window(for: at("2026-11-01T09:00:00-05:00"), calendar: ny)
+check(hours(dst.duration) == 25.0, "sleep_window_dst_fall_back")
+
+// Day keys and day stepping across DST.
+check(DayKey.string(for: at("2026-09-28T23:30:00-04:00"), calendar: ny) == "2026-09-28", "daykey_local_late_evening")
+let days = DayKey.days(from: at("2026-10-31T12:00:00-04:00"), through: at("2026-11-02T12:00:00-05:00"), calendar: ny)
+check(days.map { DayKey.string(for: $0, calendar: ny) } == ["2026-10-31", "2026-11-01", "2026-11-02"], "days_across_dst")
+
+// Upsert: existing dates update in place (row = index + 2), new dates append in order.
+let plan = UpsertPlan.make(existingDates: ["2026-09-26", "2026-09-27"],
+                           rows: [["2026-09-28", "3"], ["2026-09-27", "2"], ["2026-09-29", "4"]])
+check(plan.updates.map(\.row) == [3] && plan.updates.first?.values == ["2026-09-27", "2"], "upsert_updates_existing_row")
+check(plan.appends == [["2026-09-28", "3"], ["2026-09-29", "4"]], "upsert_appends_new_in_order")
+let empty = UpsertPlan.make(existingDates: [], rows: [["2026-09-02", "b"], ["2026-09-01", "a"]])
+check(empty.updates.isEmpty && empty.appends.map { $0[0] } == ["2026-09-01", "2026-09-02"], "upsert_empty_sheet_sorted")
+let dup = UpsertPlan.make(existingDates: ["2026-09-27", "", "2026-09-27"], rows: [["2026-09-27", "x"]])
+check(dup.updates.map(\.row) == [2], "upsert_first_duplicate_wins")
+
+// Cells: missing data is blank, never zero.
+check(SheetCell.number(nil, decimals: 1) == "" && SheetCell.number(.nan, decimals: 1) == "", "cell_blank_for_missing")
+check(SheetCell.number(7.456, decimals: 1) == "7.5" && SheetCell.number(0, decimals: 0) == "0", "cell_formats")
+
+print(failures == 0 ? "ALL PASS" : "\(failures) FAILED")
+exit(failures == 0 ? 0 : 1)
