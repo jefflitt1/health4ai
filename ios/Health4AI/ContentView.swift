@@ -109,6 +109,7 @@ enum CredentialKeychain {
         "hkb.supabaseAnonKey",
         "hkb.restBearerToken",
         "hkb.restApiKeyValue",
+        "hkb.googleRefreshToken",
     ]
 
     static func save(_ value: String, forKey key: String) {
