@@ -55,6 +55,7 @@ struct DestinationPickerSection: View {
             if dynamicTypeSize.isAccessibilitySize {
                 Picker("Destination", selection: selection) { options }
                     .pickerStyle(.menu)
+                    .labelsHidden()
             } else {
                 Picker("Destination", selection: selection) { options }
                     .pickerStyle(.segmented)
@@ -301,6 +302,7 @@ enum SheetsScreenshotFixture {
             sheet.save()
             syncState.isAuthenticated = true
             syncState.lastSyncDate = Date()
+            syncState.lifetimeSyncedRecords = 3650
         case "attention":
             sheet.save()
             syncState.isAuthenticated = true

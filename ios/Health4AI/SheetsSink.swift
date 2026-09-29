@@ -44,7 +44,7 @@ enum SheetsAttention: Equatable {
         switch self {
         case .reconnectGoogle: return "Google access was removed or expired. Reconnect Google to keep your sheet updated."
         case .sheetMissing: return "Your health4ai sheet was deleted or moved. Create a new one to keep saving your data."
-        case .healthAccess: return "No health data found. In Settings, go to Health > Data Access & Devices > health4ai and turn on the data you want saved, then check again."
+        case .healthAccess: return "No health data found. In the Health app, tap your profile picture, then Apps > health4ai, and turn on the data you want saved. Then check again."
         }
     }
 

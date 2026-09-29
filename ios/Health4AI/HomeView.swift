@@ -432,9 +432,13 @@ struct HomeView: View {
                 .font(.caption)
                 .foregroundStyle(statusColor)
         } else if syncState.sheetsNeedsAttention != nil {
-            Label("Needs attention", systemImage: "exclamationmark.triangle.fill")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(statusColor)
+            // Colour on the symbol only: orange headline text is 2.31:1 (design.md rule 1).
+            Label {
+                Text("Needs attention").foregroundStyle(.primary)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(statusColor)
+            }
+            .font(.title3.weight(.semibold))
         } else {
             let missingCount = syncState.emptyExpectedMetricNames.count
             let isPartial = missingCount > 0 && syncState.connectionHealth == .connected
