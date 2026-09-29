@@ -6,11 +6,15 @@ import Combine
 enum ConnectionType: String, CaseIterable {
     case supabase = "supabase"
     case rest     = "rest"     // any REST endpoint
+    /// Daily summaries into the person's own Google Sheet (SheetsSink). Exclusive with the
+    /// database path by decision (Jeff 2026-09-28): a person is on one destination or the other.
+    case googleSheets = "googleSheets"
 
     var displayName: String {
         switch self {
-        case .supabase: return "Supabase"
-        case .rest:     return "REST / Webhook"
+        case .supabase:     return "Supabase"
+        case .rest:         return "REST / Webhook"
+        case .googleSheets: return "Google Sheets"
         }
     }
 }
@@ -120,6 +124,9 @@ final class SyncState: ObservableObject {
     @Published var nextScheduledSync: Date? = nil
     @Published var isSyncing: Bool = false
     @Published var syncError: String? = nil
+    /// Sheets mode only: a problem only the person can fix (Google access removed, sheet
+    /// deleted). Distinct from `syncError`, which a later pass may clear on its own.
+    @Published var sheetsNeedsAttention: String? = nil
 
     /// HealthKit type identifiers whose `enableBackgroundDelivery` call failed. Non-empty means
     /// observers for those types fire only while the app is in the foreground, so the Home card
@@ -220,6 +227,10 @@ final class SyncState: ObservableObject {
             return base.isEmpty ? serverURL : "\(base)/functions/v1/healthkit-ingest"
         case .rest:
             return serverURL
+        case .googleSheets:
+            // No sample endpoint in Sheets mode: SyncEngine routes to SheetsSink before any
+            // post. Empty makes a stray Supabase-path call fail fast instead of posting.
+            return ""
         }
     }
 

@@ -116,7 +116,12 @@ struct HomeView: View {
                         // one action that matters. Nothing is removed: the same cards render,
                         // just re-homed, and the moment a sync completes this reverts to the
                         // original always-expanded layout.
-                        if hasSyncedOnce {
+                        if syncState.connectionType == .googleSheets && syncState.isAuthenticated {
+                            // Sheets mode: none of the database cards (import, MCP, scope,
+                            // server actions) apply. Health access still does.
+                            SheetsHomeCard()
+                            healthAccessCard
+                        } else if hasSyncedOnce {
                             scopeCard
                             mcpCard
                             healthAccessCard
@@ -218,15 +223,18 @@ struct HomeView: View {
     /// is the one primary action, and it leads straight to where that action lives.
     private var connectDatabaseCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Connect Your Database", systemImage: "server.rack")
+            Label(SheetsFeature.isAvailable ? "Choose Where Your Data Goes" : "Connect Your Database",
+                  systemImage: SheetsFeature.isAvailable ? "arrow.triangle.branch" : "server.rack")
                 .font(.headline)
-            Text("health4ai syncs your health data to a Supabase project you own. Connect yours to start syncing.")
+            Text(SheetsFeature.isAvailable
+                 ? "Save to a Google Sheet in your own Drive (easiest), or to a database you run."
+                 : "health4ai syncs your health data to a Supabase project you own. Connect yours to start syncing.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button {
                 tabRouter.selectedTab = 1
             } label: {
-                Text("Connect your database")
+                Text(SheetsFeature.isAvailable ? "Get started" : "Connect your database")
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
