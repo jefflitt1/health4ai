@@ -44,7 +44,7 @@ enum SheetLayout {
     /// A column dictionary for whoever reads the sheet, person or AI connector.
     static func about(_ u: SheetUnits) -> [[String]] {
         [["Column", "Meaning"],
-         ["Daily tab", "One row per day in your phone's time zone, from Apple Health. The last few days are refreshed on every sync as late data arrives."],
+         ["Daily tab", "One row per day in your device's time zone, from the Health app. The last few days are refreshed on every sync as late data arrives."],
          ["Steps / Distance / Active energy / Exercise / Flights", "Totals for the day, with overlapping devices counted once."],
          ["Stand hours", "Hours in the day with a stand recorded (Apple Watch)."],
          ["Resting HR / Avg HR / HRV", "Averages of the day's readings. HRV is SDNN in milliseconds."],
@@ -53,7 +53,7 @@ enum SheetLayout {
          ["Blank cell", "No data that day. Blank never means zero."],
          ["Workouts tab", "One row per workout. Workout ID is how health4ai avoids duplicates; please leave it."],
          ["Units", "Distance in \(u.distanceLabel), weight in \(u.massLabel), energy in kcal."],
-         ["Privacy", "Written straight from your iPhone to your Google Drive. health4ai never receives this data."]]
+         ["Privacy", "Written straight from your device to your Google Drive. It never passes through a health4ai server."]]
     }
 }
 
@@ -147,18 +147,21 @@ final class DailySummaryBuilder {
         time.timeZone = calendar.timeZone
         time.locale = Locale(identifier: "en_US_POSIX")
         time.dateFormat = "HH:mm"
-        let distanceTypes: [HKQuantityType] = [HKQuantityType(.distanceWalkingRunning), HKQuantityType(.distanceCycling),
-                                               HKQuantityType(.distanceSwimming), HKQuantityType(.distanceWheelchair),
-                                               HKQuantityType(.distanceDownhillSnowSports)]
+        // Derived from the canonical double-counted list so a new distance type added there is
+        // picked up here too, instead of a second hand-kept copy drifting (Reviewboard C).
+        let distanceTypes: [HKQuantityType] = HealthKitManager.doubleCountedActivityIdentifiers
+            .filter { $0.hasPrefix("HKQuantityTypeIdentifierDistance") }
+            .sorted()
+            .map { HKQuantityType(HKQuantityTypeIdentifier(rawValue: $0)) }
         return try await workouts(from: start, to: end).map { w in
             let energy = w.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity()?.doubleValue(for: .kilocalorie())
             let distance = distanceTypes.lazy
                 .compactMap { w.statistics(for: $0)?.sumQuantity()?.doubleValue(for: units.distanceUnit) }
                 .first
             return [DayKey.string(for: w.startDate, calendar: calendar), time.string(from: w.startDate),
-                    w.workoutActivityType.name, SheetCell.number(w.duration / 60, decimals: 0),
+                    SheetCell.text(w.workoutActivityType.name), SheetCell.number(w.duration / 60, decimals: 0),
                     SheetCell.number(energy, decimals: 0), SheetCell.number(distance, decimals: 2),
-                    w.sourceRevision.source.name, w.uuid.uuidString]
+                    SheetCell.text(w.sourceRevision.source.name), w.uuid.uuidString]
         }
     }
 

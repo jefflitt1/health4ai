@@ -126,7 +126,7 @@ final class SyncState: ObservableObject {
     @Published var syncError: String? = nil
     /// Sheets mode only: a problem only the person can fix (Google access removed, sheet
     /// deleted). Distinct from `syncError`, which a later pass may clear on its own.
-    @Published var sheetsNeedsAttention: String? = nil
+    @Published var sheetsNeedsAttention: SheetsAttention? = nil
 
     /// HealthKit type identifiers whose `enableBackgroundDelivery` call failed. Non-empty means
     /// observers for those types fire only while the app is in the foreground, so the Home card
@@ -249,11 +249,16 @@ final class SyncState: ObservableObject {
         // holding a stored `rest` selection is coerced to Supabase rather than left on a
         // path that has never synced a row and offers no way back to the picker.
         let storedType = ConnectionType(rawValue: typeRaw) ?? .supabase
-        self.connectionType = storedType == .rest ? .supabase : storedType
+        // Google Sheets is TestFlight-only until 1.1. A tester who picked it and then installs
+        // the App Store build carries the stored choice across; without this coercion every
+        // Sheets code path (all keyed on connectionType) would run live in an App Store build
+        // that does not offer the feature (Reviewboard C, 2026-09-28).
+        let unavailable = storedType == .rest || (storedType == .googleSheets && !SheetsFeature.isAvailable)
+        self.connectionType = unavailable ? .supabase : storedType
         // Write the coercion through. `didSet` does not fire during init, so without this
         // UserDefaults keeps "rest" forever and the persisted state contradicts the live
         // one — harmless, since every launch re-coerces, but it is a lie on disk.
-        if storedType == .rest {
+        if unavailable {
             defaults.set(ConnectionType.supabase.rawValue, forKey: Keys.connectionType)
         }
         let savedProjectURL = defaults.string(forKey: Keys.supabaseProjectURL) ?? ""

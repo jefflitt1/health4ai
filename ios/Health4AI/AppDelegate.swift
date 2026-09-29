@@ -26,6 +26,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // gated, DEBUG-only — Xcode Cloud archives Release, which never compiles this branch.
         SyncHistoryStore.shared.seedForScreenshotsIfNeeded()
         SourcesTracker.shared.seedForScreenshotsIfNeeded()
+        MainActor.assumeIsolated { SheetsScreenshotFixture.applyIfRequested(SyncEngine.sharedSyncState) }
         #endif
         Task { @MainActor in
             self.reconnectIfAuthenticated(trigger: .launch)

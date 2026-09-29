@@ -2,10 +2,12 @@ import SwiftUI
 
 // UI for the Google Sheets destination: the destination choice on the Connection tab, the
 // Sheets connect/disconnect section, and the Home status card.
+// Colour rule (design.md): colour goes on symbols only; text stays .primary/.secondary.
 
 enum SheetsFeature {
-    /// TestFlight and debug builds only until the 1.1 release, so `main` stays shippable to
-    /// the App Store with the feature dark (plan step 7). The sandbox receipt is how a
+    /// TestFlight and debug builds only until the 1.1 release. SyncState.init also coerces a
+    /// stored Sheets choice back to the database when this is false, so the feature is dark
+    /// in App Store builds, not just hidden (Reviewboard C). The sandbox receipt is how a
     /// TestFlight install identifies itself.
     static let isAvailable: Bool = {
         #if DEBUG
@@ -16,23 +18,47 @@ enum SheetsFeature {
     }()
 }
 
+/// A status line with a coloured symbol and uncoloured text.
+private struct StatusLine: View {
+    let text: String
+    let symbol: String
+    let tint: Color
+
+    var body: some View {
+        Label {
+            Text(text).foregroundStyle(.primary)
+        } icon: {
+            Image(systemName: symbol).foregroundStyle(tint)
+        }
+    }
+}
+
 // MARK: - Destination picker
 
 struct DestinationPickerSection: View {
     @EnvironmentObject var syncState: SyncState
     @EnvironmentObject var authManager: AuthManager
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var pending: ConnectionType?
+
+    private var selection: Binding<ConnectionType> {
+        Binding(
+            get: { syncState.connectionType == .googleSheets ? .googleSheets : .supabase },
+            set: { choose($0) }
+        )
+    }
 
     var body: some View {
         Section {
-            Picker("Destination", selection: Binding(
-                get: { syncState.connectionType == .googleSheets ? ConnectionType.googleSheets : .supabase },
-                set: { choose($0) }
-            )) {
-                Text("Google Sheet").tag(ConnectionType.googleSheets)
-                Text("Your database").tag(ConnectionType.supabase)
+            // Two segments truncate at accessibility text sizes on a 375pt screen; a menu
+            // picker does not.
+            if dynamicTypeSize.isAccessibilitySize {
+                Picker("Destination", selection: selection) { options }
+                    .pickerStyle(.menu)
+            } else {
+                Picker("Destination", selection: selection) { options }
+                    .pickerStyle(.segmented)
             }
-            .pickerStyle(.segmented)
         } header: {
             Text("Where your data goes")
         } footer: {
@@ -49,8 +75,15 @@ struct DestinationPickerSection: View {
             }
             Button("Cancel", role: .cancel) { pending = nil }
         } message: {
-            Text("health4ai sends data to one place at a time. Switching disconnects the current one. Nothing already saved there is deleted.")
+            Text(syncState.connectionType == .googleSheets
+                 ? "health4ai sends data to one place at a time. Your sheet stays in your Google Drive but stops updating. Coming back to Google Sheets later starts a new sheet."
+                 : "health4ai sends data to one place at a time. Switching disconnects your database from this device. Nothing already saved there is deleted.")
         }
+    }
+
+    @ViewBuilder private var options: some View {
+        Text("Google Sheet").tag(ConnectionType.googleSheets)
+        Text("Your database").tag(ConnectionType.supabase)
     }
 
     private func choose(_ type: ConnectionType) {
@@ -65,7 +98,7 @@ struct DestinationPickerSection: View {
     private func switchTo(_ type: ConnectionType) {
         SyncEngine.shared.stopObserving()
         if syncState.connectionType == .googleSheets {
-            Task { await GoogleTokenStore.shared.signOut() }
+            GoogleTokenStore.shared.signOut()
             SheetsDestinationState.clear()
         } else {
             authManager.signOut()
@@ -73,6 +106,7 @@ struct DestinationPickerSection: View {
         syncState.isAuthenticated = false
         syncState.userEmail = nil
         syncState.sheetsNeedsAttention = nil
+        syncState.lastSyncDate = nil
         syncState.connectionType = type
     }
 }
@@ -90,9 +124,12 @@ struct SheetsConnectSection: View {
 
     var body: some View {
         Section {
-            if syncState.isAuthenticated && syncState.sheetsNeedsAttention == nil {
-                Label("Connected to Google", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+            if let attention = syncState.sheetsNeedsAttention {
+                StatusLine(text: attention.message, symbol: "exclamationmark.triangle.fill", tint: .orange)
+                Button { resolve(attention) } label: { busyLabel(attention.actionTitle) }
+                    .disabled(working)
+            } else if syncState.isAuthenticated {
+                StatusLine(text: "Connected to Google", symbol: "checkmark.circle.fill", tint: .green)
                 if let sheetURL {
                     Link(destination: sheetURL) {
                         Label("Open my sheet", systemImage: "tablecells")
@@ -104,28 +141,18 @@ struct SheetsConnectSection: View {
                 }
                 Button("Disconnect Google", role: .destructive) { showDisconnect = true }
             } else {
-                if let attention = syncState.sheetsNeedsAttention {
-                    Label(attention, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                }
-                Button {
-                    connect()
-                } label: {
-                    HStack {
-                        Label(syncState.sheetsNeedsAttention == nil ? "Connect Google" : "Reconnect Google",
-                              systemImage: "person.crop.circle.badge.checkmark")
-                        if working { Spacer(); ProgressView() }
-                    }
-                }
-                .disabled(working)
+                Button { connect(keepSheet: false) } label: { busyLabel("Connect Google") }
+                    .disabled(working)
             }
             if let errorText {
-                Text(errorText).font(.footnote).foregroundStyle(.red)
+                StatusLine(text: errorText, symbol: "xmark.octagon.fill", tint: .red)
+                    .font(.footnote)
             }
         } header: {
             Text("Google Sheet")
         } footer: {
-            Text("health4ai creates one spreadsheet named \"health4ai\" in your Google Drive and can only see that file. Your health data goes straight from this iPhone to your Drive. health4ai never receives it.")
+            Text((syncState.isAuthenticated ? "" : "You'll be asked for Health access, then to sign in to Google. ")
+                 + "health4ai creates one spreadsheet named \"health4ai\" in your Google Drive and can only see that file. Your health data goes straight from this device to your Drive and never passes through a health4ai server.")
         }
         .alert("Disconnect Google?", isPresented: $showDisconnect) {
             Button("Disconnect", role: .destructive) { disconnect() }
@@ -142,7 +169,32 @@ struct SheetsConnectSection: View {
         }
     }
 
-    private func connect() {
+    private func busyLabel(_ title: String) -> some View {
+        HStack {
+            Text(title)
+            if working { Spacer(); ProgressView() }
+        }
+        .frame(minHeight: 44)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(working ? "Connecting to Google" : title)
+    }
+
+    private func resolve(_ attention: SheetsAttention) {
+        switch attention {
+        case .reconnectGoogle:
+            // Same sheet: drive.file access to a file the app created returns with sign-in.
+            connect(keepSheet: true)
+        case .sheetMissing:
+            SheetsDestinationState.clear()
+            syncState.sheetsNeedsAttention = nil
+            SyncEngine.shared.performForegroundSync(trigger: .manual)
+        case .healthAccess:
+            syncState.sheetsNeedsAttention = nil
+            SyncEngine.shared.performForegroundSync(trigger: .manual)
+        }
+    }
+
+    private func connect(keepSheet: Bool) {
         working = true
         errorText = nil
         Task { @MainActor in
@@ -150,15 +202,14 @@ struct SheetsConnectSection: View {
             do {
                 try await HealthKitManager.shared.requestAuthorization()
                 try await coordinator.signIn()
-                // A reconnect after "sheet deleted" or "access removed" starts clean.
-                if syncState.sheetsNeedsAttention != nil { SheetsDestinationState.clear() }
+                if !keepSheet { SheetsDestinationState.clear() }
                 syncState.sheetsNeedsAttention = nil
                 syncState.connectionType = .googleSheets
                 syncState.isAuthenticated = true
                 SyncEngine.shared.startObserving()
                 SyncEngine.shared.performForegroundSync(trigger: .manual)
             } catch GoogleAuthError.cancelled {
-                // The person closed the sheet; nothing to report.
+                // The person closed the sign-in sheet; nothing to report.
             } catch {
                 errorText = error.localizedDescription
             }
@@ -167,7 +218,7 @@ struct SheetsConnectSection: View {
 
     private func disconnect() {
         SyncEngine.shared.stopObserving()
-        Task { await GoogleTokenStore.shared.signOut() }
+        GoogleTokenStore.shared.signOut()
         SheetsDestinationState.clear()
         syncState.isAuthenticated = false
         syncState.sheetsNeedsAttention = nil
@@ -183,24 +234,36 @@ struct SheetsHomeCard: View {
 
     private var state: SheetsDestinationState? { SheetsDestinationState.load() }
 
+    private func readable(_ key: String) -> String {
+        let parts = key.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3,
+              let date = Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+        else { return key }
+        return date.formatted(date: .long, time: .omitted)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Google Sheet", systemImage: "tablecells")
                 .font(.headline)
             if let attention = syncState.sheetsNeedsAttention {
-                Label(attention, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                // The message itself lives here; the status card above only says
+                // "Needs attention", so the words appear once (Sasha #2).
+                StatusLine(text: attention.message, symbol: "exclamationmark.triangle.fill", tint: .orange)
                     .font(.subheadline)
-                Button("Fix on the Connection tab") { tabRouter.selectedTab = 1 }  // Connection tab, as HomeView.swift does
-                    .buttonStyle(.borderedProminent)
+                Button { tabRouter.selectedTab = 1 } label: {  // Connection tab, as HomeView does
+                    Text(attention.actionTitle).frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
             } else if let state, let url = URL(string: state.spreadsheetURL) {
                 if let day = state.lastWrittenDay {
-                    Text("Up to date through \(day).")
+                    Text(syncState.isSyncing ? "Filling in through \(readable(day))." : "Up to date through \(readable(day)).")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 Link(destination: url) {
                     Label("Open my sheet", systemImage: "arrow.up.right.square")
+                        .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(.borderedProminent)
             } else {
@@ -215,3 +278,45 @@ struct SheetsHomeCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }
+
+#if DEBUG
+// MARK: - Screenshot fixture (DEBUG only)
+
+/// Design-gate screenshots of the Sheets states. `-h4aiScreenshotSheets <state>` where state
+/// is connected | attention | nohealth | missing | disconnected. Same DEBUG + launch-argument
+/// gating as the app's other `-h4aiScreenshot…` fixtures; none of this compiles into Release.
+/// There is no Google token in a simulator run, so no sync ever overwrites the fixture.
+enum SheetsScreenshotFixture {
+    @MainActor
+    static func applyIfRequested(_ syncState: SyncState) {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-h4aiScreenshotSheets"), i + 1 < args.count else { return }
+        syncState.connectionType = .googleSheets
+        let sheet = SheetsDestinationState(spreadsheetId: "fixture",
+                                           spreadsheetURL: "https://docs.google.com/spreadsheets/d/fixture",
+                                           units: SheetUnits(miles: true, pounds: true),
+                                           lastWrittenDay: "2026-09-27")
+        switch args[i + 1] {
+        case "connected":
+            sheet.save()
+            syncState.isAuthenticated = true
+            syncState.lastSyncDate = Date()
+        case "attention":
+            sheet.save()
+            syncState.isAuthenticated = true
+            syncState.sheetsNeedsAttention = .reconnectGoogle
+        case "nohealth":
+            SheetsDestinationState.clear()
+            syncState.isAuthenticated = true
+            syncState.sheetsNeedsAttention = .healthAccess
+        case "missing":
+            SheetsDestinationState.clear()
+            syncState.isAuthenticated = true
+            syncState.sheetsNeedsAttention = .sheetMissing
+        default:
+            SheetsDestinationState.clear()
+            syncState.isAuthenticated = false
+        }
+    }
+}
+#endif

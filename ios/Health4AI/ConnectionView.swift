@@ -269,7 +269,9 @@ struct ConnectionView: View {
         } header: {
             Text("Device Privacy")
         } footer: {
-            Text("Use before giving this device to someone else. Your database is never shared automatically.")
+            Text(syncState.connectionType == .googleSheets
+                 ? "Use before giving this device to someone else. This removes your Google connection from this device. Your sheet stays in your Drive."
+                 : "Use before giving this device to someone else. Your database is never shared automatically.")
         }
     }
 

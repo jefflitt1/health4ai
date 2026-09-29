@@ -59,6 +59,7 @@ struct ContentView: View {
         if args.contains("-h4aiScreenshotSources") { return AnyView(SourcesView()) }
         if args.contains("-h4aiScreenshotConnectAI") { return AnyView(ConnectAIView()) }
         if args.contains("-h4aiScreenshotSetupChecklist") { return AnyView(ConnectionView()) }
+        if args.contains("-h4aiScreenshotSheetsConnect") { return AnyView(ConnectionView()) }
         return nil
     }
     #endif

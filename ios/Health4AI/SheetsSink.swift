@@ -30,6 +30,42 @@ struct SheetsDestinationState: Codable, Equatable {
     static func clear() { UserDefaults.standard.removeObject(forKey: key) }
 }
 
+/// Something only the person can fix. Each kind carries its own message and action so the
+/// UI never promises a fix it does not perform (Sasha, 2026-09-28).
+enum SheetsAttention: Equatable {
+    /// Google access removed or expired. Reconnecting keeps writing to the SAME sheet.
+    case reconnectGoogle
+    /// The sheet was deleted or is out of reach. The fix makes a new one.
+    case sheetMissing
+    /// A first sync found nothing: almost always Health read access.
+    case healthAccess
+
+    var message: String {
+        switch self {
+        case .reconnectGoogle: return "Google access was removed or expired. Reconnect Google to keep your sheet updated."
+        case .sheetMissing: return "Your health4ai sheet was deleted or moved. Create a new one to keep saving your data."
+        case .healthAccess: return "No health data found. In Settings, go to Health > Data Access & Devices > health4ai and turn on the data you want saved, then check again."
+        }
+    }
+
+    var actionTitle: String {
+        switch self {
+        case .reconnectGoogle: return "Reconnect Google"
+        case .sheetMissing: return "Create a new sheet"
+        case .healthAccess: return "Check again"
+        }
+    }
+
+    static func from(_ error: Error) -> SheetsAttention? {
+        switch error {
+        case GoogleAuthError.accessRevoked, GoogleAuthError.notSignedIn: return .reconnectGoogle
+        case SheetsError.spreadsheetMissing: return .sheetMissing
+        case SheetsError.noHealthData: return .healthAccess
+        default: return nil
+        }
+    }
+}
+
 struct SheetsPassResult {
     var daysWritten: Int
     var workoutsAdded: Int
@@ -74,12 +110,17 @@ final class SheetsSink: @unchecked Sendable {
 
         var result = SheetsPassResult(daysWritten: 0, workoutsAdded: 0)
         do {
-            var existing = try await client.readColumn(spreadsheetId: state.spreadsheetId, range: "\(SheetLayout.dailyTab)!A2:A")
+            var existing = try await client.readDateColumn(spreadsheetId: state.spreadsheetId, range: "\(SheetLayout.dailyTab)!A2:A")
             var chunkStart = start
             while chunkStart <= today {
                 try Task.checkCancellation()
                 let chunkEnd = min(calendar.date(byAdding: .day, value: Self.chunkDays - 1, to: chunkStart)!, today)
                 let rows = try await builder.dailyRows(from: chunkStart, through: chunkEnd, units: state.units)
+                // First connect with nothing to write: do not report success and do not
+                // advance lastWrittenDay over it (Reviewboard B, 2026-09-28).
+                if state.lastWrittenDay == nil, !rows.contains(where: { $0.dropFirst().contains { !$0.isEmpty } }) {
+                    throw SheetsError.noHealthData
+                }
                 let plan = UpsertPlan.make(existingDates: existing, rows: rows)
                 var ranges = plan.updates.map { (range: Self.dailyRange(row: $0.row), rows: [$0.values]) }
                 if !plan.appends.isEmpty {

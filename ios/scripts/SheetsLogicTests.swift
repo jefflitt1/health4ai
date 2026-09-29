@@ -71,6 +71,16 @@ check(empty.updates.isEmpty && empty.appends.map { $0[0] } == ["2026-09-01", "20
 let dup = UpsertPlan.make(existingDates: ["2026-09-27", "", "2026-09-27"], rows: [["2026-09-27", "x"]])
 check(dup.updates.map(\.row) == [2], "upsert_first_duplicate_wins")
 
+// Sheets date serials (read UNFORMATTED so a locale's "9/28/2026" never breaks matching).
+check(DayKey.string(fromSheetsSerial: 46293) == "2026-09-28", "serial_to_daykey")
+check(DayKey.string(fromSheetsSerial: 46293.75) == "2026-09-28", "serial_fraction_ignored")
+check(DayKey.string(fromSheetsSerial: 0) == nil && DayKey.string(fromSheetsSerial: .nan) == nil, "serial_invalid")
+
+// Formula injection: outside text never becomes a live formula.
+check(SheetCell.text("=IMPORTXML(\"http://x\",\"//a\")") == "'=IMPORTXML(\"http://x\",\"//a\")", "text_neutralizes_equals")
+check(SheetCell.text("+1") == "'+1" && SheetCell.text("-x") == "'-x" && SheetCell.text("@x") == "'@x", "text_neutralizes_plus_minus_at")
+check(SheetCell.text("Apple Watch") == "Apple Watch" && SheetCell.text("") == "", "text_plain_unchanged")
+
 // Cells: missing data is blank, never zero.
 check(SheetCell.number(nil, decimals: 1) == "" && SheetCell.number(.nan, decimals: 1) == "", "cell_blank_for_missing")
 check(SheetCell.number(7.456, decimals: 1) == "7.5" && SheetCell.number(0, decimals: 0) == "0", "cell_formats")

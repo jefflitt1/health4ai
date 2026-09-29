@@ -78,6 +78,20 @@ enum DayKey {
         return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
     }
 
+    /// The day key for a Sheets date serial number (days since 1899-12-30, the Lotus/Excel
+    /// epoch Sheets uses). The Date column is written USER_ENTERED, so Sheets stores a real
+    /// date and DISPLAYS it in the sheet's locale ("9/28/2026"); comparing that displayed text
+    /// with our "2026-09-28" keys never matches and every sync would append duplicates.
+    /// Reading the column UNFORMATTED returns this serial instead, which is locale-proof.
+    static func string(fromSheetsSerial serial: Double) -> String? {
+        guard serial.isFinite, serial >= 1 else { return nil }
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let epoch = utc.date(from: DateComponents(year: 1899, month: 12, day: 30))!
+        guard let day = utc.date(byAdding: .day, value: Int(serial.rounded(.down)), to: epoch) else { return nil }
+        return string(for: day, calendar: utc)
+    }
+
     /// Every local day from `start` through `end`, inclusive, as start-of-day dates.
     /// Steps by calendar day, not 86,400 seconds, so a DST change never skips or repeats a day.
     static func days(from start: Date, through end: Date, calendar: Calendar) -> [Date] {
@@ -134,6 +148,15 @@ struct UpsertPlan: Equatable {
 // MARK: - Cell formatting
 
 enum SheetCell {
+    /// Text from outside this app (a workout's source-app name is whatever that app calls
+    /// itself). Cells are written USER_ENTERED, so a name like `=IMPORTXML("http://…")` would
+    /// become a live formula in the person's sheet. A leading apostrophe makes Sheets store it
+    /// as plain text and is not displayed.
+    static func text(_ value: String) -> String {
+        guard let first = value.first, "=+-@".contains(first) else { return value }
+        return "'" + value
+    }
+
     /// A blank cell, not "0", when there is no data: a day without a Watch reading has no
     /// resting heart rate, and a 0 would drag every average an AI computes toward zero.
     static func number(_ value: Double?, decimals: Int) -> String {

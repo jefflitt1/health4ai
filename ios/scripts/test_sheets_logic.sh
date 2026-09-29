@@ -46,5 +46,7 @@ mutate "upsert appends unsorted"      'for row in rows.sorted(by: { ($0.first ??
 mutate "missing data written as 0"    'guard let value, value.isFinite else { return "" }' 'guard let value, value.isFinite else { return "0" }'
 mutate "pkce challenge not hashed"    'base64url(Data(SHA256.hash(data: Data(verifier.utf8))))' 'base64url(Data(verifier.utf8))'
 mutate "days step by 86400s"          'day = calendar.date(byAdding: .day, value: 1, to: day)!' 'day = day.addingTimeInterval(86_400)'
+mutate "serial epoch off by one"      'DateComponents(year: 1899, month: 12, day: 30)' 'DateComponents(year: 1899, month: 12, day: 31)'
+mutate "formula text not neutralized" 'guard let first = value.first, "=+-@".contains(first) else { return value }' 'guard let first = value.first, "@".contains(first) else { return value }'
 echo "survivors: $survivors"
 [ "$survivors" -eq 0 ]

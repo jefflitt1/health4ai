@@ -207,6 +207,7 @@ struct HomeView: View {
               !syncState.isSyncing,
               !syncState.isBackfilling,
               syncState.syncError == nil,
+              syncState.sheetsNeedsAttention == nil,
               syncState.importFailedMetricNames.isEmpty,
               SyncHistoryStore.shared.showsSustainedSuccess() else { return }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
@@ -224,7 +225,7 @@ struct HomeView: View {
     private var connectDatabaseCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(SheetsFeature.isAvailable ? "Choose Where Your Data Goes" : "Connect Your Database",
-                  systemImage: SheetsFeature.isAvailable ? "arrow.triangle.branch" : "server.rack")
+                  systemImage: SheetsFeature.isAvailable ? "square.and.arrow.down" : "server.rack")
                 .font(.headline)
             Text(SheetsFeature.isAvailable
                  ? "Save to a Google Sheet in your own Drive (easiest), or to a database you run."
@@ -396,6 +397,9 @@ struct HomeView: View {
     private var statusColor: Color {
         if syncState.isSyncing { return .blue }
         if syncState.syncError != nil { return .red }
+        // Sheets mode: one signal for a problem only the person can fix. The Sheets card
+        // carries the message and the action; this headline only says it needs attention.
+        if syncState.sheetsNeedsAttention != nil { return .orange }
         // Metrics known to be missing outrank a healthy connection: the transport can be
         // fine while the data is not arriving, and the headline must not read green while
         // the app already knows core metrics returned nothing.
@@ -426,6 +430,10 @@ struct HomeView: View {
         } else if let error = syncState.syncError {
             Label(error, systemImage: "exclamationmark.circle.fill")
                 .font(.caption)
+                .foregroundStyle(statusColor)
+        } else if syncState.sheetsNeedsAttention != nil {
+            Label("Needs attention", systemImage: "exclamationmark.triangle.fill")
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(statusColor)
         } else {
             let missingCount = syncState.emptyExpectedMetricNames.count

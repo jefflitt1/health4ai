@@ -7,12 +7,17 @@ import os
 enum SheetsError: LocalizedError {
     /// The spreadsheet is gone: deleted, trashed, or (drive.file) no longer visible to the app.
     case spreadsheetMissing
+    /// A first sync found no health data at all. HealthKit reports a DENIED read as an empty
+    /// result, so this is usually missing Health access, not an empty history; treating it as
+    /// success is how this app once showed a green "Complete" for three months with no data.
+    case noHealthData
     case http(status: Int, detail: String)
     case badResponse
 
     var errorDescription: String? {
         switch self {
         case .spreadsheetMissing: return "Your health4ai sheet was deleted or moved out of reach."
+        case .noHealthData: return "No health data found to add to your sheet."
         case .http(let status, _): return "Google Sheets returned an error (HTTP \(status))."
         case .badResponse: return "Google Sheets returned an unexpected response."
         }
@@ -53,6 +58,28 @@ final class SheetsClient: @unchecked Sendable {
         struct ValueRange: Decodable { let values: [[String]]? }
         let decoded = try JSONDecoder().decode(ValueRange.self, from: data)
         return decoded.values?.first ?? []
+    }
+
+    /// The Daily tab's date column as day keys. Read UNFORMATTED: a USER_ENTERED date is
+    /// displayed in the sheet's locale ("9/28/2026"), so the formatted text never matches our
+    /// "2026-09-28" keys and every sync would append duplicate days (Reviewboard A, 2026-09-28).
+    /// Text a person typed into the column comes back as text and is kept as-is.
+    func readDateColumn(spreadsheetId: String, range: String) async throws -> [String] {
+        var comps = URLComponents(url: valuesURL(spreadsheetId, range), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            URLQueryItem(name: "majorDimension", value: "COLUMNS"),
+            URLQueryItem(name: "valueRenderOption", value: "UNFORMATTED_VALUE"),
+            URLQueryItem(name: "dateTimeRenderOption", value: "SERIAL_NUMBER"),
+        ]
+        let data = try await send(method: "GET", url: comps.url!, json: nil)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw SheetsError.badResponse
+        }
+        let column = (object["values"] as? [[Any]])?.first ?? []
+        return column.map { cell in
+            if let number = cell as? NSNumber { return DayKey.string(fromSheetsSerial: number.doubleValue) ?? "" }
+            return (cell as? String) ?? ""
+        }
     }
 
     /// Writes several ranges in ONE request. The Sheets quota is about 60 writes per minute
@@ -125,7 +152,7 @@ final class SheetsClient: @unchecked Sendable {
                 continue
             default:
                 let detail = String(data: data, encoding: .utf8) ?? ""
-                Self.logger.error("Sheets \(method, privacy: .public) \(status): \(detail, privacy: .public)")
+                Self.logger.error("Sheets \(method, privacy: .public) \(status): \(detail, privacy: .private)")
                 throw SheetsError.http(status: status, detail: detail)
             }
         }

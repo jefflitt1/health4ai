@@ -511,19 +511,18 @@ final class SyncEngine {
             }
             return .failed
         } catch {
-            // Access removed or sheet deleted cannot fix themselves: they get the
-            // "needs attention" state with a Reconnect action, not just a sync error.
-            let needsPerson: Bool
-            switch error {
-            case GoogleAuthError.accessRevoked, GoogleAuthError.notSignedIn, SheetsError.spreadsheetMissing:
-                needsPerson = true
-            default:
-                needsPerson = false
-            }
+            // Problems only the person can fix get ONE owner: the "needs attention" state,
+            // which Home and the Sheets card show once, with its own action. They are not
+            // also recorded as a sync error, which would repeat the words in red.
+            let attention = SheetsAttention.from(error)
             await MainActor.run {
                 Self.fullSyncInFlight = false
-                if needsPerson { self.syncState.sheetsNeedsAttention = error.localizedDescription }
-                self.syncState.recordSyncError(error.localizedDescription)
+                if let attention {
+                    self.syncState.sheetsNeedsAttention = attention
+                    self.syncState.isSyncing = false
+                } else {
+                    self.syncState.recordSyncError(error.localizedDescription)
+                }
                 self.scheduleBackgroundSync()
             }
             SyncHistoryStore.shared.record(SyncHistoryEntry(

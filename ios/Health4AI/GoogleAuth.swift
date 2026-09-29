@@ -112,21 +112,27 @@ final class GoogleTokenStore: @unchecked Sendable {
         remember(response)
     }
 
-    /// Revokes at Google (best effort: a revoke that fails offline must not strand the
-    /// person signed in locally) and forgets everything on the device.
-    func signOut() async {
-        if let refresh = CredentialKeychain.load(forKey: Self.refreshTokenKey) {
+    /// Forgets the sign-in on this device immediately, then revokes that same token at Google
+    /// in the background (best effort: offline must not strand the person signed in). The
+    /// token is captured first so a quick disconnect-then-reconnect can never have the late
+    /// revoke wipe the NEW sign-in.
+    func signOut() {
+        let captured = CredentialKeychain.load(forKey: Self.refreshTokenKey)
+        forgetLocally()
+        guard let captured else { return }
+        Task.detached { await Self.revoke(captured) }
+    }
+
+    private static func revoke(_ refresh: String) async {
+        do {
             var req = URLRequest(url: GoogleOAuthConfig.revokeURL)
             req.httpMethod = "POST"
             req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-            req.httpBody = Self.formBody(["token": refresh])
-            do {
-                _ = try await URLSession.shared.data(for: req)
-            } catch {
-                Self.logger.error("Google revoke failed, clearing locally anyway: \(error.localizedDescription, privacy: .public)")
-            }
+            req.httpBody = formBody(["token": refresh])
+            _ = try await URLSession.shared.data(for: req)
+        } catch {
+            logger.error("Google revoke failed (already cleared on device): \(error.localizedDescription, privacy: .public)")
         }
-        forgetLocally()
     }
 
     func forgetLocally() {
@@ -170,7 +176,7 @@ final class GoogleTokenStore: @unchecked Sendable {
                 forgetLocally()
                 throw GoogleAuthError.accessRevoked
             }
-            Self.logger.error("Google token request failed \(status): \(detail, privacy: .public)")
+            Self.logger.error("Google token request failed \(status): \(detail, privacy: .private)")
             throw GoogleAuthError.tokenRequestFailed(status: status, detail: detail)
         }
         return try JSONDecoder().decode(TokenResponse.self, from: data)
