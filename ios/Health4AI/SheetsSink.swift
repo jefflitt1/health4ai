@@ -39,12 +39,15 @@ enum SheetsAttention: Equatable {
     case sheetMissing
     /// A first sync found nothing: almost always Health read access.
     case healthAccess
+    /// iOS has not been asked for every type the sheet reads. The fix shows the Health prompt.
+    case healthPermission
 
     var message: String {
         switch self {
         case .reconnectGoogle: return "Google access was removed or expired. Reconnect Google to keep your sheet updated."
         case .sheetMissing: return "Your health4ai sheet was deleted or moved. Create a new one to keep saving your data."
         case .healthAccess: return "No health data found. In the Health app, tap your profile picture, then Apps > health4ai, and turn on the data you want saved. Then check again."
+        case .healthPermission: return "Your sheet now includes Health data health4ai cannot read yet. Allow access to keep your sheet updated."
         }
     }
 
@@ -53,6 +56,7 @@ enum SheetsAttention: Equatable {
         case .reconnectGoogle: return "Reconnect Google"
         case .sheetMissing: return "Create a new sheet"
         case .healthAccess: return "Check again"
+        case .healthPermission: return "Allow Health access"
         }
     }
 
@@ -61,6 +65,7 @@ enum SheetsAttention: Equatable {
         case GoogleAuthError.accessRevoked, GoogleAuthError.notSignedIn: return .reconnectGoogle
         case SheetsError.spreadsheetMissing: return .sheetMissing
         case SheetsError.noHealthData: return .healthAccess
+        case SheetsError.healthNotAsked: return .healthPermission
         default: return nil
         }
     }
@@ -93,6 +98,10 @@ final class SheetsSink: @unchecked Sendable {
     /// Creates the sheet if there is none, then brings it up to date through today.
     func run(now: Date = Date()) async throws -> SheetsPassResult {
         guard GoogleTokenStore.shared.isSignedIn else { throw GoogleAuthError.notSignedIn }
+        // A background pass cannot show the Health prompt, so an unasked type becomes an
+        // attention state with an "Allow" action rather than HealthKit's raw error.
+        let status = try await store.statusForAuthorizationRequest(toShare: [], read: DailySummaryBuilder.readTypes)
+        if status == .shouldRequest { throw SheetsError.healthNotAsked }
         var state: SheetsDestinationState
         if let saved = SheetsDestinationState.load() {
             state = saved

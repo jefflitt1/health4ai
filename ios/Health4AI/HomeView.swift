@@ -585,7 +585,7 @@ struct HomeView: View {
                 .font(.headline)
             Text(needsHealthPrompt
                  ? "Choose how much health data health4ai may read, then grant access."
-                 : "health4ai has already asked for access. iOS only shows that prompt once, so changes are made in Settings or the Health app.")
+                 : "health4ai has already asked for this data. To change it, use Settings or the Health app.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             LabeledContent("Data scope") {
@@ -679,7 +679,10 @@ struct HomeView: View {
         healthAccessError = nil
         Task {
             do {
-                try await HealthKitManager.shared.requestAuthorization(scope: scope)
+                // In Sheets mode also ask for what the sheet reads, so this one tap clears the
+                // Sheet card's "Allow Health access" too, instead of leaving a second prompt.
+                let extra = syncState.connectionType == .googleSheets ? DailySummaryBuilder.readTypes : []
+                try await HealthKitManager.shared.requestAuthorization(scope: scope, adding: extra)
                 await MainActor.run { isRequestingHealth = false }
             } catch {
                 await MainActor.run {
