@@ -19,10 +19,16 @@ so there is no URL scheme to keep or remove.
 
 ## Existing testers (stored Sheets choice)
 
-With the case gone, `ConnectionType(rawValue: "googleSheets")` is nil, so `SyncState.init` coerces to `.supabase`
-and writes that back to UserDefaults. The Google refresh token stays in the Keychain
-(`hkb.googleRefreshToken`, unused) until the person taps the Device Privacy erase, which `deleteAll()` covers; a
-later Sheets-enabled build finds it and they are still signed in.
+With the case gone, `ConnectionType(rawValue: "googleSheets")` is nil, so `SyncState.init` (a) coerces to
+`.supabase` and writes that back to UserDefaults, and (b) resets `lastSyncDate`, `lastSyncRecordCount`,
+`lifetimeSyncedRecords` and clears Sync History, because Sheets passes wrote those same values and the database
+Home ("has synced once") and the App Store review prompt read them. The Supabase session is not touched: choosing
+Sheets in the picker already signed it out, so the phone shows the signed-out "Connect Your Database" Home.
+
+Left on the device deliberately: the Keychain key `hkb.googleRefreshToken` (its literal stays in every build, in
+`CredentialKeychain.sensitiveKeys`) and the UserDefaults key `hkb.sheetsDestination` (sheet id and URL). Erase Local
+Data & Configuration removes both (`deleteAll()` and the `hkb.` prefix sweep). A later Sheets-enabled build finds
+them and the person is still signed in.
 
 ## Producing a TestFlight build WITH Sheets (Jeff, App Store Connect UI)
 
@@ -38,3 +44,16 @@ later Sheets-enabled build finds it and they are still signed in.
 Local check of the script: `H4A_ENABLE_SHEETS=1 H4A_PBXPROJ=<copy of project.pbxproj> ios/ci_scripts/ci_pre_xcodebuild.sh`.
 
 The off-device tests compile `SheetsLogic.swift` with `-D H4A_SHEETS`: `ios/scripts/test_sheets_logic.sh`.
+
+## Enforcement (fail closed)
+
+- `ci_pre_xcodebuild.sh`: with `H4A_ENABLE_SHEETS` unset it exits 67 if the committed `H4A_RELEASE_CONDITIONS` is
+  not `""`.
+- `ci_post_xcodebuild.sh`: on the archive action (`CI_XCODEBUILD_ACTION`, `CI_ARCHIVE_PATH`) it greps the app for
+  `sheets.googleapis.com`. Unset flag and found: exit 72. Flag `1` and not found: exit 73. Missing archive: exit 70/71.
+  Other actions are skipped.
+
+## Other pipelines
+
+`.github/workflows/testflight.yml` archives Release with plain `xcodebuild archive` and does not run these scripts,
+so it always builds WITHOUT Sheets. Only an Xcode Cloud workflow with `H4A_ENABLE_SHEETS=1` produces a Sheets build.

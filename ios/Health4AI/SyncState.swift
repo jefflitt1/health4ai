@@ -273,14 +273,21 @@ final class SyncState: ObservableObject {
         if unavailable {
             defaults.set(ConnectionType.supabase.rawValue, forKey: Keys.connectionType)
         }
+        // A stored destination this build does not have (Sheets, in a build without
+        // H4A_SHEETS): its progress is not database progress. Sheets passes wrote the same
+        // last-sync and lifetime counters and the same sync history the database path reads,
+        // so left alone they would skip "Connect Your Database" (Home treats a last-sync date
+        // as "has synced once") and feed the review prompt. Reset them before they are read.
+        // The Supabase session (Keychain) is untouched; the picker signs it out when a person
+        // switches to Sheets, so it is normally already absent.
+        if parsedType == nil {
+            defaults.removeObject(forKey: Keys.lastSyncDate)
+            defaults.removeObject(forKey: Keys.lastSyncRecordCount)
+            defaults.removeObject(forKey: Keys.lifetimeSyncedRecords)
+            SyncHistoryStore.shared.removeAll()
+        }
         let savedProjectURL = defaults.string(forKey: Keys.supabaseProjectURL) ?? ""
         self.supabaseProjectURL = savedProjectURL
-
-        // Migration guard: if the persisted type is unknown (e.g. an old value no longer
-        // in the enum) and no project URL was configured, reset so the app shows setup flow.
-        if ConnectionType(rawValue: typeRaw) == nil && savedProjectURL.isEmpty {
-            defaults.removeObject(forKey: Keys.connectionType)
-        }
 
         self.serverURL = defaults.string(forKey: Keys.serverURL) ?? ""
         let authRaw = defaults.string(forKey: Keys.restAuthType) ?? RestAuthType.bearer.rawValue

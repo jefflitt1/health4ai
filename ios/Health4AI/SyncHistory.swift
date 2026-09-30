@@ -140,6 +140,14 @@ final class SyncHistoryStore: @unchecked Sendable {
         save()
     }
 
+    /// Drops every run. Used when the destination those runs belonged to no longer exists.
+    func removeAll() {
+        lock.lock()
+        defer { lock.unlock() }
+        entries.removeAll()
+        save()
+    }
+
     /// A snapshot of the log, most-recent-first.
     func all() -> [SyncHistoryEntry] {
         lock.lock()

@@ -9,6 +9,12 @@ PBXPROJ="${H4A_PBXPROJ:-$SCRIPT_DIR/../Health4AI.xcodeproj/project.pbxproj}"
 
 case "${H4A_ENABLE_SHEETS:-}" in
   "")
+    # Fail closed: an unset variable must mean Sheets is OFF, so a committed non-empty
+    # H4A_RELEASE_CONDITIONS (someone checked the flag in) stops the build here.
+    if ! grep -q 'H4A_RELEASE_CONDITIONS = "";' "$PBXPROJ"; then
+      echo "H4A_ENABLE_SHEETS is unset but H4A_RELEASE_CONDITIONS in $PBXPROJ is not empty (or missing): refusing to build an App Store configuration that may contain Sheets." >&2
+      exit 67
+    fi
     echo "H4A_ENABLE_SHEETS not set: building WITHOUT Google Sheets (App Store configuration)."
     exit 0
     ;;
