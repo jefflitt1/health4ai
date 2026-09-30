@@ -139,6 +139,12 @@ func runSyncTests(_ check: (Bool, String) -> Void, calendar cal: Calendar, at: (
     check(ok.grid[SheetTabs.daily]! >= 3653 && ok.growRequests == 1, "rebuild_grows_grid_with_one_request")
     check(ok.about == [["Column", "Meaning"]], "rebuild_rewrites_about_in_same_write")
 
+    // An old tab LONGER than the rebuilt one (duplicate days): the stale tail is cleared.
+    let longer = oldSheet()
+    longer.daily = oldRows + Array(repeating: oldRows[0], count: 5000)
+    let r8 = await drive(longer, source { $0.earliest = day("2026-08-01") })
+    check(r8.error == nil && longer.daily.count == 61 && longer.daily.first?.first == "2026-08-01", "rebuild_clears_stale_tail")
+
     // A HealthKit error (locked device) part-way through the rebuild: the sheet is untouched.
     let locked = oldSheet()
     let r2 = await drive(locked, source { $0.failDailyFrom = day("2019-01-01") })
