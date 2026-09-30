@@ -28,9 +28,9 @@ struct SheetUnits: Codable, Equatable {
 }
 
 enum SheetLayout {
-    static let dailyTab = "Daily"
-    static let workoutsTab = "Workouts"
-    static let aboutTab = "About"
+    static let dailyTab = SheetTabs.daily
+    static let workoutsTab = SheetTabs.workouts
+    static let aboutTab = SheetTabs.about
 
     static func dailyHeader(_ u: SheetUnits) -> [String] {
         ["Date", "Steps", "Distance (\(u.distanceLabel))", "Active energy (kcal)", "Exercise (min)",
@@ -56,6 +56,7 @@ enum SheetLayout {
          ["Blank cell", "No data that day. Blank never means zero."],
          ["Workouts tab", "One row per workout. Workout ID is how health4ai avoids duplicates; please leave it."],
          ["Units", "Distance in \(u.distanceLabel), weight in \(u.massLabel), energy in kcal."],
+         ["Rebuilds", "After some updates health4ai rebuilds the data rows of the Daily tab (columns A to P) and the Workouts tab (columns A to H) from your Health data, which replaces anything typed into those cells. Keep your own notes in another tab or to the right of those columns."],
          ["Privacy", "Written straight from your device to your Google Drive. It never passes through a health4ai server."]]
     }
 }
@@ -84,25 +85,25 @@ final class DailySummaryBuilder {
         self.calendar = calendar
     }
 
-    /// Earliest day worth sweeping on a first connect: the oldest step, heart rate or sleep
-    /// sample, capped at ten years back so a first sync always finishes. THROWS if any type's
+    /// Earliest day worth sweeping on a first connect: the oldest step, heart rate, sleep or
+    /// workout sample, capped at ten years back so a first sync always finishes. THROWS if any type's
     /// query fails (locked device, cancelled background task): starting from the other types'
     /// oldest day would silently leave the earlier history out of the sheet.
     func earliestDataDay(now: Date = Date()) async throws -> Date {
         let today = calendar.startOfDay(for: now)
         let floor = calendar.date(byAdding: .year, value: -10, to: today)!
         let types: [HKSampleType] = [HKQuantityType(.stepCount), HKQuantityType(.heartRate),
-                                     HKCategoryType(.sleepAnalysis)]
+                                     HKCategoryType(.sleepAnalysis), HKWorkoutType.workoutType()]
         var results: [SweepStart.TypeResult] = []
         for type in types {
             let d = HKSampleQueryDescriptor(predicates: [.sample(type: type)],
                                             sortDescriptors: [SortDescriptor(\.startDate, order: .forward)], limit: 1)
             do {
                 let first = try await d.result(for: store).first
-                Self.logger.info("earliest \(type.identifier, privacy: .public): \(first?.startDate.description ?? "none", privacy: .public)")
+                Self.logger.info("earliest \(type.identifier, privacy: .public): \(first?.startDate.description ?? "none", privacy: .private)")
                 results.append(.success(first?.startDate))
             } catch {
-                Self.logger.error("earliest \(type.identifier, privacy: .public) query failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("earliest \(type.identifier, privacy: .public) query failed: \(error.localizedDescription, privacy: .private)")
                 results.append(.failure(error))
             }
         }

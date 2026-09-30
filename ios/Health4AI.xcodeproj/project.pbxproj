@@ -26,6 +26,7 @@
 		B0000017 /* SourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000018 /* SourcesView.swift */; };
 		B0000018 /* ConnectAIView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000019 /* ConnectAIView.swift */; };
 		B0000020 /* SheetsLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000020 /* SheetsLogic.swift */; };
+		B0000040 /* SheetsSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000040 /* SheetsSync.swift */; };
 		B0000021 /* GoogleAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000021 /* GoogleAuth.swift */; };
 		B0000022 /* SheetsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000022 /* SheetsClient.swift */; };
 		B0000023 /* DailySummaryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000023 /* DailySummaryBuilder.swift */; };
@@ -57,6 +58,7 @@
 		A0000018 /* SourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesView.swift; sourceTree = "<group>"; };
 		A0000019 /* ConnectAIView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectAIView.swift; sourceTree = "<group>"; };
 		A0000020 /* SheetsLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SheetsLogic.swift; sourceTree = "<group>"; };
+		A0000040 /* SheetsSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SheetsSync.swift; sourceTree = "<group>"; };
 		A0000021 /* GoogleAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleAuth.swift; sourceTree = "<group>"; };
 		A0000022 /* SheetsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SheetsClient.swift; sourceTree = "<group>"; };
 		A0000023 /* DailySummaryBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailySummaryBuilder.swift; sourceTree = "<group>"; };
@@ -115,6 +117,7 @@
 				A0000018 /* SourcesView.swift */,
 				A0000019 /* ConnectAIView.swift */,
 				A0000020 /* SheetsLogic.swift */,
+				A0000040 /* SheetsSync.swift */,
 				A0000021 /* GoogleAuth.swift */,
 				A0000022 /* SheetsClient.swift */,
 				A0000023 /* DailySummaryBuilder.swift */,
@@ -234,6 +237,7 @@
 				B0000017 /* SourcesView.swift in Sources */,
 				B0000018 /* ConnectAIView.swift in Sources */,
 				B0000020 /* SheetsLogic.swift in Sources */,
+				B0000040 /* SheetsSync.swift in Sources */,
 				B0000021 /* GoogleAuth.swift in Sources */,
 				B0000022 /* SheetsClient.swift in Sources */,
 				B0000023 /* DailySummaryBuilder.swift in Sources */,

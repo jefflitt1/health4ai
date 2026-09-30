@@ -76,17 +76,10 @@ enum SheetsAttention: Equatable {
     }
 }
 
-struct SheetsPassResult {
-    var daysWritten: Int
-    var workoutsAdded: Int
-}
-
 final class SheetsSink: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.jglittell.health4ai", category: "SheetsSink")
     /// Days per write on a first sync. Bounds memory for decade-long histories and saves
     /// progress between chunks, so a pass iOS cuts short resumes where it stopped.
-    private static let chunkDays = 180
-    private static let rebuildOverlapDays = 2
 
     private let builder: DailySummaryBuilder
     private let client: SheetsClient
@@ -101,7 +94,8 @@ final class SheetsSink: @unchecked Sendable {
     }
 
     /// Creates the sheet if there is none, then brings it up to date through today.
-    func run(now: Date = Date()) async throws -> SheetsPassResult {
+    /// `allowRebuild` is true only for a foreground pass (see SheetsSyncCore.run).
+    func run(now: Date = Date(), allowRebuild: Bool = false) async throws -> SheetsPassResult {
         guard GoogleTokenStore.shared.isSignedIn else { throw GoogleAuthError.notSignedIn }
         // A background pass cannot show the Health prompt, so an unasked type becomes an
         // attention state with an "Allow" action rather than HealthKit's raw error.
@@ -114,92 +108,26 @@ final class SheetsSink: @unchecked Sendable {
             state = try await createSheet()
         }
 
-        let today = calendar.startOfDay(for: now)
-        // A sheet from builds 54-55 may be missing early history and holds raw workout names:
-        // it is swept again from the earliest day and its data rows rewritten in date order.
-        let rebuild = HistoryVersion.needsRebuild(lastWrittenDay: state.lastWrittenDay, historyVersion: state.historyVersion)
-        let start: Date
-        if !rebuild, let last = state.lastWrittenDay, let lastDay = Self.date(fromKey: last, calendar: calendar) {
-            start = min(calendar.date(byAdding: .day, value: -Self.rebuildOverlapDays, to: lastDay)!, today)
-        } else {
-            start = try await builder.earliestDataDay(now: now)
-        }
-        var pendingFullSweep = rebuild || state.lastWrittenDay == nil
-        var workoutsDone = false
-        var gridRows = 0
-
-        Self.logger.info("pass start \(DayKey.string(for: start, calendar: self.calendar), privacy: .public) lastWrittenDay \(state.lastWrittenDay ?? "nil", privacy: .public)")
-        var result = SheetsPassResult(daysWritten: 0, workoutsAdded: 0)
+        var core = SheetsSyncCore(api: client, source: BoundHistorySource(builder: builder, units: state.units),
+                                  calendar: calendar)
+        let about = SheetLayout.about(state.units)
+        core.rebuildExtras = [("\(SheetLayout.aboutTab)!A1:B\(about.count)", about)]
+        var progress = SheetsProgress(lastWrittenDay: state.lastWrittenDay, historyVersion: state.historyVersion)
+        Self.logger.info("pass start lastWrittenDay \(progress.lastWrittenDay ?? "nil", privacy: .private) rebuildAllowed \(allowRebuild, privacy: .public)")
         do {
-            var existing = try await client.readDateColumn(spreadsheetId: state.spreadsheetId, range: "\(SheetLayout.dailyTab)!A2:A")
-            var chunkStart = start
-            while chunkStart <= today {
-                try Task.checkCancellation()
-                let chunkEnd = min(calendar.date(byAdding: .day, value: Self.chunkDays - 1, to: chunkStart)!, today)
-                let rows = try await builder.dailyRows(from: chunkStart, through: chunkEnd, units: state.units)
-                // First connect with nothing to write: do not report success and do not
-                // advance lastWrittenDay over it (Reviewboard B, 2026-09-28).
-                if pendingFullSweep, !rows.contains(where: { $0.dropFirst().contains { !$0.isEmpty } }) {
-                    throw SheetsError.noHealthData
-                }
-                if pendingFullSweep {
-                    if rebuild {
-                        // Only after the first chunk proved there is data to put back.
-                        try await client.clear(spreadsheetId: state.spreadsheetId,
-                                               ranges: ["\(SheetLayout.dailyTab)!A2:P", "\(SheetLayout.workoutsTab)!A2:H"])
-                        existing = []
-                    }
-                    // Workouts first: a sweep cut short later resumes from a recent day, and
-                    // would never come back for older workouts.
-                    try await writeWorkouts(state: state, from: start, today: today, into: &result)
-                    workoutsDone = true
-                }
-                let plan = UpsertPlan.make(existingDates: existing, rows: rows)
-                var ranges = plan.updates.map { (range: Self.dailyRange(row: $0.row), rows: [$0.values]) }
-                if !plan.appends.isEmpty {
-                    let firstRow = existing.count + 2
-                    let lastRow = firstRow + plan.appends.count - 1
-                    if lastRow > gridRows {
-                        gridRows = try await client.ensureRows(spreadsheetId: state.spreadsheetId,
-                                                               tab: SheetLayout.dailyTab, needed: lastRow)
-                    }
-                    ranges.append((range: "\(SheetLayout.dailyTab)!A\(firstRow):P\(lastRow)",
-                                   rows: plan.appends))
-                    existing += plan.appends.map { $0[0] }
-                }
-                try await client.writeRanges(spreadsheetId: state.spreadsheetId, ranges)
-                result.daysWritten += rows.count
-                state.lastWrittenDay = DayKey.string(for: chunkEnd, calendar: calendar)
-                if pendingFullSweep { state.historyVersion = HistoryVersion.current }
-                pendingFullSweep = false
+            return try await core.run(spreadsheetId: state.spreadsheetId, progress: &progress,
+                                      allowRebuild: allowRebuild, now: now) { saved in
+                state.lastWrittenDay = saved.lastWrittenDay
+                state.historyVersion = saved.historyVersion
                 state.save()
-                Self.logger.info("chunk written through \(state.lastWrittenDay ?? "", privacy: .public): \(rows.count) rows")
-                chunkStart = calendar.date(byAdding: .day, value: 1, to: chunkEnd)!
+                Self.logger.info("progress saved through \(saved.lastWrittenDay ?? "", privacy: .private)")
             }
-
-            if !workoutsDone { try await writeWorkouts(state: state, from: start, today: today, into: &result) }
         } catch SheetsError.spreadsheetMissing {
             // Forget the dead sheet; Home offers "Create a new sheet". Not recreated silently:
             // someone who deleted it on purpose should not find a new one appear.
             SheetsDestinationState.clear()
             throw SheetsError.spreadsheetMissing
         }
-        return result
-    }
-
-    /// Workouts: append only IDs the tab does not already hold, so a repeated or interrupted
-    /// pass never duplicates a row.
-    private func writeWorkouts(state: SheetsDestinationState, from start: Date, today: Date,
-                               into result: inout SheetsPassResult) async throws {
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
-        let workoutRows = try await builder.workoutRows(from: start, to: tomorrow, units: state.units)
-        guard !workoutRows.isEmpty else { return }
-        let known = Set(try await client.readColumn(spreadsheetId: state.spreadsheetId,
-                                                    range: "\(SheetLayout.workoutsTab)!H2:H"))
-        let fresh = workoutRows.filter { !known.contains($0[7]) }
-        try await client.append(spreadsheetId: state.spreadsheetId,
-                                range: "\(SheetLayout.workoutsTab)!A:H", rows: fresh)
-        result.workoutsAdded += fresh.count
     }
 
     /// Makes the spreadsheet, writes the headers and the About tab in one request, and saves
@@ -220,13 +148,18 @@ final class SheetsSink: @unchecked Sendable {
         Self.logger.info("Created health4ai sheet")
         return state
     }
+}
 
-    private static func dailyRange(row: Int) -> String { "\(SheetLayout.dailyTab)!A\(row):P\(row)" }
-
-    private static func date(fromKey key: String, calendar: Calendar) -> Date? {
-        let parts = key.split(separator: "-").compactMap { Int($0) }
-        guard parts.count == 3 else { return nil }
-        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+/// The HealthKit builder with the sheet's units bound, as the sweep sees it.
+private struct BoundHistorySource: SheetsHistorySource {
+    let builder: DailySummaryBuilder
+    let units: SheetUnits
+    func earliestDataDay(now: Date) async throws -> Date { try await builder.earliestDataDay(now: now) }
+    func dailyRows(from: Date, through: Date) async throws -> [[String]] {
+        try await builder.dailyRows(from: from, through: through, units: units)
+    }
+    func workoutRows(from: Date, to: Date) async throws -> [[String]] {
+        try await builder.workoutRows(from: from, to: to, units: units)
     }
 }
 #endif

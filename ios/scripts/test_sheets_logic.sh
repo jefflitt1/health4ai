@@ -5,34 +5,38 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/../Health4AI/SheetsLogic.swift"
+SYNC="$HERE/../Health4AI/SheetsSync.swift"
+SYNCTESTS="$HERE/SheetsSyncTests.swift"
 TESTS="$HERE/SheetsLogicTests.swift"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-run() { # $1 = logic file. Exit 2 = did not build (never counts as a killed mutant).
+run() { # $1 = logic file, $2 = sync file. Exit 2 = did not build (never counts as a killed mutant).
   # Top-level test code is only legal in a file named main.swift.
   cp "$TESTS" "$WORK/main.swift"
-  cp "$1" "$WORK/SheetsLogic.swift"
-  xcrun swiftc -O -D H4A_SHEETS -o "$WORK/t" "$WORK/SheetsLogic.swift" "$WORK/main.swift" 2>"$WORK/build.log" || { cat "$WORK/build.log"; return 2; }
+  cp "$1" "$WORK/SheetsLogic.swift"; cp "$2" "$WORK/SheetsSync.swift"; cp "$SYNCTESTS" "$WORK/SheetsSyncTests.swift"
+  xcrun swiftc -O -D H4A_SHEETS -o "$WORK/t" "$WORK/SheetsLogic.swift" "$WORK/SheetsSync.swift" "$WORK/SheetsSyncTests.swift" "$WORK/main.swift" 2>"$WORK/build.log" || { cat "$WORK/build.log"; return 2; }
   "$WORK/t"
 }
 
 if [ "${1:-}" != "--mutants" ]; then
-  run "$SRC"
+  run "$SRC" "$SYNC"
   exit $?
 fi
 
 # Each mutant breaks one behaviour; the suite must FAIL on every one.
-mutate() { # name, python replacement (old, new)
-  local name="$1" old="$2" new="$3"
-  python3 - "$SRC" "$WORK/m.swift" "$old" "$new" <<'EOF'
+mutate() { # name, old, new, [sync] - mutates SheetsLogic.swift, or SheetsSync.swift when a 4th arg is given
+  local name="$1" old="$2" new="$3" target="$SRC"
+  [ -n "${4:-}" ] && target="$SYNC"
+  python3 - "$target" "$WORK/m.swift" "$old" "$new" <<'EOF'
 import sys
 src, out, old, new = sys.argv[1:]
 s = open(src).read()
 assert s.count(old) == 1, f"mutant anchor not unique: {old!r}"
 open(out, "w").write(s.replace(old, new))
 EOF
-  local rc=0; run "$WORK/m.swift" >/dev/null 2>&1 || rc=$?
+  local rc=0
+  if [ -n "${4:-}" ]; then run "$SRC" "$WORK/m.swift" >/dev/null 2>&1 || rc=$?; else run "$WORK/m.swift" "$SYNC" >/dev/null 2>&1 || rc=$?; fi
   if [ "$rc" -eq 0 ]; then echo "MUTANT SURVIVED: $name"; survivors=$((survivors+1))
   elif [ "$rc" -eq 2 ]; then echo "MUTANT DID NOT BUILD (invalid mutant, not a kill): $name"; survivors=$((survivors+1))
   else echo "mutant killed: $name"; fi
@@ -49,9 +53,19 @@ mutate "days step by 86400s"          'day = calendar.date(byAdding: .day, value
 mutate "serial epoch off by one"      'DateComponents(year: 1899, month: 12, day: 30)' 'DateComponents(year: 1899, month: 12, day: 31)'
 mutate "formula text not neutralized" 'guard let first = value.first, "=+-@".contains(first) else { return value }' 'guard let first = value.first, "@".contains(first) else { return value }'
 mutate "sweep start swallows query errors" 'if let date = try result.get(), date < earliest' 'if let date = (try? result.get()) ?? nil, date < earliest'
-mutate "grid never grows"             'max(0, needed - currentRows)' '0'
+mutate "grid never grows"             'currentRows >= needed ? 0 : needed + headroom - currentRows' '0'
 mutate "workout name left raw"        'return out.isEmpty ? id : out' 'return id'
 mutate "old sheet never rebuilt"      'lastWrittenDay != nil && (historyVersion ?? 0) < current' 'false'
 mutate "rebuild repeats forever"      '(historyVersion ?? 0) < current' '(historyVersion ?? 0) <= current'
+mutate "rebuild ignores a late start"  'if let firstHeld, DayKey.string(for: start, calendar: calendar) > firstHeld {' 'if false, let firstHeld, DayKey.string(for: start, calendar: calendar) > firstHeld {' sync
+mutate "rebuild runs in background"    'if allowRebuild, HistoryVersion.needsRebuild' 'if HistoryVersion.needsRebuild' sync
+mutate "refused rebuild not surfaced"  'if rebuildRefused { throw SheetsError.noHealthData }' '' sync
+mutate "rebuild never marks version"   'progress.historyVersion = HistoryVersion.current
+                persist(progress)
+                return rebuilt' 'persist(progress)
+                return rebuilt' sync
+mutate "no up-front grid growth"       'needed: existing.count + 1 + days, headroom: Self.gridHeadroom)' 'needed: 1, headroom: 0)' sync
+mutate "rebuild drops old tail"        'if existingCount > daily.count {' 'if false {' sync
+mutate "rebuild skips about rewrite"   'ranges + rebuildExtras)' 'ranges)' sync
 echo "survivors: $survivors"
 [ "$survivors" -eq 0 ]

@@ -189,10 +189,16 @@ enum SweepStart {
 // MARK: - Sheet grid
 
 enum GridGrowth {
-    /// Rows to append to a tab so it holds `needed` rows in total. A new Google sheet is
+    /// The height of every tab in a sheet the app creates.
+    static let defaultRows = 1000
+
+    /// Rows to append to a tab so it holds `needed` rows, plus `headroom` spare so the next
+    /// growth is far off. Nothing is added while the tab already holds `needed`. A new Google sheet is
     /// 1000 rows tall and `values:batchUpdate` refuses a range past the last row ("exceeds
     /// grid limits"), so a decade of days (about 3,650 rows) has to grow the tab first.
-    static func rowsToAdd(currentRows: Int, needed: Int) -> Int { max(0, needed - currentRows) }
+    static func rowsToAdd(currentRows: Int, needed: Int, headroom: Int = 0) -> Int {
+        currentRows >= needed ? 0 : needed + headroom - currentRows
+    }
 
     /// The `spreadsheets:batchUpdate` body that appends `count` rows to a tab.
     static func appendRowsBody(sheetId: Int, count: Int) -> [String: Any] {

@@ -499,15 +499,15 @@ final class SyncEngine {
     /// answer. One retry inside the same pass, with the in-flight flag still held, so no
     /// second pass races this one and a stale "Allow Health access" is never re-raised
     /// (Reviewboard + Codex, 2026-09-28).
-    private func runSheetsSink() async throws -> SheetsPassResult {
+    private func runSheetsSink(allowRebuild: Bool) async throws -> SheetsPassResult {
         let sink = SheetsSink(store: hkManager.store)
         do {
-            return try await sink.run()
+            return try await sink.run(allowRebuild: allowRebuild)
         } catch SheetsError.healthNotAsked {
             let status = try await hkManager.store.statusForAuthorizationRequest(
                 toShare: [], read: DailySummaryBuilder.readTypes)
             guard status == .unnecessary else { throw SheetsError.healthNotAsked }
-            return try await sink.run()
+            return try await sink.run(allowRebuild: allowRebuild)
         }
     }
 
@@ -516,7 +516,10 @@ final class SyncEngine {
     /// prompt's success history all read the same way in both modes.
     private func runSheetsPass(trigger: SyncTrigger) async -> FullPassOutcome {
         do {
-            let result = try await runSheetsSink()
+            // A history rebuild is only for a pass the person is present for: it is ~20 chunks of
+            // queries that a background window cannot be trusted to finish.
+            let foreground = trigger == .launch || trigger == .foreground || trigger == .manual
+            let result = try await runSheetsSink(allowRebuild: foreground)
             await MainActor.run {
                 Self.fullSyncInFlight = false
                 self.syncState.sheetsNeedsAttention = nil

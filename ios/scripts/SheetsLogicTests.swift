@@ -105,6 +105,7 @@ check(threw, "sweep_start_failed_type_throws")
 // Grid: a new tab is 1000 rows; a decade of days must grow it before the write.
 check(GridGrowth.rowsToAdd(currentRows: 1000, needed: 3652) == 2652, "grid_grows_for_decade")
 check(GridGrowth.rowsToAdd(currentRows: 1000, needed: 42) == 0, "grid_no_growth_when_fits")
+check(GridGrowth.rowsToAdd(currentRows: 1000, needed: 1001, headroom: 500) == 501 && GridGrowth.rowsToAdd(currentRows: 1000, needed: 1000, headroom: 500) == 0, "grid_headroom_only_when_growing")
 let body = GridGrowth.appendRowsBody(sheetId: 7, count: 2652)
 let req = (body["requests"] as? [[String: Any]])?.first?["appendDimension"] as? [String: Any]
 check(req?["sheetId"] as? Int == 7 && req?["dimension"] as? String == "ROWS" && req?["length"] as? Int == 2652, "grid_append_dimension_body")
@@ -119,6 +120,8 @@ check(WorkoutName.display(fromIdentifier: "HKWorkoutActivityTypeUnderwaterDiving
 check(WorkoutName.display(fromIdentifier: "HKWorkoutActivityTypeOther") == "Other", "workout_name_single")
 check(WorkoutName.display(fromIdentifier: "HKWorkoutActivityTypeHighIntensityIntervalTraining") == "High Intensity Interval Training", "workout_name_long")
 check(WorkoutName.display(fromIdentifier: "HKWorkoutActivityTypeTableTennis") == "Table Tennis", "workout_name_two")
+
+await runSyncTests(check, calendar: ny, at: at)
 
 print(failures == 0 ? "ALL PASS" : "\(failures) FAILED")
 exit(failures == 0 ? 0 : 1)

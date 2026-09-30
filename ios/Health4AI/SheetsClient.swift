@@ -6,36 +6,12 @@ import os
 // Minimal Google Sheets API v4 client: the four calls the Sheets destination needs, over
 // URLSession with the token from GoogleTokenStore. No SDK, same as GoogleAuth.
 
-enum SheetsError: LocalizedError {
-    /// The spreadsheet is gone: deleted, trashed, or (drive.file) no longer visible to the app.
-    case spreadsheetMissing
-    /// A first sync found no health data at all. HealthKit reports a DENIED read as an empty
-    /// result, so this is usually missing Health access, not an empty history; treating it as
-    /// success is how this app once showed a green "Complete" for three months with no data.
-    case noHealthData
-    /// iOS has never been asked for some type the daily summary reads. Unlike a denial this
-    /// makes HealthKit throw, so it gets its own fix: ask, then sync.
-    case healthNotAsked
-    case http(status: Int, detail: String)
-    case badResponse
-
-    var errorDescription: String? {
-        switch self {
-        case .spreadsheetMissing: return "Your health4ai sheet was deleted or moved out of reach."
-        case .noHealthData: return "No health data found to add to your sheet."
-        case .healthNotAsked: return "health4ai has not yet asked for all the Health data your sheet uses."
-        case .http(let status, _): return "Google Sheets returned an error (HTTP \(status))."
-        case .badResponse: return "Google Sheets returned an unexpected response."
-        }
-    }
-}
-
 struct CreatedSpreadsheet: Decodable {
     let spreadsheetId: String
     let spreadsheetUrl: String
 }
 
-final class SheetsClient: @unchecked Sendable {
+final class SheetsClient: SheetsAPI, @unchecked Sendable {
     static let shared = SheetsClient()
     private static let base = URL(string: "https://sheets.googleapis.com/v4/spreadsheets")!
     private static let logger = Logger(subsystem: "com.jglittell.health4ai", category: "SheetsClient")
@@ -102,9 +78,9 @@ final class SheetsClient: @unchecked Sendable {
         _ = try await send(method: "POST", url: url, json: body)
     }
 
-    /// Makes sure `tab` has at least `needed` rows and returns its row count. A new sheet is
+    /// Makes sure `tab` has at least `needed` rows (growing by `headroom` extra when it must) and returns its row count. A new sheet is
     /// 1000 rows tall and a range write past the last row fails ("exceeds grid limits").
-    func ensureRows(spreadsheetId: String, tab: String, needed: Int) async throws -> Int {
+    func ensureRows(spreadsheetId: String, tab: String, needed: Int, headroom: Int) async throws -> Int {
         var comps = URLComponents(url: Self.base.appendingPathComponent(spreadsheetId), resolvingAgainstBaseURL: false)!
         comps.queryItems = [URLQueryItem(name: "fields", value: "sheets.properties(sheetId,title,gridProperties.rowCount)")]
         let data = try await send(method: "GET", url: comps.url!, json: nil)
@@ -120,7 +96,7 @@ final class SheetsClient: @unchecked Sendable {
         }
         guard let props = try JSONDecoder().decode(Meta.self, from: data).sheets.map(\.properties)
             .first(where: { $0.title == tab }) else { throw SheetsError.badResponse }
-        let add = GridGrowth.rowsToAdd(currentRows: props.gridProperties.rowCount, needed: needed)
+        let add = GridGrowth.rowsToAdd(currentRows: props.gridProperties.rowCount, needed: needed, headroom: headroom)
         if add > 0 {
             let url = Self.base.appendingPathComponent("\(spreadsheetId):batchUpdate")
             _ = try await send(method: "POST", url: url, json: GridGrowth.appendRowsBody(sheetId: props.sheetId, count: add))
@@ -176,6 +152,9 @@ final class SheetsClient: @unchecked Sendable {
             case 401 where !forcedRefresh:
                 forcedRefresh = true
                 continue
+            case 401:
+                // Still refused with a fresh token: access was removed, not a stale token.
+                throw GoogleAuthError.accessRevoked
             case 404:
                 throw SheetsError.spreadsheetMissing
             case 403 where String(data: data, encoding: .utf8)?.contains("PERMISSION_DENIED") == true:
