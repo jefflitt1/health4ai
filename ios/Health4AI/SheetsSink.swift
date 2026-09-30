@@ -20,6 +20,8 @@ struct SheetsDestinationState: Codable, Equatable {
     /// `HistoryVersion.current` once a full-history sweep of both tabs has started on this
     /// sheet. nil on a sheet from builds 54-55, which `HistoryVersion.needsRebuild` rebuilds.
     var historyVersion: Int?
+    /// Set when a history rebuild fails or is skipped: no new attempt before this time.
+    var rebuildNotBefore: Date?
 
     private static let key = "hkb.sheetsDestination"
 
@@ -112,16 +114,24 @@ final class SheetsSink: @unchecked Sendable {
                                   calendar: calendar)
         let about = SheetLayout.about(state.units)
         core.rebuildExtras = [("\(SheetLayout.aboutTab)!A1:B\(about.count)", about)]
-        var progress = SheetsProgress(lastWrittenDay: state.lastWrittenDay, historyVersion: state.historyVersion)
+        var progress = SheetsProgress(lastWrittenDay: state.lastWrittenDay, historyVersion: state.historyVersion,
+                                      rebuildNotBefore: state.rebuildNotBefore)
         Self.logger.info("pass start lastWrittenDay \(progress.lastWrittenDay ?? "nil", privacy: .private) rebuildAllowed \(allowRebuild, privacy: .public)")
         do {
-            return try await core.run(spreadsheetId: state.spreadsheetId, progress: &progress,
+            let result = try await core.run(spreadsheetId: state.spreadsheetId, progress: &progress,
                                       allowRebuild: allowRebuild, now: now) { saved in
                 state.lastWrittenDay = saved.lastWrittenDay
                 state.historyVersion = saved.historyVersion
+                state.rebuildNotBefore = saved.rebuildNotBefore
                 state.save()
                 Self.logger.info("progress saved through \(saved.lastWrittenDay ?? "", privacy: .private)")
             }
+            if result.rebuildSkipped {
+                // Deliberately not an error or attention state (no new UI): the incremental
+                // update succeeded. Logged so a stuck old history can be diagnosed.
+                Self.logger.notice("history rebuild skipped: the sweep start is later than the sheet's first row")
+            }
+            return result
         } catch SheetsError.spreadsheetMissing {
             // Forget the dead sheet; Home offers "Create a new sheet". Not recreated silently:
             // someone who deleted it on purpose should not find a new one appear.

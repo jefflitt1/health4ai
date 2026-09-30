@@ -56,7 +56,7 @@ enum SheetLayout {
          ["Blank cell", "No data that day. Blank never means zero."],
          ["Workouts tab", "One row per workout. Workout ID is how health4ai avoids duplicates; please leave it."],
          ["Units", "Distance in \(u.distanceLabel), weight in \(u.massLabel), energy in kcal."],
-         ["Rebuilds", "After some updates health4ai rebuilds the data rows of the Daily tab (columns A to P) and the Workouts tab (columns A to H) from your Health data, which replaces anything typed into those cells. Keep your own notes in another tab or to the right of those columns."],
+         ["Rebuilds", "After some updates health4ai rebuilds the Daily tab from your Health data: it rewrites the data rows in columns A to P, so anything typed into them is replaced. Keep your own notes in another tab or to the right of column P. The Workouts tab is never cleared; workouts are only added, and their type names tidied."],
          ["Privacy", "Written straight from your device to your Google Drive. It never passes through a health4ai server."]]
     }
 }

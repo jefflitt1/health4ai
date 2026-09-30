@@ -123,5 +123,14 @@ check(WorkoutName.display(fromIdentifier: "HKWorkoutActivityTypeTableTennis") ==
 
 await runSyncTests(check, calendar: ny, at: at)
 
+// Column A of the Daily tab: only real yyyy-MM-dd keys count, and only from 2000 on.
+check(DateKeys.isKey("2026-09-30") && !DateKeys.isKey("1/5/2020") && !DateKeys.isKey("2019") && !DateKeys.isKey("2026-13-01") && !DateKeys.isKey("my notes"), "datekey_shape")
+check(DateKeys.earliestHeld(["2019", "1/5/2020", "1900-01-04", "2026-08-22", "2026-08-21"]) == "2026-08-21", "datekey_earliest_ignores_stray")
+check(DateKeys.earliestHeld(["1/5/2020", "note"]) == nil, "datekey_earliest_none_when_only_stray")
+check(DateKeys.staleRuns(["2026-01-01", "2026-01-02", "2026-01-03", "my notes", "2026-01-05"], keptRows: 3) == [4...4, 6...6], "datekey_stale_runs_skip_text")
+check(DateKeys.staleRuns(["2026-01-01", "2026-01-02"], keptRows: 3).isEmpty, "datekey_stale_none_inside_table")
+let t0 = at("2026-09-30T12:00:00-04:00")
+check(RebuildBackoff.isBlocked(notBefore: t0.addingTimeInterval(60), now: t0) && !RebuildBackoff.isBlocked(notBefore: nil, now: t0) && !RebuildBackoff.isBlocked(notBefore: t0, now: t0), "backoff_window")
+
 print(failures == 0 ? "ALL PASS" : "\(failures) FAILED")
 exit(failures == 0 ? 0 : 1)

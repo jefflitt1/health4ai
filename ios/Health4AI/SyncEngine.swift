@@ -516,9 +516,10 @@ final class SyncEngine {
     /// prompt's success history all read the same way in both modes.
     private func runSheetsPass(trigger: SyncTrigger) async -> FullPassOutcome {
         do {
-            // A history rebuild is only for a pass the person is present for: it is ~20 chunks of
-            // queries that a background window cannot be trusted to finish.
-            let foreground = trigger == .launch || trigger == .foreground || trigger == .manual
+            // A history rebuild is only for a pass the person is present for. The trigger label
+            // cannot say so (a background-delivery relaunch is labelled .launch), so ask the app:
+            // ~20 chunks of queries are not something a background window can be trusted to finish.
+            let foreground = await MainActor.run { UIApplication.shared.applicationState == .active }
             let result = try await runSheetsSink(allowRebuild: foreground)
             await MainActor.run {
                 Self.fullSyncInFlight = false

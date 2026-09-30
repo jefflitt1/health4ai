@@ -240,4 +240,51 @@ enum WorkoutName {
         return out.isEmpty ? id : out
     }
 }
+
+// MARK: - Date keys in the Daily tab's column A
+
+enum DateKeys {
+    /// "yyyy-MM-dd" exactly, as this app writes it. Anything else in column A (a person's
+    /// note, "1/5/2020", a bare year, a number that Sheets turned into a 1900 date) is theirs.
+    static func isKey(_ s: String) -> Bool {
+        let c = Array(s.utf8)
+        guard c.count == 10, c[4] == 45, c[7] == 45 else { return false }
+        for (i, b) in c.enumerated() where i != 4 && i != 7 { if b < 48 || b > 57 { return false } }
+        let month = Int(s.dropFirst(5).prefix(2))!, day = Int(s.suffix(2))!
+        return (1...12).contains(month) && (1...31).contains(day)
+    }
+
+    /// The first day the sheet really holds. Keys before 2000 are ignored: HealthKit did not
+    /// exist, so they are a misread number or typed text, and one would make a rebuild look
+    /// safe when it is not (or, read the other way, refuse it forever).
+    static func earliestHeld(_ column: [String], minYear: Int = 2000) -> String? {
+        column.map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { isKey($0) && Int($0.prefix(4))! >= minYear }
+            .min()
+    }
+
+    /// Sheet row runs (1-based, column A starts at row 2) below the `keptRows` rows a rebuild
+    /// just wrote whose column A is a date key. Only those are ours to clear; a person's text
+    /// below the table is left alone.
+    static func staleRuns(_ column: [String], keptRows: Int) -> [ClosedRange<Int>] {
+        var runs: [ClosedRange<Int>] = []
+        for (i, raw) in column.enumerated() {
+            let row = i + 2
+            guard row > keptRows, isKey(raw.trimmingCharacters(in: .whitespaces)) else { continue }
+            if let last = runs.last, last.upperBound == row - 1 { runs[runs.count - 1] = last.lowerBound...row }
+            else { runs.append(row...row) }
+        }
+        return runs
+    }
+}
+
+// MARK: - Rebuild backoff
+
+enum RebuildBackoff {
+    /// After a rebuild fails or is refused, foreground passes do incremental work only until
+    /// this long has passed, so a failing rebuild does not repeat 20 chunks of queries on
+    /// every app open.
+    static let interval: TimeInterval = 6 * 3600
+    static func isBlocked(notBefore: Date?, now: Date) -> Bool { (notBefore ?? .distantPast) > now }
+}
 #endif

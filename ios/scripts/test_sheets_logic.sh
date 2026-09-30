@@ -57,15 +57,26 @@ mutate "grid never grows"             'currentRows >= needed ? 0 : needed + head
 mutate "workout name left raw"        'return out.isEmpty ? id : out' 'return id'
 mutate "old sheet never rebuilt"      'lastWrittenDay != nil && (historyVersion ?? 0) < current' 'false'
 mutate "rebuild repeats forever"      '(historyVersion ?? 0) < current' '(historyVersion ?? 0) <= current'
-mutate "rebuild ignores a late start"  'if let firstHeld, DayKey.string(for: start, calendar: calendar) > firstHeld {' 'if false, let firstHeld, DayKey.string(for: start, calendar: calendar) > firstHeld {' sync
-mutate "rebuild runs in background"    'if allowRebuild, HistoryVersion.needsRebuild' 'if HistoryVersion.needsRebuild' sync
-mutate "refused rebuild not surfaced"  'if rebuildRefused { throw SheetsError.noHealthData }' '' sync
+mutate "rebuild ignores a late start"  'if let firstHeld = DateKeys.earliestHeld(existing), DayKey' 'if false, let firstHeld = DateKeys.earliestHeld(existing), DayKey' sync
+mutate "rebuild runs in background"    'if allowRebuild, !RebuildBackoff' 'if !RebuildBackoff' sync
+mutate "refused rebuild not reported"  'result.rebuildSkipped = rebuildRefused' '' sync
 mutate "rebuild never marks version"   'progress.historyVersion = HistoryVersion.current
-                persist(progress)
-                return rebuilt' 'persist(progress)
-                return rebuilt' sync
+                    progress.rebuildNotBefore = nil' 'progress.rebuildNotBefore = nil' sync
 mutate "no up-front grid growth"       'needed: existing.count + 1 + days, headroom: Self.gridHeadroom)' 'needed: 1, headroom: 0)' sync
-mutate "rebuild drops old tail"        'if existingCount > daily.count {' 'if false {' sync
-mutate "rebuild skips about rewrite"   'ranges + rebuildExtras)' 'ranges)' sync
+mutate "rebuild drops stale tail"      'if !stale.isEmpty {' 'if false {' sync
+mutate "rebuild skips about rewrite"   'if !rebuildExtras.isEmpty { try await api.writeRanges' 'if false { try await api.writeRanges' sync
+mutate "workouts not merged"           'let added = try await addWorkouts(id: id, from: start, today: today)
+        try await tidyWorkoutNames' 'let added = 0
+        try await tidyWorkoutNames' sync
+mutate "raw workout names left"        'try await tidyWorkoutNames(id: id)
+        return SheetsPassResult' 'return SheetsPassResult' sync
+mutate "failed rebuild not backed off" 'progress.rebuildNotBefore = now.addingTimeInterval(RebuildBackoff.interval)
+                persist(progress)
+                throw error' 'throw error' sync
+mutate "backoff ignored"               'allowRebuild, !RebuildBackoff.isBlocked(notBefore: progress.rebuildNotBefore, now: now),' 'allowRebuild,' sync
+mutate "daily written in one request"  'static let writeChunkRows = 800' 'static let writeChunkRows = 100000' sync
+mutate "stale clear wipes any text"    'guard row > keptRows, isKey(raw.trimmingCharacters(in: .whitespaces)) else { continue }' 'guard row > keptRows else { continue }'
+mutate "stray keys steer the guard"    'minYear: Int = 2000' 'minYear: Int = 0'
+mutate "cancel treated as failure"     'throw CancellationError()   // iOS took' 'throw Injected()   // iOS took' sync
 echo "survivors: $survivors"
 [ "$survivors" -eq 0 ]
