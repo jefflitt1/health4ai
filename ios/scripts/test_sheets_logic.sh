@@ -13,7 +13,7 @@ run() { # $1 = logic file. Exit 2 = did not build (never counts as a killed muta
   # Top-level test code is only legal in a file named main.swift.
   cp "$TESTS" "$WORK/main.swift"
   cp "$1" "$WORK/SheetsLogic.swift"
-  xcrun swiftc -O -o "$WORK/t" "$WORK/SheetsLogic.swift" "$WORK/main.swift" 2>"$WORK/build.log" || { cat "$WORK/build.log"; return 2; }
+  xcrun swiftc -O -D H4A_SHEETS -o "$WORK/t" "$WORK/SheetsLogic.swift" "$WORK/main.swift" 2>"$WORK/build.log" || { cat "$WORK/build.log"; return 2; }
   "$WORK/t"
 }
 

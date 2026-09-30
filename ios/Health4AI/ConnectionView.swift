@@ -23,21 +23,17 @@ struct ConnectionView: View {
     var body: some View {
         NavigationStack {
             List {
-                if SheetsFeature.isAvailable {
-                    DestinationPickerSection()
-                }
+                #if H4A_SHEETS
+                DestinationPickerSection()
                 if syncState.connectionType == .googleSheets {
                     SheetsConnectSection()
                     privacySection
                 } else {
-                    checklistSection
-                    configSection
-                    authSection
-                    historySection
-                    testSection
-                    aiSection
-                    privacySection
+                    databaseSections
                 }
+                #else
+                databaseSections
+                #endif
             }
             .navigationTitle("Connection")
             .navigationBarTitleDisplayMode(.large)
@@ -128,6 +124,19 @@ struct ConnectionView: View {
 
     // MARK: - Config (conditional on type)
 
+    /// The database destination's sections: everything on the Connection tab except the
+    /// Sheets picker and Sheets connect section.
+    @ViewBuilder
+    private var databaseSections: some View {
+        checklistSection
+        configSection
+        authSection
+        historySection
+        testSection
+        aiSection
+        privacySection
+    }
+
     @ViewBuilder
     private var configSection: some View {
         switch syncState.connectionType {
@@ -137,9 +146,11 @@ struct ConnectionView: View {
             // Unreachable: SyncState.init coerces a stored `.rest` back to `.supabase`.
             // The case stays only to keep the switch exhaustive.
             supabaseConfigSection
+        #if H4A_SHEETS
         case .googleSheets:
             // Unreachable: the body shows SheetsConnectSection instead in Sheets mode.
             EmptyView()
+        #endif
         }
     }
 
@@ -269,9 +280,13 @@ struct ConnectionView: View {
         } header: {
             Text("Device Privacy")
         } footer: {
+            #if H4A_SHEETS
             Text(syncState.connectionType == .googleSheets
                  ? "Use before giving this device to someone else. This removes your Google connection from this device. Your sheet stays in your Drive."
                  : "Use before giving this device to someone else. Your database is never shared automatically.")
+            #else
+            Text("Use before giving this device to someone else. Your database is never shared automatically.")
+            #endif
         }
     }
 

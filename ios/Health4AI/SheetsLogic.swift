@@ -1,3 +1,5 @@
+#if H4A_SHEETS
+// Compiled only with H4A_SHEETS (off in Release by default; see docs/sheets-build-gate.md).
 import CryptoKit
 import Foundation
 import Security
@@ -164,3 +166,4 @@ enum SheetCell {
         return String(format: "%.\(decimals)f", locale: Locale(identifier: "en_US_POSIX"), value)
     }
 }
+#endif

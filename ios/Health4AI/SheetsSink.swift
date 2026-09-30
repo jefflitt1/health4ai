@@ -1,3 +1,5 @@
+#if H4A_SHEETS
+// Compiled only with H4A_SHEETS (off in Release by default; see docs/sheets-build-gate.md).
 import Foundation
 import HealthKit
 import os
@@ -193,3 +195,4 @@ final class SheetsSink: @unchecked Sendable {
         return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 }
+#endif

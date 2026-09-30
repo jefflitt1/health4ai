@@ -26,7 +26,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // gated, DEBUG-only — Xcode Cloud archives Release, which never compiles this branch.
         SyncHistoryStore.shared.seedForScreenshotsIfNeeded()
         SourcesTracker.shared.seedForScreenshotsIfNeeded()
+        #if H4A_SHEETS
         MainActor.assumeIsolated { SheetsScreenshotFixture.applyIfRequested(SyncEngine.sharedSyncState) }
+        #endif
         #endif
         Task { @MainActor in
             self.reconnectIfAuthenticated(trigger: .launch)
@@ -45,8 +47,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func applicationDidEnterBackground(_ application: UIApplication) {
         Task { @MainActor in
             SyncEngine.shared.scheduleBackgroundSync()
+            #if H4A_SHEETS
             // The history import uploads to the database; Sheets mode has its own sweep.
             guard !Self.isSheetsMode else { return }
+            #endif
             BulkExportManager.shared.requestBackgroundTime()
             BulkExportManager.shared.scheduleBackgroundBackfill()
         }
@@ -60,19 +64,25 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     // MARK: - Private helpers
 
+    #if H4A_SHEETS
     /// Sheets mode: the destination is the person's Google Sheet, not a database.
     @MainActor
     private static var isSheetsMode: Bool { SyncEngine.sharedSyncState.connectionType == .googleSheets }
+    #endif
 
     /// Whether the chosen destination can receive data: a Google sign-in in Sheets mode,
     /// the Supabase session otherwise (unchanged for every existing install).
     @MainActor
     private static var destinationConnected: Bool {
-        isSheetsMode ? GoogleTokenStore.shared.isSignedIn : SyncEngine.sharedAuthManager.isSignedIn
+        #if H4A_SHEETS
+        if isSheetsMode { return GoogleTokenStore.shared.isSignedIn }
+        #endif
+        return SyncEngine.sharedAuthManager.isSignedIn
     }
 
     @MainActor
     private func reconnectIfAuthenticated(trigger: SyncTrigger) {
+        #if H4A_SHEETS
         if Self.isSheetsMode {
             guard GoogleTokenStore.shared.isSignedIn, HKHealthStore.isHealthDataAvailable() else { return }
             SyncEngine.sharedSyncState.isAuthenticated = true
@@ -80,6 +90,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             SyncEngine.shared.performForegroundSync(trigger: trigger)
             return
         }
+        #endif
         let authManager = SyncEngine.sharedAuthManager
         guard authManager.isSignedIn else { return }
 

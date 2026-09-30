@@ -1,3 +1,5 @@
+#if H4A_SHEETS
+// Compiled only with H4A_SHEETS (off in Release by default; see docs/sheets-build-gate.md).
 import Foundation
 import os
 
@@ -162,3 +164,4 @@ final class SheetsClient: @unchecked Sendable {
         }
     }
 }
+#endif

@@ -307,6 +307,7 @@ final class SyncEngine {
                     let trigger: SyncTrigger = await MainActor.run {
                         UIApplication.shared.applicationState == .background ? .backgroundDelivery : .foreground
                     }
+                    #if H4A_SHEETS
                     if await MainActor.run(body: { self.syncState.connectionType == .googleSheets }) {
                         // Sheets mode has no per-type upload: the pass rebuilds recent days
                         // from HealthKit. Concurrent observers collapse to one pass via the
@@ -315,6 +316,7 @@ final class SyncEngine {
                         completionHandler()
                         return
                     }
+                    #endif
                     do {
                         let count = try await self.syncType(sampleType)
                         if count > 0 {
@@ -364,11 +366,13 @@ final class SyncEngine {
                 let trigger: SyncTrigger = await MainActor.run {
                     UIApplication.shared.applicationState == .background ? .backgroundDelivery : .foreground
                 }
+                #if H4A_SHEETS
                 if await MainActor.run(body: { self.syncState.connectionType == .googleSheets }) {
                     await self.runFullPass(trigger: trigger)
                     completionHandler()
                     return
                 }
+                #endif
                 do {
                     let count = try await self.syncType(workoutType)
                     if count > 0 {
@@ -426,9 +430,11 @@ final class SyncEngine {
         }
         guard claimed else { return .skipped }
 
+        #if H4A_SHEETS
         if await MainActor.run(body: { self.syncState.connectionType == .googleSheets }) {
             return await runSheetsPass(trigger: trigger)
         }
+        #endif
 
         do {
             let outcome = try await performFullSync()
@@ -485,6 +491,7 @@ final class SyncEngine {
         }
     }
 
+    #if H4A_SHEETS
     // MARK: - Google Sheets pass
 
     /// The Health prompt can be answered while a pass is running; the resolve button's own
@@ -547,6 +554,7 @@ final class SyncEngine {
             return .failed
         }
     }
+    #endif
 
     // MARK: - Full sync (all types, anchored)
 

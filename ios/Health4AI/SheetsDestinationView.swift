@@ -1,22 +1,10 @@
+#if H4A_SHEETS
+// Compiled only with H4A_SHEETS (off in Release by default; see docs/sheets-build-gate.md).
 import SwiftUI
 
 // UI for the Google Sheets destination: the destination choice on the Connection tab, the
 // Sheets connect/disconnect section, and the Home status card.
 // Colour rule (design.md): colour goes on symbols only; text stays .primary/.secondary.
-
-enum SheetsFeature {
-    /// TestFlight and debug builds only until the 1.1 release. SyncState.init also coerces a
-    /// stored Sheets choice back to the database when this is false, so the feature is dark
-    /// in App Store builds, not just hidden (Reviewboard C). The sandbox receipt is how a
-    /// TestFlight install identifies itself.
-    static let isAvailable: Bool = {
-        #if DEBUG
-        return true
-        #else
-        return Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
-        #endif
-    }()
-}
 
 /// A status line with a coloured symbol and uncoloured text.
 private struct StatusLine: View {
@@ -338,4 +326,5 @@ enum SheetsScreenshotFixture {
         }
     }
 }
+#endif
 #endif

@@ -2,7 +2,9 @@ import SwiftUI
 
 struct PrivacyView: View {
     @EnvironmentObject var syncState: SyncState
+    #if H4A_SHEETS
     private var isSheets: Bool { syncState.connectionType == .googleSheets }
+    #endif
 
     var body: some View {
         NavigationStack {
@@ -32,22 +34,21 @@ struct PrivacyView: View {
                 FlowNode(icon: "applewatch", label: "Apple Watch / Wearables", color: .primary)
                 FlowArrow(label: "HealthKit API")
                 FlowNode(icon: "iphone", label: "Your iPhone", color: .primary)
+                #if H4A_SHEETS
                 if isSheets {
                     FlowArrow(label: "HTTPS (Google only)")
                     FlowNode(icon: "tablecells", label: "Your Google Sheet", color: .green)
                     FlowArrow(label: "Google Drive connector")
                     FlowNode(icon: "brain", label: "Your AI (ChatGPT, Claude, Gemini)", color: .blue)
                 } else {
-                    FlowArrow(label: "HTTPS (your endpoint only)")
-                    FlowNode(icon: "server.rack", label: "Your Supabase / API", color: .green)
-                    FlowArrow(label: "MCP protocol")
-                    FlowNode(icon: "brain", label: "Your AI agent (Claude, etc.)", color: .blue)
+                    databaseFlow
                 }
+                #else
+                databaseFlow
+                #endif
             }
 
-            Text(isSheets
-                 ? "health4ai is not a shared health-data backend. Google and your AI provider remain separate privacy decisions."
-                 : "health4ai is not a shared health-data backend. Your chosen database and AI provider remain separate privacy decisions.")
+            Text(flowCaption)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -56,6 +57,41 @@ struct PrivacyView: View {
         .padding()
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    @ViewBuilder
+    private var databaseFlow: some View {
+        FlowArrow(label: "HTTPS (your endpoint only)")
+        FlowNode(icon: "server.rack", label: "Your Supabase / API", color: .green)
+        FlowArrow(label: "MCP protocol")
+        FlowNode(icon: "brain", label: "Your AI agent (Claude, etc.)", color: .blue)
+    }
+
+    private var flowCaption: String {
+        #if H4A_SHEETS
+        if isSheets {
+            return "health4ai is not a shared health-data backend. Google and your AI provider remain separate privacy decisions."
+        }
+        #endif
+        return "health4ai is not a shared health-data backend. Your chosen database and AI provider remain separate privacy decisions."
+    }
+
+    private var noCollectionDetail: String {
+        #if H4A_SHEETS
+        if isSheets {
+            return "health4ai does not operate a shared health-data backend. Your health data goes only to the Google Sheet you connect, in your own Drive."
+        }
+        #endif
+        return "health4ai does not operate a shared health-data backend. Your health data goes only to the database endpoint you configure."
+    }
+
+    private var noAnalyticsDetail: String {
+        #if H4A_SHEETS
+        if isSheets {
+            return "The app contains no analytics or crash-reporting SDKs. Google and any cloud AI provider have their own privacy practices."
+        }
+        #endif
+        return "The app contains no analytics or crash-reporting SDKs. Your chosen database and any cloud AI provider have their own privacy practices."
     }
 
     // MARK: - Guarantees
@@ -69,17 +105,13 @@ struct PrivacyView: View {
                 icon: "xmark.shield.fill",
                 color: .red,
                 title: "No data collection",
-                detail: isSheets
-                    ? "health4ai does not operate a shared health-data backend. Your health data goes only to the Google Sheet you connect, in your own Drive."
-                    : "health4ai does not operate a shared health-data backend. Your health data goes only to the database endpoint you configure."
+                detail: noCollectionDetail
             )
             GuaranteeRow(
                 icon: "eye.slash.fill",
                 color: .orange,
                 title: "No analytics",
-                detail: isSheets
-                    ? "The app contains no analytics or crash-reporting SDKs. Google and any cloud AI provider have their own privacy practices."
-                    : "The app contains no analytics or crash-reporting SDKs. Your chosen database and any cloud AI provider have their own privacy practices."
+                detail: noAnalyticsDetail
             )
             GuaranteeRow(
                 icon: "lock.open.fill",

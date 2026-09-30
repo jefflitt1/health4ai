@@ -59,10 +59,12 @@ struct ContentView: View {
         if args.contains("-h4aiScreenshotSources") { return AnyView(SourcesView()) }
         if args.contains("-h4aiScreenshotConnectAI") { return AnyView(ConnectAIView()) }
         if args.contains("-h4aiScreenshotSetupChecklist") { return AnyView(ConnectionView()) }
+        #if H4A_SHEETS
         if args.contains("-h4aiScreenshotSheetsConnect") { return AnyView(ConnectionView()) }
         // At accessibility sizes the Sheets section sits below the fold of the full
         // Connection screen, and simctl cannot scroll; this shows the section on its own.
         if args.contains("-h4aiScreenshotSheetsSection") { return AnyView(List { SheetsConnectSection() }) }
+        #endif
         return nil
     }
     #endif

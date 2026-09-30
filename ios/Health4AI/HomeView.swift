@@ -116,10 +116,12 @@ struct HomeView: View {
                         // one action that matters. Nothing is removed: the same cards render,
                         // just re-homed, and the moment a sync completes this reverts to the
                         // original always-expanded layout.
-                        if syncState.connectionType == .googleSheets && syncState.isAuthenticated {
+                        if showsSheetsHome {
                             // Sheets mode: none of the database cards (import, MCP, scope,
                             // server actions) apply. Health access still does.
+                            #if H4A_SHEETS
                             SheetsHomeCard()
+                            #endif
                             healthAccessCard
                         } else if hasSyncedOnce {
                             scopeCard
@@ -207,7 +209,7 @@ struct HomeView: View {
               !syncState.isSyncing,
               !syncState.isBackfilling,
               syncState.syncError == nil,
-              syncState.sheetsNeedsAttention == nil,
+              !sheetsNeedsAttention,
               syncState.importFailedMetricNames.isEmpty,
               SyncHistoryStore.shared.showsSustainedSuccess() else { return }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
@@ -217,6 +219,32 @@ struct HomeView: View {
         requestReview()
     }
 
+    private var connectButtonTitle: String {
+        #if H4A_SHEETS
+        return "Get started"
+        #else
+        return "Connect your database"
+        #endif
+    }
+
+    /// Sheets destination chosen and signed in. Constant false unless built with H4A_SHEETS.
+    private var showsSheetsHome: Bool {
+        #if H4A_SHEETS
+        return syncState.connectionType == .googleSheets && syncState.isAuthenticated
+        #else
+        return false
+        #endif
+    }
+
+    /// A Sheets problem only the person can fix is outstanding. Constant false without H4A_SHEETS.
+    private var sheetsNeedsAttention: Bool {
+        #if H4A_SHEETS
+        return syncState.sheetsNeedsAttention != nil
+        #else
+        return false
+        #endif
+    }
+
     // MARK: - Connect prompt (not signed in, pre-first-sync only)
 
     /// The single card shown before ANY database is connected: nothing else on Home can do
@@ -224,18 +252,23 @@ struct HomeView: View {
     /// is the one primary action, and it leads straight to where that action lives.
     private var connectDatabaseCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(SheetsFeature.isAvailable ? "Choose Where Your Data Goes" : "Connect Your Database",
-                  systemImage: SheetsFeature.isAvailable ? "square.and.arrow.down" : "server.rack")
+            #if H4A_SHEETS
+            Label("Choose Where Your Data Goes", systemImage: "square.and.arrow.down")
                 .font(.headline)
-            Text(SheetsFeature.isAvailable
-                 ? "Save to a Google Sheet in your own Drive (easiest), or to a database you run."
-                 : "health4ai syncs your health data to a Supabase project you own. Connect yours to start syncing.")
+            Text("Save to a Google Sheet in your own Drive (easiest), or to a database you run.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            #else
+            Label("Connect Your Database", systemImage: "server.rack")
+                .font(.headline)
+            Text("health4ai syncs your health data to a Supabase project you own. Connect yours to start syncing.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            #endif
             Button {
                 tabRouter.selectedTab = 1
             } label: {
-                Text(SheetsFeature.isAvailable ? "Get started" : "Connect your database")
+                Text(connectButtonTitle)
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
@@ -399,7 +432,7 @@ struct HomeView: View {
         if syncState.syncError != nil { return .red }
         // Sheets mode: one signal for a problem only the person can fix. The Sheets card
         // carries the message and the action; this headline only says it needs attention.
-        if syncState.sheetsNeedsAttention != nil { return .orange }
+        if sheetsNeedsAttention { return .orange }
         // Metrics known to be missing outrank a healthy connection: the transport can be
         // fine while the data is not arriving, and the headline must not read green while
         // the app already knows core metrics returned nothing.
@@ -431,7 +464,7 @@ struct HomeView: View {
             Label(error, systemImage: "exclamationmark.circle.fill")
                 .font(.caption)
                 .foregroundStyle(statusColor)
-        } else if syncState.sheetsNeedsAttention != nil {
+        } else if sheetsNeedsAttention {
             // Colour on the symbol only: orange headline text is 2.31:1 (design.md rule 1).
             Label {
                 Text("Needs attention").foregroundStyle(.primary)
@@ -681,8 +714,12 @@ struct HomeView: View {
             do {
                 // In Sheets mode also ask for what the sheet reads, so this one tap clears the
                 // Sheet card's "Allow Health access" too, instead of leaving a second prompt.
+                #if H4A_SHEETS
                 let extra = syncState.connectionType == .googleSheets ? DailySummaryBuilder.readTypes : []
                 try await HealthKitManager.shared.requestAuthorization(scope: scope, adding: extra)
+                #else
+                try await HealthKitManager.shared.requestAuthorization(scope: scope)
+                #endif
                 await MainActor.run { isRequestingHealth = false }
             } catch {
                 await MainActor.run {

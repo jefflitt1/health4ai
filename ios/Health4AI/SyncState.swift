@@ -6,15 +6,22 @@ import Combine
 enum ConnectionType: String, CaseIterable {
     case supabase = "supabase"
     case rest     = "rest"     // any REST endpoint
+    #if H4A_SHEETS
     /// Daily summaries into the person's own Google Sheet (SheetsSink). Exclusive with the
     /// database path by decision (Jeff 2026-09-28): a person is on one destination or the other.
+    /// Compiled only with H4A_SHEETS (docs/sheets-build-gate.md). Without it the case does not
+    /// exist, so a stored "googleSheets" choice fails `ConnectionType(rawValue:)` and SyncState.init
+    /// puts the person back on the database.
     case googleSheets = "googleSheets"
+    #endif
 
     var displayName: String {
         switch self {
         case .supabase:     return "Supabase"
         case .rest:         return "REST / Webhook"
+        #if H4A_SHEETS
         case .googleSheets: return "Google Sheets"
+        #endif
         }
     }
 }
@@ -124,9 +131,11 @@ final class SyncState: ObservableObject {
     @Published var nextScheduledSync: Date? = nil
     @Published var isSyncing: Bool = false
     @Published var syncError: String? = nil
+    #if H4A_SHEETS
     /// Sheets mode only: a problem only the person can fix (Google access removed, sheet
     /// deleted). Distinct from `syncError`, which a later pass may clear on its own.
     @Published var sheetsNeedsAttention: SheetsAttention? = nil
+    #endif
 
     /// HealthKit type identifiers whose `enableBackgroundDelivery` call failed. Non-empty means
     /// observers for those types fire only while the app is in the foreground, so the Home card
@@ -227,10 +236,12 @@ final class SyncState: ObservableObject {
             return base.isEmpty ? serverURL : "\(base)/functions/v1/healthkit-ingest"
         case .rest:
             return serverURL
+        #if H4A_SHEETS
         case .googleSheets:
             // No sample endpoint in Sheets mode: SyncEngine routes to SheetsSink before any
             // post. Empty makes a stray Supabase-path call fail fast instead of posting.
             return ""
+        #endif
         }
     }
 
@@ -248,12 +259,13 @@ final class SyncState: ObservableObject {
         // `.rest` is not selectable in 1.0 (see ConnectionView "Backend type"). Anyone
         // holding a stored `rest` selection is coerced to Supabase rather than left on a
         // path that has never synced a row and offers no way back to the picker.
-        let storedType = ConnectionType(rawValue: typeRaw) ?? .supabase
-        // Google Sheets is TestFlight-only until 1.1. A tester who picked it and then installs
-        // the App Store build carries the stored choice across; without this coercion every
-        // Sheets code path (all keyed on connectionType) would run live in an App Store build
-        // that does not offer the feature (Reviewboard C, 2026-09-28).
-        let unavailable = storedType == .rest || (storedType == .googleSheets && !SheetsFeature.isAvailable)
+        let parsedType = ConnectionType(rawValue: typeRaw)
+        let storedType = parsedType ?? .supabase
+        // Google Sheets is compiled out of App Store builds (no H4A_SHEETS). A tester who picked
+        // it on TestFlight and then installs such a build carries "googleSheets" across; that
+        // raw value no longer parses (`parsedType == nil`), so they land on the database here
+        // instead of leaving every Sheets-keyed path dead-ended (Reviewboard C, 2026-09-28).
+        let unavailable = storedType == .rest || parsedType == nil
         self.connectionType = unavailable ? .supabase : storedType
         // Write the coercion through. `didSet` does not fire during init, so without this
         // UserDefaults keeps "rest" forever and the persisted state contradicts the live
