@@ -57,3 +57,10 @@ The off-device tests compile `SheetsLogic.swift` with `-D H4A_SHEETS`: `ios/scri
 
 `.github/workflows/testflight.yml` archives Release with plain `xcodebuild archive` and does not run these scripts,
 so it always builds WITHOUT Sheets. Only an Xcode Cloud workflow with `H4A_ENABLE_SHEETS=1` produces a Sheets build.
+
+## Capturing 1.0.1 marketing screenshots
+
+A normal Debug build compiles `H4A_SHEETS`, so its screens (and the DEBUG screenshot fixtures) show the Sheets
+picker and Sheets Home card. For App Store screenshots or the demo video, use a Release build (TestFlight from
+main), or Debug with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG`, which runs the same no-Sheets code as Release.
+(Sasha UX gate note, 2026-09-30.)
