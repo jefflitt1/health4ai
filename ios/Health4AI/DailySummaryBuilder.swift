@@ -2,6 +2,7 @@
 // Compiled only with H4A_SHEETS (off in Release by default; see docs/sheets-build-gate.md).
 import Foundation
 import HealthKit
+import os
 
 // Builds the Google Sheets destination's rows on device. Daily totals come from
 // HKStatisticsCollectionQuery, which dedupes overlapping sources (iPhone + Watch steps)
@@ -60,6 +61,7 @@ enum SheetLayout {
 }
 
 final class DailySummaryBuilder {
+    private static let logger = Logger(subsystem: "com.jglittell.health4ai", category: "SheetsSink")
     /// Every type this builder queries. HealthKit THROWS "Authorization not determined" for a
     /// type the app never asked about (it only hides a DENIED read as empty), so the Sheets
     /// connect flow requests this set on top of the chosen scope, and SheetsSink checks it
@@ -92,8 +94,14 @@ final class DailySummaryBuilder {
         for type in types {
             let d = HKSampleQueryDescriptor(predicates: [.sample(type: type)],
                                             sortDescriptors: [SortDescriptor(\.startDate, order: .forward)], limit: 1)
-            if let first = try? await d.result(for: store).first, first.startDate < earliest {
-                earliest = first.startDate
+            // Logged, not silently dropped: a type whose query fails here would otherwise just
+            // raise the sweep's start date with no trace of why.
+            do {
+                let first = try await d.result(for: store).first
+                Self.logger.info("earliest \(type.identifier, privacy: .public): \(first?.startDate.description ?? "none", privacy: .public)")
+                if let first, first.startDate < earliest { earliest = first.startDate }
+            } catch {
+                Self.logger.error("earliest \(type.identifier, privacy: .public) query failed: \(error.localizedDescription, privacy: .public)")
             }
         }
         return max(calendar.startOfDay(for: earliest), floor)

@@ -119,6 +119,7 @@ final class SheetsSink: @unchecked Sendable {
             start = await builder.earliestDataDay(now: now)
         }
 
+        Self.logger.info("pass start \(DayKey.string(for: start, calendar: self.calendar), privacy: .public) lastWrittenDay \(state.lastWrittenDay ?? "nil", privacy: .public)")
         var result = SheetsPassResult(daysWritten: 0, workoutsAdded: 0)
         do {
             var existing = try await client.readDateColumn(spreadsheetId: state.spreadsheetId, range: "\(SheetLayout.dailyTab)!A2:A")
@@ -144,6 +145,7 @@ final class SheetsSink: @unchecked Sendable {
                 result.daysWritten += rows.count
                 state.lastWrittenDay = DayKey.string(for: chunkEnd, calendar: calendar)
                 state.save()
+                Self.logger.info("chunk written through \(state.lastWrittenDay ?? "", privacy: .public): \(rows.count) rows")
                 chunkStart = calendar.date(byAdding: .day, value: 1, to: chunkEnd)!
             }
 
