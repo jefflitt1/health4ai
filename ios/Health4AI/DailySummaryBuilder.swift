@@ -85,26 +85,28 @@ final class DailySummaryBuilder {
     }
 
     /// Earliest day worth sweeping on a first connect: the oldest step, heart rate or sleep
-    /// sample, capped at ten years back so a first sync always finishes.
-    func earliestDataDay(now: Date = Date()) async -> Date {
-        let floor = calendar.date(byAdding: .year, value: -10, to: calendar.startOfDay(for: now))!
-        var earliest = calendar.startOfDay(for: now)
+    /// sample, capped at ten years back so a first sync always finishes. THROWS if any type's
+    /// query fails (locked device, cancelled background task): starting from the other types'
+    /// oldest day would silently leave the earlier history out of the sheet.
+    func earliestDataDay(now: Date = Date()) async throws -> Date {
+        let today = calendar.startOfDay(for: now)
+        let floor = calendar.date(byAdding: .year, value: -10, to: today)!
         let types: [HKSampleType] = [HKQuantityType(.stepCount), HKQuantityType(.heartRate),
                                      HKCategoryType(.sleepAnalysis)]
+        var results: [SweepStart.TypeResult] = []
         for type in types {
             let d = HKSampleQueryDescriptor(predicates: [.sample(type: type)],
                                             sortDescriptors: [SortDescriptor(\.startDate, order: .forward)], limit: 1)
-            // Logged, not silently dropped: a type whose query fails here would otherwise just
-            // raise the sweep's start date with no trace of why.
             do {
                 let first = try await d.result(for: store).first
                 Self.logger.info("earliest \(type.identifier, privacy: .public): \(first?.startDate.description ?? "none", privacy: .public)")
-                if let first, first.startDate < earliest { earliest = first.startDate }
+                results.append(.success(first?.startDate))
             } catch {
                 Self.logger.error("earliest \(type.identifier, privacy: .public) query failed: \(error.localizedDescription, privacy: .public)")
+                results.append(.failure(error))
             }
         }
-        return max(calendar.startOfDay(for: earliest), floor)
+        return try SweepStart.resolve(results, today: today, floor: floor, calendar: calendar)
     }
 
     /// One Daily row per day in [start, end], each beginning with its date key.
@@ -183,7 +185,7 @@ final class DailySummaryBuilder {
                 .compactMap { w.statistics(for: $0)?.sumQuantity()?.doubleValue(for: units.distanceUnit) }
                 .first
             return [DayKey.string(for: w.startDate, calendar: calendar), time.string(from: w.startDate),
-                    SheetCell.text(w.workoutActivityType.name), SheetCell.number(w.duration / 60, decimals: 0),
+                    SheetCell.text(WorkoutName.display(fromIdentifier: w.workoutActivityType.name)), SheetCell.number(w.duration / 60, decimals: 0),
                     SheetCell.number(energy, decimals: 0), SheetCell.number(distance, decimals: 2),
                     SheetCell.text(w.sourceRevision.source.name), w.uuid.uuidString]
         }

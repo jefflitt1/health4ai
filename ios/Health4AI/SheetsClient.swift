@@ -102,6 +102,38 @@ final class SheetsClient: @unchecked Sendable {
         _ = try await send(method: "POST", url: url, json: body)
     }
 
+    /// Makes sure `tab` has at least `needed` rows and returns its row count. A new sheet is
+    /// 1000 rows tall and a range write past the last row fails ("exceeds grid limits").
+    func ensureRows(spreadsheetId: String, tab: String, needed: Int) async throws -> Int {
+        var comps = URLComponents(url: Self.base.appendingPathComponent(spreadsheetId), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [URLQueryItem(name: "fields", value: "sheets.properties(sheetId,title,gridProperties.rowCount)")]
+        let data = try await send(method: "GET", url: comps.url!, json: nil)
+        struct Meta: Decodable {
+            struct Sheet: Decodable {
+                struct Props: Decodable {
+                    struct Grid: Decodable { let rowCount: Int }
+                    let sheetId: Int; let title: String; let gridProperties: Grid
+                }
+                let properties: Props
+            }
+            let sheets: [Sheet]
+        }
+        guard let props = try JSONDecoder().decode(Meta.self, from: data).sheets.map(\.properties)
+            .first(where: { $0.title == tab }) else { throw SheetsError.badResponse }
+        let add = GridGrowth.rowsToAdd(currentRows: props.gridProperties.rowCount, needed: needed)
+        if add > 0 {
+            let url = Self.base.appendingPathComponent("\(spreadsheetId):batchUpdate")
+            _ = try await send(method: "POST", url: url, json: GridGrowth.appendRowsBody(sheetId: props.sheetId, count: add))
+        }
+        return props.gridProperties.rowCount + add
+    }
+
+    /// Clears values (not formatting or the header) from the given A1 ranges.
+    func clear(spreadsheetId: String, ranges: [String]) async throws {
+        let url = Self.base.appendingPathComponent(spreadsheetId).appendingPathComponent("values:batchClear")
+        _ = try await send(method: "POST", url: url, json: ["ranges": ranges])
+    }
+
     /// Appends rows after the last row of the table in `range` (e.g. `Workouts!A:H`).
     func append(spreadsheetId: String, range: String, rows: [[String]]) async throws {
         guard !rows.isEmpty else { return }

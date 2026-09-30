@@ -48,5 +48,10 @@ mutate "pkce challenge not hashed"    'base64url(Data(SHA256.hash(data: Data(ver
 mutate "days step by 86400s"          'day = calendar.date(byAdding: .day, value: 1, to: day)!' 'day = day.addingTimeInterval(86_400)'
 mutate "serial epoch off by one"      'DateComponents(year: 1899, month: 12, day: 30)' 'DateComponents(year: 1899, month: 12, day: 31)'
 mutate "formula text not neutralized" 'guard let first = value.first, "=+-@".contains(first) else { return value }' 'guard let first = value.first, "@".contains(first) else { return value }'
+mutate "sweep start swallows query errors" 'if let date = try result.get(), date < earliest' 'if let date = (try? result.get()) ?? nil, date < earliest'
+mutate "grid never grows"             'max(0, needed - currentRows)' '0'
+mutate "workout name left raw"        'return out.isEmpty ? id : out' 'return id'
+mutate "old sheet never rebuilt"      'lastWrittenDay != nil && (historyVersion ?? 0) < current' 'false'
+mutate "rebuild repeats forever"      '(historyVersion ?? 0) < current' '(historyVersion ?? 0) <= current'
 echo "survivors: $survivors"
 [ "$survivors" -eq 0 ]

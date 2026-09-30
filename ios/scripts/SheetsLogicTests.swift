@@ -85,5 +85,40 @@ check(SheetCell.text("Apple Watch") == "Apple Watch" && SheetCell.text("") == ""
 check(SheetCell.number(nil, decimals: 1) == "" && SheetCell.number(.nan, decimals: 1) == "", "cell_blank_for_missing")
 check(SheetCell.number(7.456, decimals: 1) == "7.5" && SheetCell.number(0, decimals: 0) == "0", "cell_formats")
 
+// First-connect sweep start: the oldest sample across types, and a failed query is an error.
+struct ProbeError: Error {}
+let today = at("2026-09-29T00:00:00-04:00")
+let floor10 = at("2016-09-29T00:00:00-04:00")
+let oldest = at("2014-05-01T08:00:00-04:00")
+let recent = at("2026-08-22T08:00:00-04:00")
+let resolved = try? SweepStart.resolve([.success(recent), .success(oldest), .success(nil)], today: today, floor: floor10, calendar: ny)
+check(resolved == floor10, "sweep_start_floored_at_ten_years")
+let mid = try? SweepStart.resolve([.success(recent), .success(at("2020-03-04T08:00:00-05:00"))], today: today, floor: floor10, calendar: ny)
+check(mid == at("2020-03-04T00:00:00-05:00"), "sweep_start_is_oldest_type")
+check((try? SweepStart.resolve([.success(nil), .success(nil)], today: today, floor: floor10, calendar: ny)) == today, "sweep_start_no_samples_is_today")
+// Steps and heart rate fail, sleep answers with a later day: must throw, not start from sleep's day.
+var threw = false
+do { _ = try SweepStart.resolve([.failure(ProbeError()), .failure(ProbeError()), .success(recent)], today: today, floor: floor10, calendar: ny) }
+catch { threw = true }
+check(threw, "sweep_start_failed_type_throws")
+
+// Grid: a new tab is 1000 rows; a decade of days must grow it before the write.
+check(GridGrowth.rowsToAdd(currentRows: 1000, needed: 3652) == 2652, "grid_grows_for_decade")
+check(GridGrowth.rowsToAdd(currentRows: 1000, needed: 42) == 0, "grid_no_growth_when_fits")
+let body = GridGrowth.appendRowsBody(sheetId: 7, count: 2652)
+let req = (body["requests"] as? [[String: Any]])?.first?["appendDimension"] as? [String: Any]
+check(req?["sheetId"] as? Int == 7 && req?["dimension"] as? String == "ROWS" && req?["length"] as? Int == 2652, "grid_append_dimension_body")
+
+// History version: a sheet with rows from before the rebuild is rebuilt once.
+check(HistoryVersion.needsRebuild(lastWrittenDay: "2026-09-30", historyVersion: nil), "rebuild_old_sheet")
+check(!HistoryVersion.needsRebuild(lastWrittenDay: "2026-09-30", historyVersion: HistoryVersion.current), "rebuild_not_repeated")
+check(!HistoryVersion.needsRebuild(lastWrittenDay: nil, historyVersion: nil), "rebuild_not_needed_before_first_write")
+
+// Workout names read as words, not HealthKit identifiers.
+check(WorkoutName.display(fromIdentifier: "HKWorkoutActivityTypeUnderwaterDiving") == "Underwater Diving", "workout_name_words")
+check(WorkoutName.display(fromIdentifier: "HKWorkoutActivityTypeOther") == "Other", "workout_name_single")
+check(WorkoutName.display(fromIdentifier: "HKWorkoutActivityTypeHighIntensityIntervalTraining") == "High Intensity Interval Training", "workout_name_long")
+check(WorkoutName.display(fromIdentifier: "HKWorkoutActivityTypeTableTennis") == "Table Tennis", "workout_name_two")
+
 print(failures == 0 ? "ALL PASS" : "\(failures) FAILED")
 exit(failures == 0 ? 0 : 1)

@@ -166,4 +166,72 @@ enum SheetCell {
         return String(format: "%.\(decimals)f", locale: Locale(identifier: "en_US_POSIX"), value)
     }
 }
+
+// MARK: - First-connect sweep start
+
+enum SweepStart {
+    /// One type's answer to "what is your oldest sample": a date, nil for a type with no
+    /// samples at all (legitimately empty), or an error.
+    typealias TypeResult = Result<Date?, Error>
+
+    /// The day a first connect sweeps from: the oldest sample across the types, floored. A
+    /// failed query THROWS. Skipping it would quietly start the sweep at a later type's
+    /// oldest day and leave the earlier history out of the sheet with no sign of why.
+    static func resolve(_ results: [TypeResult], today: Date, floor: Date, calendar: Calendar) throws -> Date {
+        var earliest = today
+        for result in results {
+            if let date = try result.get(), date < earliest { earliest = date }
+        }
+        return max(calendar.startOfDay(for: earliest), floor)
+    }
+}
+
+// MARK: - Sheet grid
+
+enum GridGrowth {
+    /// Rows to append to a tab so it holds `needed` rows in total. A new Google sheet is
+    /// 1000 rows tall and `values:batchUpdate` refuses a range past the last row ("exceeds
+    /// grid limits"), so a decade of days (about 3,650 rows) has to grow the tab first.
+    static func rowsToAdd(currentRows: Int, needed: Int) -> Int { max(0, needed - currentRows) }
+
+    /// The `spreadsheets:batchUpdate` body that appends `count` rows to a tab.
+    static func appendRowsBody(sheetId: Int, count: Int) -> [String: Any] {
+        ["requests": [["appendDimension": ["sheetId": sheetId, "dimension": "ROWS", "length": count]]]]
+    }
+}
+
+// MARK: - History version
+
+enum HistoryVersion {
+    /// Bumped when an already-connected sheet needs its full history rebuilt. 1: builds 54-55
+    /// could start a first sync after the person's earliest data, and wrote raw HealthKit
+    /// workout names.
+    static let current = 1
+
+    /// True for a sheet that already has rows but was last swept before `current`. A sheet
+    /// that has never written (`lastWrittenDay == nil`) does a full sweep anyway.
+    static func needsRebuild(lastWrittenDay: String?, historyVersion: Int?) -> Bool {
+        lastWrittenDay != nil && (historyVersion ?? 0) < current
+    }
+}
+
+// MARK: - Workout names
+
+enum WorkoutName {
+    /// "HKWorkoutActivityTypeUnderwaterDiving" -> "Underwater Diving". The raw identifier is
+    /// what the database destination stores; a person reading a sheet should not see it.
+    static func display(fromIdentifier id: String) -> String {
+        let prefix = "HKWorkoutActivityType"
+        let core = id.hasPrefix(prefix) ? String(id.dropFirst(prefix.count)) : id
+        var out = ""
+        let chars = Array(core)
+        for (i, c) in chars.enumerated() {
+            if i > 0, c.isUppercase, !chars[i - 1].isUppercase || (i + 1 < chars.count && chars[i + 1].isLowercase) {
+                out.append(" ")
+            }
+            out.append(c)
+        }
+        return out.isEmpty ? id : out
+    }
+}
 #endif
