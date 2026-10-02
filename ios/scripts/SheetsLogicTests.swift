@@ -114,6 +114,13 @@ check(req?["sheetId"] as? Int == 7 && req?["dimension"] as? String == "ROWS" && 
 check(HistoryVersion.needsRebuild(lastWrittenDay: "2026-09-30", historyVersion: nil), "rebuild_old_sheet")
 check(!HistoryVersion.needsRebuild(lastWrittenDay: "2026-09-30", historyVersion: HistoryVersion.current), "rebuild_not_repeated")
 check(HistoryVersion.needsRebuild(lastWrittenDay: "2026-10-02", historyVersion: 1), "rebuild_build57_sheet_once_more")
+check(HistoryVersion.needsRebuild(lastWrittenDay: "2026-10-02", historyVersion: 2), "rebuild_build58_sheet_once_more")
+check(AccessLimit.widened(previous: "2026-08-22", current: nil), "access_lifted_is_widened")
+check(AccessLimit.widened(previous: "2026-08-22", current: "2026-01-01"), "access_earlier_is_widened")
+check(!AccessLimit.widened(previous: "2026-08-22", current: "2026-08-22"), "access_same_not_widened")
+check(!AccessLimit.widened(previous: "2026-08-22", current: "2026-09-01"), "access_later_not_widened")
+check(!AccessLimit.widened(previous: nil, current: nil), "access_unknown_before_not_widened")
+check(!AccessLimit.widened(previous: nil, current: "2026-08-22"), "access_first_seen_not_widened")
 check(!HistoryVersion.needsRebuild(lastWrittenDay: nil, historyVersion: nil), "rebuild_not_needed_before_first_write")
 
 // Workout names read as words, not HealthKit identifiers.

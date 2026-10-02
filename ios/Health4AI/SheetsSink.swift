@@ -22,6 +22,8 @@ struct SheetsDestinationState: Codable, Equatable {
     var historyVersion: Int?
     /// Set when a history rebuild fails or is skipped: no new attempt before this time.
     var rebuildNotBefore: Date?
+    /// iOS 27 limited-history cutoff ("YYYY-MM-DD") seen on the last pass, nil for full access.
+    var accessLimitDay: String?
 
     private static let key = "hkb.sheetsDestination"
 
@@ -108,6 +110,25 @@ final class SheetsSink: @unchecked Sendable {
             state = saved
         } else {
             state = try await createSheet()
+        }
+
+        do {
+            let limit = try await HealthKitManager.shared.historyAccessLimit(for: Set<HKObjectType>(DailySummaryBuilder.readTypes))
+            let limitDay = limit.map { DayKey.string(for: $0, calendar: calendar) }
+            let widened = AccessLimit.widened(previous: state.accessLimitDay, current: limitDay)
+            if widened {
+                // A limited read does not come back on its own: rebuild from the wider history.
+                Self.logger.notice("history access widened from \(state.accessLimitDay ?? "", privacy: .public) to \(limitDay ?? "all", privacy: .public): rebuilding")
+                state.historyVersion = nil
+                state.rebuildNotBefore = nil
+            }
+            if widened || state.accessLimitDay != limitDay {
+                state.accessLimitDay = limitDay
+                state.save()
+            }
+        } catch {
+            // Unknown, not "full": nothing is recorded or changed, the pass goes on as before.
+            Self.logger.error("history access limit check failed: \(error.localizedDescription, privacy: .public)")
         }
 
         var core = SheetsSyncCore(api: client, source: BoundHistorySource(builder: builder, units: state.units),

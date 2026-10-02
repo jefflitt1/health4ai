@@ -213,12 +213,27 @@ enum HistoryVersion {
     /// could start a first sync after the person's earliest data, and wrote raw HealthKit
     /// workout names. 2: build 58 records each type's oldest sample (HistoryFound) on the
     /// rebuild, for a sheet that still started on 2026-08-22 after build 57's rebuild.
-    static let current = 2
+    /// 3: build 59. Sheets built under iOS 27 limited ("Past 30 Days") access before the
+    /// app recorded the cutoff (AccessLimit) rebuild once, in case access has since widened.
+    static let current = 3
 
     /// True for a sheet that already has rows but was last swept before `current`. A sheet
     /// that has never written (`lastWrittenDay == nil`) does a full sweep anyway.
     static func needsRebuild(lastWrittenDay: String?, historyVersion: Int?) -> Bool {
         lastWrittenDay != nil && (historyVersion ?? 0) < current
+    }
+}
+
+// MARK: - Limited history access (iOS 27)
+
+enum AccessLimit {
+    /// True when iOS's limited-history cutoff was lifted or moved earlier since the last pass.
+    /// The sheet was built under the old cutoff and a rebuild is the only way to fill in the
+    /// older days. Unknown before (nil previous) is not a widening.
+    static func widened(previous: String?, current: String?) -> Bool {
+        guard let previous else { return false }
+        guard let current else { return true }
+        return current < previous
     }
 }
 

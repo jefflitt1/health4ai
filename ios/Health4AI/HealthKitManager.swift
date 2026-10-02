@@ -243,6 +243,21 @@ final class HealthKitManager {
         return status == .shouldRequest
     }
 
+    /// iOS 27 lets a person grant only "Past 30 Days and Future Data": HealthKit then hides every
+    /// sample older than a fixed cutoff, the same for every type, and the app's oldest-sample
+    /// queries silently start there (Jeff's sheet started 2026-08-22, 30 days before he granted
+    /// access; found 2026-10-02). Returns that cutoff, or nil for full access and before iOS 27.
+    /// THROWS when HealthKit cannot answer, so a caller never mistakes "unknown" for "full".
+    func historyAccessLimit(for types: Set<HKObjectType>) async throws -> Date? {
+        guard #available(iOS 27.0, *) else { return nil }
+        let limits = try await store.earliestAuthorizedSampleDate(for: types)
+        return limits.values.max()
+    }
+
+    func historyAccessLimit(scope: DataScope = HealthKitManager.selectedScope) async throws -> Date? {
+        try await historyAccessLimit(for: Set<HKObjectType>(Self.sampleTypes(for: scope)))
+    }
+
     // MARK: - Sample query
 
     /// Queries HKSamples for a given type within a date range.

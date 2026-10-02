@@ -15,6 +15,8 @@ struct HomeView: View {
     /// True while iOS would still show the permission sheet for the selected scope.
     /// Drives whether the primary button prompts or routes to Settings.
     @State private var needsHealthPrompt = false
+    /// iOS 27 limited ("Past 30 Days") history cutoff; nil for full access or unknown.
+    @State private var historyLimit: Date?
     /// Set while programmatically restoring the picker after a failed request, so the
     /// restore does not re-enter onChange and fire a second request.
     @State private var isRevertingScope = false
@@ -124,10 +126,12 @@ struct HomeView: View {
                                 .id(Self.sheetsCardID)
                             #endif
                             healthAccessCard
+                                .id(Self.healthAccessCardID)
                         } else if hasSyncedOnce {
                             scopeCard
                             mcpCard
                             healthAccessCard
+                                .id(Self.healthAccessCardID)
                             backfillCard
                                 .id(Self.backfillCardID)
                             actionsCard
@@ -156,6 +160,13 @@ struct HomeView: View {
                         proxy.scrollTo(Self.backfillCardID, anchor: .top)
                     }
                     if args.contains("-h4aiScrollToSheets") { proxy.scrollTo(Self.sheetsCardID, anchor: .top) }
+                    if args.contains("-h4aiScrollToHealthAccess") {
+                        // After layout: at accessibility sizes the card is below the first screen.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { proxy.scrollTo(Self.healthAccessCardID, anchor: .top) }
+                    }
+                    if args.contains("-h4aiScrollToHistoryLimit") {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { proxy.scrollTo(Self.historyLimitNoticeID, anchor: .top) }
+                    }
                     if args.contains("-h4aiScrollToSheetsHistory") {
                         // After layout: at accessibility sizes the target is below the first screen.
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { proxy.scrollTo("sheetsHistory", anchor: .top) }
@@ -189,6 +200,8 @@ struct HomeView: View {
     private static let backfillCardID = "backfillCard"
 
     private static let sheetsCardID = "sheetsCard"
+    private static let healthAccessCardID = "healthAccessCard"
+    private static let historyLimitNoticeID = "historyLimitNotice"
 
     /// True once ANY sync has actually landed. Not `backfillCompleted`: a user who has never
     /// finished the history import but whose live sync has already posted once has moved past
@@ -592,6 +605,39 @@ struct HomeView: View {
     /// Apple Health read authorization status is not reliably queryable for read types,
     /// so this card is always available as a recovery path: for users who tapped
     /// "Skip for now" during onboarding, or who revoked access in iOS Settings later.
+    private var scopePicker: some View {
+        Picker("Data scope", selection: $healthScope) {
+            ForEach(HealthKitManager.DataScope.allCases) { scope in
+                Text(scope.title).tag(scope)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .disabled(isRequestingHealth)
+    }
+
+    /// iOS 27 "Past 30 Days and Future Data": older history is hidden from the app.
+    private func historyLimitNotice(_ historyLimit: Date) -> some View {
+        // The date is its own Text so it never breaks mid-number at accessibility sizes
+        // (design.md). The remedy differs by destination: the sheet rebuilds when access
+        // widens, but the database path's anchored queries never see the older samples,
+        // so it must not promise a recovery it cannot deliver (open item A76).
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("iOS is only sharing Health data since")
+                Text(historyLimit.formatted(date: .abbreviated, time: .omitted) + ".")
+                Text(showsSheetsHome
+                     ? "To include older history, change health4ai's Health access to All Recorded Data in Settings. Your sheet then rebuilds from your full history."
+                     : "Older history can't reach your database while this limit is on.")
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "clock.badge.exclamationmark")
+                .foregroundStyle(.orange)
+        }
+        .font(.caption)
+    }
+
     private var healthAccessCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Apple Health Access", systemImage: "heart.text.square")
@@ -601,19 +647,39 @@ struct HomeView: View {
                  : "health4ai has already asked for this data. To change it, use Settings or the Health app.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            LabeledContent("Data scope") {
-                Picker("Data scope", selection: $healthScope) {
-                    ForEach(HealthKitManager.DataScope.allCases) { scope in
-                        Text(scope.title).tag(scope)
+            // At accessibility sizes the side-by-side row left the picker value about two
+            // letters wide (Sasha, build 59 gate), so it stacks under its label there.
+            if dynamicTypeSize.isAccessibilitySize {
+                // A menu-style Picker's button never grows vertically, so its value clipped
+                // even when stacked; a Menu with a wrapping Text label does grow.
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Data scope")
+                    Menu {
+                        scopePicker
+                    } label: {
+                        Label {
+                            Text(healthScope.title)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "chevron.up.chevron.down")
+                        }
+                        .labelStyle(TrailingIconLabelStyle())
                     }
+                    .disabled(isRequestingHealth)
+                    .accessibilityLabel("Data scope")
+                    .accessibilityValue(healthScope.title)
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .disabled(isRequestingHealth)
+            } else {
+                LabeledContent("Data scope") { scopePicker }
             }
             Text(healthScope.detail)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+            if let historyLimit {
+                historyLimitNotice(historyLimit)
+                    .id(Self.historyLimitNoticeID)
+            }
             if isRequestingHealth {
                 HStack(spacing: 6) {
                     ProgressView().scaleEffect(0.7)
@@ -717,7 +783,23 @@ struct HomeView: View {
 
     private func refreshHealthPromptState() async {
         let needsPrompt = await HealthKitManager.shared.needsAuthorizationRequest(scope: healthScope)
-        await MainActor.run { needsHealthPrompt = needsPrompt }
+        let limit: Date?
+        do {
+            limit = try await HealthKitManager.shared.historyAccessLimit(scope: healthScope)
+        } catch {
+            // Unknown: show no notice rather than a wrong one. Logged for diagnosis.
+            print("[Home] history access limit check failed: \(error)")
+            limit = nil
+        }
+        await MainActor.run {
+            needsHealthPrompt = needsPrompt
+            historyLimit = limit
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-h4aiScreenshotHistoryLimited") {
+                historyLimit = Calendar.current.date(byAdding: .day, value: -30, to: Date())
+            }
+            #endif
+        }
     }
 
     // MARK: - Backfill card
@@ -1224,6 +1306,16 @@ private struct ExampleQuestion: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .italic()
+        }
+    }
+}
+
+/// Text first, icon after: the menu chevron sits after the value, as on a menu Picker.
+private struct TrailingIconLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            configuration.title
+            configuration.icon
         }
     }
 }
