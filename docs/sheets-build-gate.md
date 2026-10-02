@@ -2,22 +2,26 @@
 
 The Google Sheets destination is compiled in only when the Swift condition `H4A_SHEETS` is set.
 
+**Since 1.0.1 (Jeff 2026-10-02) Sheets ships in every build**, App Store included: the Google OAuth app was
+published to production and its branding verified on 2026-09-30, so App Review and users no longer hit
+"Access blocked" or the 7-day test-user token limit.
+
 | Build | `H4A_SHEETS` | Sheets reachable |
 |-------|--------------|------------------|
 | Debug (Xcode, simulator) | on | yes |
-| Release from main (App Store) | off | no: the code, strings and Google endpoints are not in the binary |
-| Release with `H4A_ENABLE_SHEETS=1` (TestFlight) | on | yes |
+| Release (Xcode Cloud, TestFlight, App Store) | on (`H4A_RELEASE_CONDITIONS = "H4A_SHEETS"`) | yes |
 
-Why compile-time: the old runtime check (`appStoreReceiptURL == "sandboxReceipt"`) is also true for App Review
-builds, so a reviewer would have reached Google sign-in and hit "Access blocked" (OAuth consent screen is in Testing).
+The condition is kept, rather than deleted, so a build without Sheets stays one setting away
+(`H4A_RELEASE_CONDITIONS = ""`) if Google access ever has to be pulled; the CI gates below would then need the
+inverse check again (see git history before 2026-10-02 for that version).
 
-What is compiled out without the flag: `GoogleAuth`, `SheetsClient`, `SheetsSink`, `SheetsLogic`,
+What the flag controls: `GoogleAuth`, `SheetsClient`, `SheetsSink`, `SheetsLogic`,
 `DailySummaryBuilder`, `SheetsDestinationView` (picker, connect section, Home card), the Sheets branches in
 `HomeView`, `ConnectionView`, `PrivacyView`, `SyncEngine`, `AppDelegate`, and `ConnectionType.googleSheets`.
 `Info.plist` has no `CFBundleURLTypes`: the OAuth redirect is handled in-process by `ASWebAuthenticationSession`,
 so there is no URL scheme to keep or remove.
 
-## Existing testers (stored Sheets choice)
+## If Sheets is ever compiled out again (stored Sheets choice)
 
 With the case gone, `ConnectionType(rawValue: "googleSheets")` is nil, so `SyncState.init` (a) coerces to
 `.supabase` and writes that back to UserDefaults, and (b) resets `lastSyncDate`, `lastSyncRecordCount`,
@@ -30,37 +34,22 @@ Left on the device deliberately: the Keychain key `hkb.googleRefreshToken` (its 
 Data & Configuration removes both (`deleteAll()` and the `hkb.` prefix sweep). A later Sheets-enabled build finds
 them and the person is still signed in.
 
-## Producing a TestFlight build WITH Sheets (Jeff, App Store Connect UI)
-
-`ios/ci_scripts/ci_pre_xcodebuild.sh` flips the Release condition when `H4A_ENABLE_SHEETS=1`.
-
-1. App Store Connect > Xcode Cloud > Manage Workflows > New Workflow (name it "TestFlight with Sheets").
-2. Start condition: a branch you choose (for example `testflight-sheets`), never main. Changes to `ios/` only.
-3. Environment: Archive iOS, scheme `Health4AI`, Release. Add environment variable `H4A_ENABLE_SHEETS` = `1`.
-4. Post-action: TestFlight Internal Testing only.
-5. The default App Store workflow on main must NOT define `H4A_ENABLE_SHEETS`. Unset means Sheets is compiled out.
-6. Check the build log for "H4A_ENABLE_SHEETS=1: building WITH Google Sheets". Any other value fails the build.
-
-Local check of the script: `H4A_ENABLE_SHEETS=1 H4A_PBXPROJ=<copy of project.pbxproj> ios/ci_scripts/ci_pre_xcodebuild.sh`.
-
-The off-device tests compile `SheetsLogic.swift` with `-D H4A_SHEETS`: `ios/scripts/test_sheets_logic.sh`.
-
 ## Enforcement (fail closed)
 
-- `ci_pre_xcodebuild.sh`: with `H4A_ENABLE_SHEETS` unset it exits 67 if the committed `H4A_RELEASE_CONDITIONS` is
-  not `""`.
+- `ci_pre_xcodebuild.sh`: exits 67 if the committed `H4A_RELEASE_CONDITIONS` is not `"H4A_SHEETS"`.
 - `ci_post_xcodebuild.sh`: on the archive action (`CI_XCODEBUILD_ACTION`, `CI_ARCHIVE_PATH`) it greps the app for
-  `sheets.googleapis.com`. Unset flag and found: exit 72. Flag `1` and not found: exit 73. Missing archive: exit 70/71.
-  Other actions are skipped.
+  `sheets.googleapis.com` and exits 73 if absent. Missing archive: exit 70/71. Other actions are skipped.
+- `H4A_ENABLE_SHEETS` is no longer read; a leftover workflow variable has no effect.
+
+Local check: `H4A_PBXPROJ=<copy of project.pbxproj> ios/ci_scripts/ci_pre_xcodebuild.sh`.
+The off-device tests compile `SheetsLogic.swift` with `-D H4A_SHEETS`: `ios/scripts/test_sheets_logic.sh`.
 
 ## Other pipelines
 
-`.github/workflows/testflight.yml` archives Release with plain `xcodebuild archive` and does not run these scripts,
-so it always builds WITHOUT Sheets. Only an Xcode Cloud workflow with `H4A_ENABLE_SHEETS=1` produces a Sheets build.
+`.github/workflows/testflight.yml` archives Release with plain `xcodebuild archive`; it reads the committed
+setting, so it also builds WITH Sheets.
 
-## Capturing 1.0.1 marketing screenshots
+## Screenshots and demo video
 
-A normal Debug build compiles `H4A_SHEETS`, so its screens (and the DEBUG screenshot fixtures) show the Sheets
-picker and Sheets Home card. For App Store screenshots or the demo video, use a Release build (TestFlight from
-main), or Debug with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG`, which runs the same no-Sheets code as Release.
-(Sasha UX gate note, 2026-09-30.)
+Use a Release build (TestFlight from main): it now shows the Sheets picker and Home card, which App Review needs
+to see in the demo video.

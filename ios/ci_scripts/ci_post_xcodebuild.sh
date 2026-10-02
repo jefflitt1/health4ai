@@ -1,9 +1,7 @@
 #!/bin/sh
 # Xcode Cloud runs this after every xcodebuild action. For an ARCHIVE it verifies the built app
-# matches the intended Sheets setting, and fails the build (so nothing reaches App Store Connect
-# or TestFlight) if not:
-#   H4A_ENABLE_SHEETS unset -> the archive must NOT contain the Google Sheets endpoint.
-#   H4A_ENABLE_SHEETS=1     -> the archive MUST contain it.
+# contains the Google Sheets destination, and fails the build (so nothing reaches App Store Connect
+# or TestFlight) if the flag did not take effect.
 # CI_XCODEBUILD_ACTION and CI_ARCHIVE_PATH are Xcode Cloud variables (Apple: Environment variable
 # reference, verified 2026-09-30). CI_ARCHIVE_PATH may be an .xcarchive or a directory holding .app.
 set -eu
@@ -27,25 +25,8 @@ if [ -z "$APP" ]; then
   exit 71
 fi
 
-if grep -rqaF "$PROBE" "$APP"; then FOUND=1; else FOUND=0; fi
-
-case "${H4A_ENABLE_SHEETS:-}" in
-  "")
-    if [ "$FOUND" = 1 ]; then
-      echo "FAIL: H4A_ENABLE_SHEETS is unset but $APP contains '$PROBE'. This archive would expose Google Sheets to App Review." >&2
-      exit 72
-    fi
-    echo "OK: no Google Sheets code in the archive (App Store configuration)."
-    ;;
-  1)
-    if [ "$FOUND" = 0 ]; then
-      echo "FAIL: H4A_ENABLE_SHEETS=1 but $APP has no Sheets code. The flag did not take effect." >&2
-      exit 73
-    fi
-    echo "OK: archive contains Google Sheets code (TestFlight-only configuration)."
-    ;;
-  *)
-    echo "H4A_ENABLE_SHEETS must be 1 or unset, got '${H4A_ENABLE_SHEETS}'." >&2
-    exit 64
-    ;;
-esac
+if ! grep -rqaF "$PROBE" "$APP"; then
+  echo "FAIL: $APP has no Google Sheets code. H4A_SHEETS did not take effect in Release." >&2
+  exit 73
+fi
+echo "OK: archive contains Google Sheets code."
