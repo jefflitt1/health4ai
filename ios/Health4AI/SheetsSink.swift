@@ -116,7 +116,11 @@ final class SheetsSink: @unchecked Sendable {
         core.rebuildExtras = [("\(SheetLayout.aboutTab)!A1:B\(about.count)", about)]
         var progress = SheetsProgress(lastWrittenDay: state.lastWrittenDay, historyVersion: state.historyVersion,
                                       rebuildNotBefore: state.rebuildNotBefore)
-        Self.logger.info("pass start lastWrittenDay \(progress.lastWrittenDay ?? "nil", privacy: .private) rebuildAllowed \(allowRebuild, privacy: .public)")
+        Self.logger.info("pass start lastWrittenDay \(progress.lastWrittenDay ?? "nil", privacy: .public) rebuildAllowed \(allowRebuild, privacy: .public)")
+        let rebuildDue = allowRebuild && HistoryVersion.needsRebuild(lastWrittenDay: progress.lastWrittenDay,
+                                                                     historyVersion: progress.historyVersion)
+        let backedOff = RebuildBackoff.isBlocked(notBefore: progress.rebuildNotBefore, now: now)
+        let wasFirstSweep = progress.lastWrittenDay == nil
         do {
             let result = try await core.run(spreadsheetId: state.spreadsheetId, progress: &progress,
                                       allowRebuild: allowRebuild, now: now) { saved in
@@ -130,14 +134,30 @@ final class SheetsSink: @unchecked Sendable {
                 // Deliberately not an error or attention state (no new UI): the incremental
                 // update succeeded. Logged so a stuck old history can be diagnosed.
                 Self.logger.notice("history rebuild skipped: the sweep start is later than the sheet's first row")
+                HistoryFound.recordOutcome("Rebuild skipped: the history found starts later than the sheet's first row. Retry after \(Self.shortTime(progress.rebuildNotBefore)).")
+            } else if wasFirstSweep {
+                HistoryFound.recordOutcome("First sync wrote \(result.daysWritten) days.")
+            } else if rebuildDue && !backedOff {
+                HistoryFound.recordOutcome("Rebuilt \(result.daysWritten) days.")
+            } else if rebuildDue && backedOff {
+                HistoryFound.recordOutcome("Rebuild waiting until \(Self.shortTime(progress.rebuildNotBefore)) after an earlier failure.")
             }
             return result
+        } catch is CancellationError {
+            throw CancellationError()
         } catch SheetsError.spreadsheetMissing {
             // Forget the dead sheet; Home offers "Create a new sheet". Not recreated silently:
             // someone who deleted it on purpose should not find a new one appear.
             SheetsDestinationState.clear()
             throw SheetsError.spreadsheetMissing
+        } catch let error where progress.rebuildFailed {
+            HistoryFound.recordOutcome("Rebuild failed: \(error.localizedDescription) Retry after \(Self.shortTime(progress.rebuildNotBefore)).")
+            throw error
         }
+    }
+
+    private static func shortTime(_ date: Date?) -> String {
+        date?.formatted(date: .abbreviated, time: .shortened) ?? "the next open"
     }
 
     /// Makes the spreadsheet, writes the headers and the About tab in one request, and saves

@@ -211,8 +211,9 @@ enum GridGrowth {
 enum HistoryVersion {
     /// Bumped when an already-connected sheet needs its full history rebuilt. 1: builds 54-55
     /// could start a first sync after the person's earliest data, and wrote raw HealthKit
-    /// workout names.
-    static let current = 1
+    /// workout names. 2: build 58 records each type's oldest sample (HistoryFound) on the
+    /// rebuild, for a sheet that still started on 2026-08-22 after build 57's rebuild.
+    static let current = 2
 
     /// True for a sheet that already has rows but was last swept before `current`. A sheet
     /// that has never written (`lastWrittenDay == nil`) does a full sweep anyway.

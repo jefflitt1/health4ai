@@ -61,6 +61,39 @@ enum SheetLayout {
     }
 }
 
+/// What the last first-connect or rebuild found as each type's oldest sample, shown on the
+/// Sheets Home card so a sheet that starts later than expected says which type set the start.
+struct HistoryFound: Codable, Equatable {
+    struct Entry: Codable, Equatable {
+        let label: String
+        /// "YYYY-MM-DD", nil when HealthKit returned no samples (or the query failed).
+        let oldest: String?
+        let failed: Bool
+    }
+    let checked: Date
+    let entries: [Entry]
+    /// What the last foreground pass did with the history: rebuilt, skipped, failed (with the
+    /// error and retry time). Without it, dates found from 2014 next to a sheet still starting
+    /// later would not say why (code review 2026-10-02).
+    var outcome: String?
+
+    private static let key = "hkb.sheetsHistoryFound"
+    static func record(checked: Date, entries: [Entry]) {
+        HistoryFound(checked: checked, entries: entries, outcome: load()?.outcome).save()
+    }
+    static func recordOutcome(_ text: String) {
+        var found = load() ?? HistoryFound(checked: Date(), entries: [], outcome: nil)
+        found.outcome = text
+        found.save()
+    }
+    static func load() -> HistoryFound? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(HistoryFound.self, from: data)
+    }
+    func save() { UserDefaults.standard.set(try? JSONEncoder().encode(self), forKey: Self.key) }
+    static func clear() { UserDefaults.standard.removeObject(forKey: key) }
+}
+
 final class DailySummaryBuilder {
     private static let logger = Logger(subsystem: "com.jglittell.health4ai", category: "SheetsSink")
     /// Every type this builder queries. HealthKit THROWS "Authorization not determined" for a
@@ -92,19 +125,26 @@ final class DailySummaryBuilder {
     func earliestDataDay(now: Date = Date()) async throws -> Date {
         let today = calendar.startOfDay(for: now)
         let floor = calendar.date(byAdding: .year, value: -10, to: today)!
-        let types: [HKSampleType] = [HKQuantityType(.stepCount), HKQuantityType(.heartRate),
-                                     HKCategoryType(.sleepAnalysis), HKWorkoutType.workoutType()]
+        let types: [(HKSampleType, String)] = [(HKQuantityType(.stepCount), "Steps"),
+                                               (HKQuantityType(.heartRate), "Heart rate"),
+                                               (HKCategoryType(.sleepAnalysis), "Sleep"),
+                                               (HKWorkoutType.workoutType(), "Workouts")]
         var results: [SweepStart.TypeResult] = []
-        for type in types {
+        var found: [HistoryFound.Entry] = []
+        // A cancelled or locked-device pass fails every type; keep the last good record then.
+        defer { if found.contains(where: { !$0.failed }) { HistoryFound.record(checked: now, entries: found) } }
+        for (type, label) in types {
             let d = HKSampleQueryDescriptor(predicates: [.sample(type: type)],
                                             sortDescriptors: [SortDescriptor(\.startDate, order: .forward)], limit: 1)
             do {
                 let first = try await d.result(for: store).first
-                Self.logger.info("earliest \(type.identifier, privacy: .public): \(first?.startDate.description ?? "none", privacy: .private)")
+                Self.logger.info("earliest \(type.identifier, privacy: .public): \(first?.startDate.description ?? "none", privacy: .public)")
                 results.append(.success(first?.startDate))
+                found.append(.init(label: label, oldest: first.map { DayKey.string(for: $0.startDate, calendar: calendar) }, failed: false))
             } catch {
-                Self.logger.error("earliest \(type.identifier, privacy: .public) query failed: \(error.localizedDescription, privacy: .private)")
+                Self.logger.error("earliest \(type.identifier, privacy: .public) query failed: \(error.localizedDescription, privacy: .public)")
                 results.append(.failure(error))
+                found.append(.init(label: label, oldest: nil, failed: true))
             }
         }
         return try SweepStart.resolve(results, today: today, floor: floor, calendar: calendar)

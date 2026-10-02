@@ -210,27 +210,20 @@ final class SyncEngine {
 
     /// Submits the next refresh request. Called after every full pass and whenever the app
     /// leaves the foreground; resubmitting the same identifier replaces the pending request.
-    ///
-    /// `nextScheduledSync` is written here and nowhere else. It used to be declared and read
-    /// but never written, so the Home card said "Not scheduled" forever.
+    /// The date is a floor iOS may run well after, so it is not shown (Home says "in the
+    /// background when iOS allows" instead; Jeff 2026-10-02).
     @MainActor
     func scheduleBackgroundSync() {
         let request = BGAppRefreshTaskRequest(identifier: Self.backgroundSyncTaskIdentifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: Self.backgroundSyncInterval)
         do {
             try BGTaskScheduler.shared.submit(request)
-            syncState.nextScheduledSync = request.earliestBeginDate
         } catch let error as BGTaskScheduler.Error where error.code == .tooManyPendingTaskRequests {
             // A request for this identifier is already pending; the earlier date still stands.
-            // Documented behaviour is that a resubmit replaces it, so this branch is not
-            // expected, but if it ever fires the card must not say "Not scheduled" while a
-            // request is queued.
+            // Documented behaviour is that a resubmit replaces it, so this branch is not expected.
             print("[SyncEngine] Background sync already pending: \(error)")
         } catch {
-            // Fails on the simulator and when the identifier is missing from Info.plist. nil is
-            // rendered as "Not scheduled", which is the true state; nothing is left claiming a
-            // sync that will not come.
-            syncState.nextScheduledSync = nil
+            // Fails on the simulator and when the identifier is missing from Info.plist.
             print("[SyncEngine] Failed to schedule background sync: \(error)")
         }
     }

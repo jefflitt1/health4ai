@@ -125,10 +125,6 @@ final class SyncState: ObservableObject {
         didSet { UserDefaults.standard.set(lastSyncRecordCount, forKey: Keys.lastSyncRecordCount) }
     }
 
-    /// Earliest date iOS may run the next `com.health4ai.sync` refresh task. Written by
-    /// `SyncEngine.scheduleBackgroundSync`; nil when the last submit failed, which renders as
-    /// "Not scheduled" because that is the true state.
-    @Published var nextScheduledSync: Date? = nil
     @Published var isSyncing: Bool = false
     @Published var syncError: String? = nil
     #if H4A_SHEETS
@@ -490,7 +486,6 @@ final class SyncState: ObservableObject {
         isAuthenticated = false
         userEmail = nil
         serverLacksMergedHours = false
-        nextScheduledSync = nil
         backgroundDeliveryFailedTypes = []
         emptyExpectedMetricNames = []
         importFailedMetricNames = []
@@ -566,17 +561,6 @@ final class SyncState: ObservableObject {
         // must never be formatted as-is, since that renders "in N minutes" for a sync
         // that has already happened.
         return formatter.localizedString(for: min(date, now), relativeTo: now)
-    }
-
-    /// The scheduled date is a floor, not an appointment: iOS runs the task some time at or
-    /// after it. Once that floor has passed the honest reading is that the task is pending,
-    /// not "55 minutes ago", which would claim a sync that has not happened.
-    var formattedNextSync: String {
-        guard let date = nextScheduledSync else { return "Not scheduled" }
-        if date <= Date() { return "Waiting for iOS" }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
 

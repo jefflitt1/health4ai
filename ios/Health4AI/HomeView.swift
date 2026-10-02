@@ -121,6 +121,7 @@ struct HomeView: View {
                             // server actions) apply. Health access still does.
                             #if H4A_SHEETS
                             SheetsHomeCard()
+                                .id(Self.sheetsCardID)
                             #endif
                             healthAccessCard
                         } else if hasSyncedOnce {
@@ -154,6 +155,11 @@ struct HomeView: View {
                     if args.contains("-h4aiScreenshotImportFailed") || args.contains("-h4aiScreenshotImportFailedMany") {
                         proxy.scrollTo(Self.backfillCardID, anchor: .top)
                     }
+                    if args.contains("-h4aiScrollToSheets") { proxy.scrollTo(Self.sheetsCardID, anchor: .top) }
+                    if args.contains("-h4aiScrollToSheetsHistory") {
+                        // After layout: at accessibility sizes the target is below the first screen.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { proxy.scrollTo("sheetsHistory", anchor: .top) }
+                    }
                 }
                 #endif
                 .background(Color(.systemGroupedBackground))
@@ -181,6 +187,8 @@ struct HomeView: View {
     }
 
     private static let backfillCardID = "backfillCard"
+
+    private static let sheetsCardID = "sheetsCard"
 
     /// True once ANY sync has actually landed. Not `backfillCompleted`: a user who has never
     /// finished the history import but whose live sync has already posted once has moved past
@@ -369,50 +377,22 @@ struct HomeView: View {
                 }
             }
             Divider()
-            // Side by side, "Next sync, earliest" plus a long relative string ("in 55
-            // minutes") squeezes into half the card's width at accessibility sizes and
-            // wraps a WORD in half ("sched- / uled") rather than between words — the same
-            // class of bug design.md already flags for numeric text elsewhere in this
-            // file. Stacked instead, above accessibility1, same threshold as the rest of
-            // this file's XXXL-verified layouts.
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Last synced")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(syncState.formattedLastSync)
-                            .font(.subheadline.weight(.medium))
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Next sync, earliest")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(syncState.formattedNextSync)
-                            .font(.subheadline.weight(.medium))
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Last synced")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(syncState.formattedLastSync)
-                            .font(.subheadline.weight(.medium))
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 2) {
-                        // "Earliest": the date is the floor iOS was given, not a promise.
-                        Text("Next sync, earliest")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(syncState.formattedNextSync)
-                            .font(.subheadline.weight(.medium))
-                    }
-                }
+            // No "Next sync, earliest" countdown: the date given to iOS is a floor that resets to
+            // 55 minutes on every open, while iOS actually ran background syncs hours apart
+            // (Jeff 2026-10-02: "always says 54 min"). Say what really happens instead.
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Last synced")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(syncState.formattedLastSync)
+                    .font(.subheadline.weight(.medium))
+                Text("Syncs each time you open the app, and in the background when iOS allows.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding()
         .background(Color(.secondarySystemGroupedBackground))

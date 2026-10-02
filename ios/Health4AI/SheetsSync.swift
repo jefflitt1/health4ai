@@ -51,6 +51,9 @@ struct SheetsProgress: Equatable {
     var historyVersion: Int?
     /// No rebuild attempt before this time (set when one fails or is refused).
     var rebuildNotBefore: Date?
+    /// Set (not persisted) when this pass attempted a history rebuild and it threw, so the
+    /// caller can tell a failed rebuild from an incremental failure after a refusal.
+    var rebuildFailed = false
 }
 
 protocol SheetsAPI {
@@ -114,6 +117,7 @@ struct SheetsSyncCore {
                 throw CancellationError()   // iOS took the time back: not a failure to back off from
             } catch {
                 progress.rebuildNotBefore = now.addingTimeInterval(RebuildBackoff.interval)
+                progress.rebuildFailed = true
                 persist(progress)
                 throw error
             }

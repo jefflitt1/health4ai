@@ -204,7 +204,7 @@ struct SheetsConnectSection: View {
             do {
                 try await HealthKitManager.shared.requestAuthorization(adding: DailySummaryBuilder.readTypes)
                 try await coordinator.signIn()
-                if !keepSheet { SheetsDestinationState.clear() }
+                if !keepSheet { SheetsDestinationState.clear(); HistoryFound.clear() }
                 syncState.sheetsNeedsAttention = nil
                 syncState.connectionType = .googleSheets
                 syncState.isAuthenticated = true
@@ -222,6 +222,7 @@ struct SheetsConnectSection: View {
         SyncEngine.shared.stopObserving()
         GoogleTokenStore.shared.signOut()
         SheetsDestinationState.clear()
+        HistoryFound.clear()
         syncState.isAuthenticated = false
         syncState.sheetsNeedsAttention = nil
         syncState.lastSyncDate = nil
@@ -235,6 +236,8 @@ struct SheetsHomeCard: View {
     @EnvironmentObject var tabRouter: TabRouter
 
     private var state: SheetsDestinationState? { SheetsDestinationState.load() }
+    /// UserDefaults is not observable: reloaded on appear and whenever a sync finishes.
+    @State private var historyFound: HistoryFound? = HistoryFound.load()
 
     private func readable(_ key: String) -> String {
         let parts = key.split(separator: "-").compactMap { Int($0) }
@@ -242,6 +245,12 @@ struct SheetsHomeCard: View {
               let date = Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
         else { return key }
         return date.formatted(date: .long, time: .omitted)
+    }
+
+    private func historyText(_ entry: HistoryFound.Entry) -> String {
+        if entry.failed { return "Couldn't check" }
+        guard let oldest = entry.oldest else { return "No data" }
+        return readable(oldest)
     }
 
     var body: some View {
@@ -263,6 +272,37 @@ struct SheetsHomeCard: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
+                if let found = historyFound, !found.entries.isEmpty || found.outcome != nil {
+                    // The sheet starts at the oldest of these. One that is later than expected
+                    // shows which type set the start. Label and date are separate Texts so a
+                    // date never breaks mid-number at accessibility sizes (design.md Type).
+                    VStack(alignment: .leading, spacing: 6) {
+                        if !found.entries.isEmpty {
+                            Text("History found from")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .id("sheetsHistory")   // DEBUG screenshot scroll target (HomeView)
+                        }
+                        ForEach(found.entries, id: \.label) { entry in
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(entry.label)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(historyText(entry))
+                                    .font(.caption)
+                                    .monospacedDigit()
+                                    // Only real dates read as data (Sasha note 2026-10-02).
+                                    .foregroundStyle(entry.oldest == nil ? .secondary : .primary)
+                            }
+                        }
+                        if let outcome = found.outcome {
+                            Text(outcome)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
                 Link(destination: url) {
                     Label("Open my sheet", systemImage: "arrow.up.right.square")
                         .frame(maxWidth: .infinity, minHeight: 44)
@@ -278,6 +318,10 @@ struct SheetsHomeCard: View {
         .padding()
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .onAppear { historyFound = HistoryFound.load() }
+        .onChange(of: syncState.isSyncing) { _, syncing in
+            if !syncing { historyFound = HistoryFound.load() }
+        }
     }
 }
 
@@ -301,6 +345,12 @@ enum SheetsScreenshotFixture {
         switch args[i + 1] {
         case "connected":
             sheet.save()
+            HistoryFound(checked: Date(), entries: [
+                .init(label: "Steps", oldest: "2014-09-21", failed: false),
+                .init(label: "Heart rate", oldest: "2014-09-21", failed: false),
+                .init(label: "Sleep", oldest: nil, failed: true),
+                .init(label: "Workouts", oldest: nil, failed: false)],
+                         outcome: "Rebuilt 3,653 days.").save()
             syncState.isAuthenticated = true
             syncState.lastSyncDate = Date()
             syncState.lifetimeSyncedRecords = 3650

@@ -175,6 +175,7 @@ func runSyncTests(_ check: (Bool, String) -> Void, calendar cal: Calendar, at: (
     let r2 = await drive(locked, source { $0.failDailyFrom = day("2019-01-01") })
     check(r2.error != nil && locked.daily == oldRows && locked.workouts.count == 1 && !locked.ops.contains("clear") && !locked.ops.contains("write"), "rebuild_healthkit_error_leaves_sheet_intact")
     check(r2.progress.lastWrittenDay == "2026-09-30" && r2.progress.historyVersion == nil, "rebuild_failure_keeps_old_progress")
+    check(r2.progress.rebuildFailed, "rebuild_failure_flagged")
 
     // Network failure on the one write: nothing changed, rebuild retried next pass.
     let down = oldSheet(); down.failOp = "write"
@@ -188,6 +189,7 @@ func runSyncTests(_ check: (Bool, String) -> Void, calendar cal: Calendar, at: (
     check(late.daily.first?.first == "2026-08-22" && late.daily.count >= oldRows.count && !late.ops.contains("clear"), "late_start_does_not_destroy_rows")
     check(r4.error == nil && lastResult?.rebuildSkipped == true, "late_start_is_skipped_not_failed")
     check(r4.progress.historyVersion == nil && r4.progress.rebuildNotBefore != nil, "late_start_keeps_old_version_and_backs_off")
+    check(!r4.progress.rebuildFailed, "refused_rebuild_not_flagged_failed")
 
     // Workouts unreadable (denied): existing workout history must survive a rebuild.
     let denied = oldSheet()

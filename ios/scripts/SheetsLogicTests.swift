@@ -113,6 +113,7 @@ check(req?["sheetId"] as? Int == 7 && req?["dimension"] as? String == "ROWS" && 
 // History version: a sheet with rows from before the rebuild is rebuilt once.
 check(HistoryVersion.needsRebuild(lastWrittenDay: "2026-09-30", historyVersion: nil), "rebuild_old_sheet")
 check(!HistoryVersion.needsRebuild(lastWrittenDay: "2026-09-30", historyVersion: HistoryVersion.current), "rebuild_not_repeated")
+check(HistoryVersion.needsRebuild(lastWrittenDay: "2026-10-02", historyVersion: 1), "rebuild_build57_sheet_once_more")
 check(!HistoryVersion.needsRebuild(lastWrittenDay: nil, historyVersion: nil), "rebuild_not_needed_before_first_write")
 
 // Workout names read as words, not HealthKit identifiers.
