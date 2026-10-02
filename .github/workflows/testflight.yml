@@ -143,6 +143,13 @@ jobs:
             -authenticationKeyID "$APPSTORE_CONNECT_API_KEY_ID" \
             -authenticationKeyIssuerID "$APPSTORE_CONNECT_ISSUER_ID"
 
+      - name: Verify Google Sheets is in the archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          CI_XCODEBUILD_ACTION=archive CI_ARCHIVE_PATH="$RUNNER_TEMP/Health4AI.xcarchive" \
+            sh ios/ci_scripts/ci_post_xcodebuild.sh
+
       - name: Export and upload to App Store Connect
         shell: bash
         env:

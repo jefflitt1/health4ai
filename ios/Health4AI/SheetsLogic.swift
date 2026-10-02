@@ -1,5 +1,5 @@
 #if H4A_SHEETS
-// Compiled only with H4A_SHEETS (off in Release by default; see docs/sheets-build-gate.md).
+// Compiled only with H4A_SHEETS (on in Debug and Release since 1.0.1; see docs/sheets-build-gate.md).
 import CryptoKit
 import Foundation
 import Security

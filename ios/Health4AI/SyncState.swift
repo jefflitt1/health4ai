@@ -261,8 +261,8 @@ final class SyncState: ObservableObject {
         // path that has never synced a row and offers no way back to the picker.
         let parsedType = ConnectionType(rawValue: typeRaw)
         let storedType = parsedType ?? .supabase
-        // Google Sheets is compiled out of App Store builds (no H4A_SHEETS). A tester who picked
-        // it on TestFlight and then installs such a build carries "googleSheets" across; that
+        // Fallback for a build compiled without H4A_SHEETS (Sheets ships in every build since
+        // 1.0.1). Anyone who picked Sheets and then installs such a build carries "googleSheets"; that
         // raw value no longer parses (`parsedType == nil`), so they land on the database here
         // instead of leaving every Sheets-keyed path dead-ended (Reviewboard C, 2026-09-28).
         let unavailable = storedType == .rest || parsedType == nil

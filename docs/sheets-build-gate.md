@@ -47,7 +47,8 @@ The off-device tests compile `SheetsLogic.swift` with `-D H4A_SHEETS`: `ios/scri
 ## Other pipelines
 
 `.github/workflows/testflight.yml` archives Release with plain `xcodebuild archive`; it reads the committed
-setting, so it also builds WITH Sheets.
+setting, so it also builds WITH Sheets, and runs `ci_post_xcodebuild.sh` on the archive before upload, so a
+no-Sheets archive fails there too. Debug and Release are now identical for Sheets.
 
 ## Screenshots and demo video
 
