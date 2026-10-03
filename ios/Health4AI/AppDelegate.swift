@@ -28,6 +28,19 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         SourcesTracker.shared.seedForScreenshotsIfNeeded()
         #if H4A_SHEETS
         MainActor.assumeIsolated { SheetsScreenshotFixture.applyIfRequested(SyncEngine.sharedSyncState) }
+        // Regression probe for the build 59 crash: Google sign-in started while the app is
+        // not yet active (as it is the moment the Health sheet hands back control).
+        if ProcessInfo.processInfo.arguments.contains("-h4aiProbeSignInWhileInactive") {
+            Task { @MainActor in
+                let coordinator = GoogleSignInCoordinator()
+                do {
+                    try await coordinator.signIn()
+                    print("h4ai-probe: signIn returned")
+                } catch {
+                    print("h4ai-probe: signIn threw \(error)")
+                }
+            }
+        }
         #endif
         #endif
         Task { @MainActor in

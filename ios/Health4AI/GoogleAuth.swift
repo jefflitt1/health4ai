@@ -220,27 +220,43 @@ final class GoogleSignInCoordinator: NSObject, ASWebAuthenticationPresentationCo
             URLQueryItem(name: "prompt", value: "select_account consent"),
         ]
 
+        // The session can only present from an active scene's window. Connect asks for Health
+        // access first, and when the Health sheet hands back control the app is not active and
+        // has no key window yet; starting then fails (build 59 crashed on exactly that path).
+        try await Self.waitUntilActive()
+
+        defer { session = nil }
         let callback: URL = try await withCheckedThrowingContinuation { continuation in
+            // When start() fails, the session ALSO calls its completion handler with an error,
+            // before start() returns. Both paths report through here; the first one wins.
+            let resumed = OSAllocatedUnfairLock(initialState: false)
+            let finish: @Sendable (Result<URL, Error>) -> Void = { result in
+                let first = resumed.withLock { done in
+                    let wasDone = done
+                    done = true
+                    return !wasDone
+                }
+                if first { continuation.resume(with: result) }
+            }
             let session = ASWebAuthenticationSession(
                 url: components.url!,
                 callbackURLScheme: GoogleOAuthConfig.callbackScheme
             ) { url, error in
                 if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
-                    continuation.resume(throwing: GoogleAuthError.cancelled)
+                    finish(.failure(GoogleAuthError.cancelled))
                 } else if let url {
-                    continuation.resume(returning: url)
+                    finish(.success(url))
                 } else {
-                    continuation.resume(throwing: error ?? GoogleAuthError.badCallback)
+                    finish(.failure(error ?? GoogleAuthError.badCallback))
                 }
             }
             session.presentationContextProvider = self
             session.prefersEphemeralWebBrowserSession = false
             self.session = session
             if !session.start() {
-                continuation.resume(throwing: GoogleAuthError.couldNotStart)
+                finish(.failure(GoogleAuthError.couldNotStart))
             }
         }
-        session = nil
 
         let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
         guard items.first(where: { $0.name == "state" })?.value == state else {
@@ -255,12 +271,25 @@ final class GoogleSignInCoordinator: NSObject, ASWebAuthenticationPresentationCo
         try await GoogleTokenStore.shared.exchange(code: code, verifier: verifier)
     }
 
+    /// Returns once the app is active. The check and the subscription happen with no
+    /// suspension between them on the main actor, so an activation cannot slip through.
+    private static func waitUntilActive() async throws {
+        guard UIApplication.shared.applicationState != .active else { return }
+        for await _ in NotificationCenter.default.notifications(named: UIApplication.didBecomeActiveNotification) {
+            break
+        }
+        try Task.checkCancellation()
+    }
+
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         MainActor.assumeIsolated {
-            UIApplication.shared.connectedScenes
+            let scenes = UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
-                .flatMap(\.windows)
-                .first(where: \.isKeyWindow) ?? ASPresentationAnchor()
+                .filter { $0.activationState == .foregroundActive }
+            return scenes.flatMap(\.windows).first(where: \.isKeyWindow)
+                ?? scenes.first?.windows.first
+                // No active scene: start() fails and signIn throws couldNotStart.
+                ?? ASPresentationAnchor()
         }
     }
 }
