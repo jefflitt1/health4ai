@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-const lastUpdated = '2026-09-30';
+const lastUpdated = '2026-10-02';
 ---
 <style>
   /* Anyone linking directly to #testflight (historical TestFlight section)
@@ -28,7 +28,7 @@ const lastUpdated = '2026-09-30';
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
         <li><strong class="text-neutral-200">Health data: we do not collect it.</strong> HealthKit metrics you authorize flow directly from your device to a Supabase project you create and own (or, if you choose Save to Google Sheets, to a spreadsheet in your own Google Drive; see section 4). health4.ai never receives, stores, or has access to your health data. A cloud AI provider you separately connect to may process data you choose to send to it.</li>
         <li><strong class="text-neutral-200">Account data</strong>: before launch, we collected email addresses from pre-launch waitlist sign-ups to notify people when the app shipped and, for those who opted in, to send a TestFlight beta invitation. The app is now live on the App Store and we no longer collect waitlist emails.</li>
-        <li><strong class="text-neutral-200">Usage data</strong> — anonymous page views and feature interaction events via PostHog (US-hosted). PostHog never receives health data. We do not use advertising cookies or trackers.</li>
+        <li><strong class="text-neutral-200">Usage data</strong>: anonymous page views and feature interaction events via PostHog (US-hosted). PostHog never receives health data. We do not use advertising cookies or trackers.</li>
       </ul>
     </section>
 
@@ -37,7 +37,7 @@ const lastUpdated = '2026-09-30';
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
         <li>Previously, to notify pre-launch waitlist sign-ups when the app shipped on the App Store. That notification has gone out and this collection is closed.</li>
         <li id="testflight" class="scroll-mt-6"><strong class="text-neutral-200">TestFlight invitations (historical): opt-in, and shared with Apple.</strong> During the pre-launch beta, if you ticked the TestFlight box when joining the waitlist, we passed your email address to Apple's App Store Connect so Apple could send you a beta invitation. Apple sent that email, not us. Anyone with administrator access to our App Store Connect account could see the addresses of enrolled testers. If you were a tester, ask us at any time to remove you.</li>
-        <li>To improve reliability — aggregated, non-identifiable usage metrics only.</li>
+        <li>To improve reliability: aggregated, non-identifiable usage metrics only.</li>
       </ul>
       <p class="text-neutral-400 text-sm mt-3">
         We do not sell personal data. We do not use health data for advertising. Per Apple's HealthKit guidelines, health data will never be used for advertising or sold to data brokers. Because we never receive your health data, we are structurally incapable of misusing it.
@@ -54,7 +54,7 @@ const lastUpdated = '2026-09-30';
     <section id="google" class="mb-8 scroll-mt-6">
       <h2 class="text-white font-semibold text-base mb-3">4. Google Sheets destination (optional)</h2>
       <p class="text-neutral-400 text-sm leading-relaxed mb-3">
-        health4.ai offers an optional destination, "Save to Google Sheets", that writes your health summaries into a spreadsheet in your own Google Drive instead of a database. It is rolling out, so it may be limited to beta testers (TestFlight) or not yet available in your version of the app. If you never connect a Google account, none of this section applies and we receive nothing from Google.
+        health4.ai offers an optional destination, "Save to Google Sheets", that writes your health summaries into a spreadsheet in your own Google Drive instead of a database. It is available in version 1.0.1 of the app and later. If you never connect a Google account, none of this section applies and we receive nothing from Google.
       </p>
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
         <li><strong class="text-neutral-200">What Google data the app accesses.</strong> When you choose this destination, the app asks you to sign in to Google on your device and requests a single permission (OAuth scope): <code class="break-all">https://www.googleapis.com/auth/drive.file</code>. This scope limits the app to files it creates itself. health4.ai cannot see, list, or open any other file in your Google Drive, and it does not request your name, email address, contacts, calendar, or Gmail.</li>
@@ -79,10 +79,10 @@ const lastUpdated = '2026-09-30';
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">6. Your rights</h2>
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
-        <li><strong class="text-neutral-200">Health data control</strong> — your health data is in your database. You can delete it directly at any time — no request to us required.</li>
+        <li><strong class="text-neutral-200">Health data control</strong>: your health data is in your Google Sheet or your database. You can delete it directly at any time, with no request to us required.</li>
         <li><strong class="text-neutral-200">Account deletion</strong>: contact us to delete any account data we hold on you. We will confirm deletion within 14 days.</li>
-        <li><strong class="text-neutral-200">Revoke HealthKit access</strong> — stop syncing at any time in iPhone Settings → Privacy & Security → Health → health4.ai. No data is deleted from your database automatically; you remain in full control.</li>
-        <li><strong class="text-neutral-200">GDPR / CCPA</strong> — EU and California residents have additional rights (portability, rectification, opt-out of sale). We do not sell personal data. Contact us to exercise any right over account data we hold.</li>
+        <li><strong class="text-neutral-200">Revoke HealthKit access</strong>: stop syncing at any time in iPhone Settings → Privacy & Security → Health → health4.ai. No data is deleted from your Google Sheet or database automatically; you remain in full control.</li>
+        <li><strong class="text-neutral-200">GDPR / CCPA</strong>: EU and California residents have additional rights (portability, rectification, opt-out of sale). We do not sell personal data. Contact us to exercise any right over account data we hold.</li>
       </ul>
     </section>
 
@@ -96,7 +96,7 @@ const lastUpdated = '2026-09-30';
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">8. Analytics & cookies</h2>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        We use PostHog (US-hosted) for product analytics. PostHog receives page views and feature interaction events — no health data. We do not use advertising cookies or trackers.
+        We use PostHog (US-hosted) for product analytics. PostHog receives page views and feature interaction events, and no health data. We do not use advertising cookies or trackers.
       </p>
     </section>
 

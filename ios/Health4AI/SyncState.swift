@@ -241,6 +241,20 @@ final class SyncState: ObservableObject {
         }
     }
 
+    /// Destination for a person with no stored choice. 1.0 never stored one, so a missing key
+    /// on an install that finished onboarding is a 1.0 database user and stays on the database.
+    /// Only a true fresh install (onboarding not yet completed) starts on the Google Sheet, and
+    /// that choice is written through at once so finishing onboarding cannot later flip it.
+    private static func defaultConnectionType(_ defaults: UserDefaults) -> ConnectionType {
+        #if H4A_SHEETS
+        if !defaults.bool(forKey: "hkb.onboardingComplete") {
+            defaults.set(ConnectionType.googleSheets.rawValue, forKey: Keys.connectionType)
+            return .googleSheets
+        }
+        #endif
+        return .supabase
+    }
+
     // MARK: - Lifetime record count
 
     @Published var lifetimeSyncedRecords: Int = 0 {
@@ -251,7 +265,7 @@ final class SyncState: ObservableObject {
 
     init() {
         let defaults = UserDefaults.standard
-        let typeRaw = defaults.string(forKey: Keys.connectionType) ?? ConnectionType.supabase.rawValue
+        let typeRaw = defaults.string(forKey: Keys.connectionType) ?? Self.defaultConnectionType(defaults).rawValue
         // `.rest` is not selectable in 1.0 (see ConnectionView "Backend type"). Anyone
         // holding a stored `rest` selection is coerced to Supabase rather than left on a
         // path that has never synced a row and offers no way back to the picker.
@@ -466,7 +480,10 @@ final class SyncState: ObservableObject {
             defaults.removeObject(forKey: key)
         }
         CredentialKeychain.deleteAll()
-        connectionType = .supabase
+        // Erasing also clears hkb.onboardingComplete, so the next start is a fresh install
+        // and gets a fresh install's destination (defaultConnectionType). That writes the
+        // key, so didSet writing it again is harmless.
+        connectionType = Self.defaultConnectionType(defaults)
         supabaseProjectURL = ""
         serverURL = ""
         restAuthType = .bearer

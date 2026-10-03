@@ -51,8 +51,16 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         Task { @MainActor in
-            if Self.destinationConnected {
-                SyncEngine.shared.performForegroundSync(trigger: .foreground)
+            guard Self.destinationConnected else { return }
+            SyncEngine.shared.performForegroundSync(trigger: .foreground)
+            #if H4A_SHEETS
+            // Sheets checks for widened Health access on every pass (SheetsSink).
+            guard !Self.isSheetsMode else { return }
+            #endif
+            // Access is widened in Settings or the Health app, so it is noticed on return.
+            let syncState = SyncEngine.sharedSyncState
+            if await BulkExportManager.shared.rearmIfHistoryAccessWidened(syncState: syncState) {
+                BulkExportManager.shared.startBackfill(syncState: syncState)
             }
         }
     }
@@ -119,6 +127,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             await BulkExportManager.shared.applyMergedHoursResendIfNeeded(syncState: syncState)
             await BulkExportManager.shared.publishEmptyExpectedTypes(syncState: syncState)
             await BulkExportManager.shared.publishFailedImportTypes(syncState: syncState)
+            _ = await BulkExportManager.shared.rearmIfHistoryAccessWidened(syncState: syncState)
             if BulkExportManager.shared.backfillNeeded {
                 BulkExportManager.shared.startBackfill(syncState: syncState)
             }

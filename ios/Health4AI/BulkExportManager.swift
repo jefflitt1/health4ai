@@ -35,6 +35,9 @@ final class BulkExportManager {
     private static let emptyHighVolumeTypesKey = "hkb.backfill.emptyHighVolumeTypes"
     // Types whose most recent sweep threw, kept until that type completes
     private static let failedImportTypesKey = "hkb.backfill.failedTypes"
+    // iOS 27 limited-history cutoff seen at the last check, as seconds since 1970. Absent:
+    // never checked. 0: full access. Compared on each check to spot a widening.
+    private static let accessLimitKey = "hkb.backfill.accessLimit"
 
     /// Types that any iPhone-carrying user necessarily has years of data for.
     ///
@@ -235,6 +238,70 @@ final class BulkExportManager {
         // Un-latch so backfillNeeded fires and startBackfill actually runs again.
         syncState.backfillCompleted = false
         print("[BulkExport] Armed older history up to \(previousFloor) for every type.")
+    }
+
+    // MARK: - Widened history access (iOS 27)
+
+    /// iOS 27 can share only "Past 30 Days and Future Data". Every sweep run under that limit
+    /// saw nothing older, and nothing goes back for it on its own: a finished type is never
+    /// swept again. When the cutoff is lifted or moved earlier, each finished type is armed
+    /// for the window the limit hid (floor up to the old cutoff, so nothing already sent is
+    /// sent again), and a type caught mid-sweep restarts its window, because its checkpoint
+    /// may already be past days it could not see (re-posting is idempotent: the endpoint
+    /// upserts). Returns true when it armed; the caller starts the import.
+    ///
+    /// The first check on an install only records the cutoff: with no earlier value there is
+    /// no window to fill, and a blanket re-send of every type would cost hours (resetTypes).
+    func rearmIfHistoryAccessWidened(syncState: SyncState) async -> Bool {
+        let limit: Date?
+        do {
+            limit = try await HealthKitManager.shared.historyAccessLimit()
+        } catch {
+            // Unknown, not "full": nothing is recorded, so a later check can still compare.
+            print("[BulkExport] History access limit check failed: \(error)")
+            return false
+        }
+        let current = limit?.timeIntervalSince1970 ?? 0
+        // Decide and re-arm in ONE main-actor step with no import in flight, for the reason
+        // applyMergedHoursResendIfNeeded gives: an import writes completedTypes back as it runs.
+        return await MainActor.run { () -> Bool in
+            let defaults = UserDefaults.standard
+            let previous = defaults.object(forKey: Self.accessLimitKey) as? Double
+            guard let previous, previous > 0, current == 0 || current < previous else {
+                defaults.set(current, forKey: Self.accessLimitKey)
+                return false
+            }
+            // Not recorded while an import runs, so the next check still sees the widening.
+            guard currentTask == nil, !syncState.isBackfilling else { return false }
+            var completed = completedTypes
+            for sampleType in HealthKitManager.sampleTypes() {
+                let identifier = sampleType.identifier
+                let untilKey = Self.chunkUntilPrefix + identifier
+                if completed.contains(identifier) {
+                    completed.remove(identifier)
+                    defaults.set(previous, forKey: untilKey)
+                } else {
+                    // A type mid-way through an older-history window (importOlderHistory)
+                    // ends at the old horizon floor; the limit also hid the days from there
+                    // to the cutoff, so its window is stretched to cover them.
+                    let until = defaults.double(forKey: untilKey)
+                    if until > 0 && until < previous { defaults.set(previous, forKey: untilKey) }
+                }
+                defaults.removeObject(forKey: Self.chunkCheckpointPrefix + identifier)
+            }
+            completedTypes = completed
+            // A bounded window never records an empty type (runBackfill's sweepsToNow), so a
+            // "no data" warning left by the limited sweep would outlive the data it now finds.
+            var empties = emptyHighVolumeTypes
+            empties.subtract(HealthKitManager.sampleTypes().map(\.identifier))
+            emptyHighVolumeTypes = empties
+            syncState.emptyExpectedMetricNames = empties.map(Self.displayName(for:)).sorted()
+            defaults.set(current, forKey: Self.accessLimitKey)
+            // Un-latch so backfillNeeded fires and startBackfill actually runs again.
+            syncState.backfillCompleted = false
+            print("[BulkExport] History access widened; armed history up to \(Date(timeIntervalSince1970: previous)).")
+            return true
+        }
     }
 
     // MARK: - Start backfill

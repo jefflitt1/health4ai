@@ -5,7 +5,20 @@ struct OnboardingView: View {
     @EnvironmentObject var authManager: AuthManager
     @AppStorage("hkb.onboardingComplete") private var onboardingComplete = false
 
-    @State private var step = 0
+    @State private var step = Self.initialStep
+
+    /// Design-gate screenshots only: simctl cannot swipe between pages, so
+    /// `-h4aiOnboardingStep N` opens on page N. Release always starts at 0.
+    private static var initialStep: Int {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-h4aiOnboardingStep"), i + 1 < args.count,
+           let n = Int(args[i + 1]) {
+            return n
+        }
+        #endif
+        return 0
+    }
 
     var body: some View {
         TabView(selection: $step) {
@@ -37,10 +50,12 @@ private struct WelcomeStep: View {
                 Text("Your health data.\nAny AI. Your rules.")
                     .font(.largeTitle.bold())
                     .multilineTextAlignment(.center)
-                // Names Supabase and the time cost up front. Onboarding used to run three
-                // screens without once saying what the app actually needs, then land the
-                // user on Home reading "Not connected" with nothing pointing anywhere.
-                Text("Sync HealthKit to a Supabase project you own, then query it with any AI. You’ll need a free Supabase account, and setup takes about five minutes.")
+                // Says up front what the app needs. Onboarding used to run three screens
+                // without once saying it, then land the user on Home reading "Not
+                // connected" with nothing pointing anywhere. Since 1.0.1 the default is a
+                // Google Sheet, which needs only a Google account; the database is the
+                // technical option.
+                Text("Save your Apple Health data to a Google Sheet in your own Drive, then ask any AI about it. Prefer a database? You can sync to one you run instead.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -57,8 +72,9 @@ private struct WelcomeStep: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14))
             }
             .padding(.horizontal, 32)
-            .padding(.bottom, 48)
+            .padding(.bottom, 4)
         }
+        .scrollsWhenTall()
     }
 }
 
@@ -76,7 +92,8 @@ private struct PrivacyStep: View {
             VStack(spacing: 12) {
                 Text("Privacy by design")
                     .font(.largeTitle.bold())
-                Text("Your health data goes from your device to the backend you configure. health4ai does not operate a shared health-data backend.")
+                    .multilineTextAlignment(.center)
+                Text("Your health data goes from your device to the Google Sheet or database you choose. health4ai does not run a shared health-data server.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -93,12 +110,12 @@ private struct PrivacyStep: View {
                         .foregroundStyle(.green)
                         .padding(.leading, 8)
                 }
-                DataFlowRow(icon: "server.rack", label: "Your backend only", color: .green)
+                DataFlowRow(icon: "externaldrive", label: "Your Drive or database only", color: .green)
             }
             .padding(.horizontal, 48)
             VStack(alignment: .leading, spacing: 10) {
-                PrivacyBullet(text: "No export files, ever")
-                PrivacyBullet(text: "Your own database and account")
+                PrivacyBullet(text: "No Health export files to manage")
+                PrivacyBullet(text: "Your own Google Drive or database")
                 PrivacyBullet(text: "No analytics or crash reporting")
                 PrivacyBullet(text: "Open source: audit every line")
                 PrivacyBullet(text: "You choose whether an AI runs locally or in the cloud")
@@ -115,8 +132,9 @@ private struct PrivacyStep: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14))
             }
             .padding(.horizontal, 32)
-            .padding(.bottom, 48)
+            .padding(.bottom, 4)
         }
+        .scrollsWhenTall()
     }
 }
 
@@ -164,6 +182,7 @@ private struct HealthKitStep: View {
     @State private var granted = false
     @State private var error: String? = nil
     @State private var scope: HealthKitManager.DataScope = .essentials
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(spacing: 32) {
@@ -174,6 +193,7 @@ private struct HealthKitStep: View {
             VStack(spacing: 12) {
                 Text("Grant Health access")
                     .font(.largeTitle.bold())
+                    .multilineTextAlignment(.center)
                 Text("Start with the minimum data needed for useful activity, sleep, and recovery insights. You can choose a broader scope explicitly.")
                     .font(.body)
                     .foregroundStyle(.secondary)
@@ -191,13 +211,31 @@ private struct HealthKitStep: View {
                     .font(.caption)
                     .padding(.horizontal, 24)
             }
-            Picker("Health data", selection: $scope) {
-                ForEach(HealthKitManager.DataScope.allCases) { scope in
-                    Text(scope.title).tag(scope)
+            // A menu Picker's button never grows vertically, so at accessibility sizes its
+            // value clipped mid-word; a Menu with a wrapping label does grow (same fix as
+            // Home's Data scope, Sasha build 59 gate).
+            if dynamicTypeSize.isAccessibilitySize {
+                Menu {
+                    scopePicker
+                } label: {
+                    Label {
+                        Text(scope.title)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: "chevron.up.chevron.down")
+                    }
+                    .labelStyle(TrailingIconLabelStyle())
                 }
+                .accessibilityLabel("Health data")
+                .accessibilityValue(scope.title)
+                .disabled(isRequesting)
+                .padding(.horizontal, 24)
+            } else {
+                scopePicker
+                    .disabled(isRequesting)
+                    .padding(.horizontal, 24)
             }
-            .pickerStyle(.menu)
-            .padding(.horizontal, 24)
             Text(scope.detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -226,9 +264,19 @@ private struct HealthKitStep: View {
                         .font(.subheadline)
                         .foregroundStyle(granted ? .pink : .secondary)
                 }
-                .padding(.bottom, 48)
+                .padding(.bottom, 4)
             }
         }
+        .scrollsWhenTall()
+    }
+
+    private var scopePicker: some View {
+        Picker("Health data", selection: $scope) {
+            ForEach(HealthKitManager.DataScope.allCases) { scope in
+                Text(scope.title).tag(scope)
+            }
+        }
+        .pickerStyle(.menu)
     }
 
     private func requestAccess() {
@@ -254,5 +302,36 @@ private struct HealthKitStep: View {
         // sign-in cannot silently expand the requested data scope.
         UserDefaults.standard.set(scope.rawValue, forKey: HealthKitManager.DataScope.storageKey)
         onDone()
+    }
+}
+
+// MARK: - Large text
+
+private extension View {
+    /// The steps are a fixed column of spacers and text sized to one screen. At accessibility
+    /// text sizes that column is taller than the screen and SwiftUI truncated the title and
+    /// the explanation to a few words. Inside a scroll view the column keeps its centered
+    /// layout whenever it fits and scrolls only when it does not.
+    func scrollsWhenTall() -> some View {
+        GeometryReader { proxy in
+            ScrollView {
+                self.frame(maxWidth: .infinity, minHeight: proxy.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .defaultScrollAnchor(screenshotScrollAnchor)
+        }
+        // The page-index dots float over the bottom of every page. Ending the scroll area
+        // above them means no line of text can sit under the dots at any text size; the
+        // buttons' own bottom padding shrank by the same amount, so default size is unchanged.
+        .padding(.bottom, 44)
+    }
+
+    /// Design-gate screenshots only: `-h4aiOnboardingBottom` opens each page
+    /// scrolled to its end, since simctl cannot scroll. nil (the top) everywhere else.
+    private var screenshotScrollAnchor: UnitPoint? {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-h4aiOnboardingBottom") { return .bottom }
+        #endif
+        return nil
     }
 }

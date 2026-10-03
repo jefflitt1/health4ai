@@ -619,16 +619,17 @@ struct HomeView: View {
     /// iOS 27 "Past 30 Days and Future Data": older history is hidden from the app.
     private func historyLimitNotice(_ historyLimit: Date) -> some View {
         // The date is its own Text so it never breaks mid-number at accessibility sizes
-        // (design.md). The remedy differs by destination: the sheet rebuilds when access
-        // widens, but the database path's anchored queries never see the older samples,
-        // so it must not promise a recovery it cannot deliver (open item A76).
+        // (design.md). Both destinations recover when access widens: the sheet rebuilds
+        // (SheetsSink), the database re-imports the hidden window
+        // (BulkExportManager.rearmIfHistoryAccessWidened). The Open Health App button
+        // below in this card is the way there.
         Label {
             VStack(alignment: .leading, spacing: 2) {
                 Text("iOS is only sharing Health data since")
                 Text(historyLimit.formatted(date: .abbreviated, time: .omitted) + ".")
                 Text(showsSheetsHome
-                     ? "To include older history, change health4ai's Health access to All Recorded Data in Settings. Your sheet then rebuilds from your full history."
-                     : "Older history can't reach your database while this limit is on.")
+                     ? "To include older history, change health4ai's Health access to All Recorded Data in Settings or the Health app. Your sheet then rebuilds from your full history."
+                     : "To include older history, change health4ai's Health access to All Recorded Data in Settings or the Health app. health4ai then imports the older days.")
             }
             .fixedSize(horizontal: false, vertical: true)
         } icon: {
@@ -1311,7 +1312,8 @@ private struct ExampleQuestion: View {
 }
 
 /// Text first, icon after: the menu chevron sits after the value, as on a menu Picker.
-private struct TrailingIconLabelStyle: LabelStyle {
+/// Shared with onboarding's scope picker.
+struct TrailingIconLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             configuration.title
