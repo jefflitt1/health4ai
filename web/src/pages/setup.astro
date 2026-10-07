@@ -20,7 +20,7 @@ import Layout from '../layouts/Layout.astro';
       <div class="text-green-500 text-xs font-mono mb-3 tracking-widest uppercase">Verified checklist</div>
       <h1 class="text-3xl font-bold text-white mb-4">Set up health4.ai: Google Sheet first, database if you want it</h1>
       <p class="text-neutral-400 text-sm leading-relaxed mb-3">
-        Your Apple Health data goes to a destination you own: a Google Sheet in your own Drive (the easy default, a few minutes) or your own Supabase/Postgres database (about 15 minutes, for power users). health4.ai has no account and no server, and does not keep a copy.
+        Your Apple Health data goes to a destination you own: a Google Sheet in your own Drive (the easiest option, a few minutes) or your own Supabase/Postgres database (about 15 minutes, for power users). health4.ai has no account and no server, and does not keep a copy.
       </p>
       <p class="text-neutral-500 text-sm leading-relaxed mb-3">
         Path: HealthKit on your iPhone → your Sheet or database → your AI in Claude, Claude Code, or Cursor.
@@ -38,7 +38,7 @@ import Layout from '../layouts/Layout.astro';
         <li><a href="https://apps.apple.com/app/health4ai/id6783074944" target="_blank" rel="noopener" class="text-green-400 hover:underline">Download health4.ai</a> and open it.</li>
         <li>Choose <strong class="text-neutral-400 font-medium">Save to Google Sheets</strong> and sign in with Google. The app creates one spreadsheet in your Drive with one row per day (steps, sleep, heart rate, HRV, workouts and more). It uses the <code class="text-amber-400 text-xs">drive.file</code> scope, so it only sees files it creates.</li>
         <li>Allow Health access, then follow the in-app setup checklist. Sync History shows what was written and Your Sources lists every device and app writing to Health.</li>
-        <li>Open <strong class="text-neutral-400 font-medium">Connect Your AI</strong> for copy-paste MCP config for Claude Desktop, Claude Code, and Cursor.</li>
+        <li>Open the sheet in Google Drive. Share it with an AI assistant that has Google Drive access, or download it as CSV and give it to any AI assistant. Want your AI to query live data over MCP? Use the database option below.</li>
       </ol>
       <p class="text-neutral-500 text-xs mt-4">Background sync is best-effort: iOS decides when the app runs, so tap sync in the app if you need fresh data now. If iOS shares only recent Health data, the app warns you.</p>
     </section>
@@ -94,6 +94,7 @@ cp .env.example .env</code></pre>
           <span class="text-green-500 font-mono font-bold text-sm w-6 shrink-0">6</span>
           <div>
             <div class="text-white text-sm font-medium mb-1">Point MCP at your database</div>
+            <p class="text-neutral-500 text-sm mb-2">The app's <strong class="text-neutral-400 font-medium">Connect Your AI</strong> screen has copy-paste MCP config for Claude Desktop, Claude Code, and Cursor.</p>
             <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-4 overflow-x-auto text-xs text-neutral-300"><code>DATABASE_URL=postgresql://...   # transaction pooler, database password
 HEALTHKIT_USER_ID=&lt;your auth UID&gt;</code></pre>
           </div>

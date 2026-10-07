@@ -27,7 +27,7 @@ import Layout from '../layouts/Layout.astro';
         Apple has no server-side HealthKit API. Every sync must originate from your iPhone — so the bridge you pick decides whether Claude, Cursor, or ChatGPT can reach your health data at all.
       </p>
       <p class="text-neutral-400 text-sm leading-relaxed mb-4">
-        <strong class="text-neutral-300 font-medium">health4.ai's wedge:</strong> Apple Health → a Google Sheet in your own Drive (easy default) or a Supabase/Postgres database you own (power users) → Claude, Claude Code, Cursor, ChatGPT, and Ollama. Ongoing background sync (best-effort, as iOS decides when apps run), not same-WiFi phone TCP and not a one-shot XML export.
+        <strong class="text-neutral-300 font-medium">health4.ai's wedge:</strong> Apple Health → a Google Sheet in your own Drive (easiest option) or a Supabase/Postgres database you own (power users) → Claude, Claude Code, Cursor, ChatGPT, and Ollama. Ongoing background sync (best-effort, as iOS decides when apps run), not same-WiFi phone TCP and not a one-shot XML export.
       </p>
       <p class="text-neutral-400 text-sm leading-relaxed">
         This page compares the realistic options today: health4.ai, Health Auto Export, ChatGPT Health, neiltron/apple-health-mcp-style export+npx MCP, the claude.ai native connector, VitalTrends, and manual XML export. Ready to try the own-DB path? Start with the

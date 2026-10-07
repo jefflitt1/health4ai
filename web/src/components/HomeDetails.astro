@@ -91,7 +91,7 @@
       </div>
 
     <p class="mt-5 text-xs" style="color:var(--muted)">
-      Database option schema: <a href="/schema.sql" class="hover:text-white transition-colors" style="color:var(--accent)">health4.ai/schema.sql</a> · Supabase only. Not needed for Google Sheets.
+      Database option schema: <a href="/schema.sql" class="hover:text-white transition-colors" style="color:var(--accent)">health4.ai/schema.sql</a> · Supabase only. Not needed for the Google Sheet option.
     </p>
   </div>
 </section>
@@ -104,7 +104,7 @@
       {[
         { n:'01', title:'Install the iOS app', body:'Tap to authorize HealthKit. The app syncs new Health data in the background when iOS allows it, and you can sync from the app any time. Background timing is up to iOS.', icon:'📱' },
         { n:'02', title:'Pick where it goes', body:'Sign in with Google and the app creates a Sheet in your own Drive. Or connect your own Supabase/Postgres database if you want every sample and a queryable history.', icon:'🗄️' },
-        { n:'03', title:'Ask Claude / Cursor anything', body:'The Connect Your AI screen in the app gives you copy-paste MCP config for Claude Desktop, Claude Code, and Cursor. Then ask: "How\'s my sleep debt this week?" "When was my HRV last above 70?" "Am I ready to train tomorrow?"', icon:'🤖' },
+        { n:'03', title:'Ask Claude / Cursor anything', body:'With a Sheet, share it with your AI assistant. With the database option, the Connect Your AI screen in the app gives you copy-paste MCP config for Claude Desktop, Claude Code, and Cursor. Then ask: "How\'s my sleep debt this week?" "When was my HRV last above 70?" "Am I ready to train tomorrow?"', icon:'🤖' },
       ].map(({ n, title, body, icon }) => (
         <div class="rounded-2xl p-6 flex flex-col" style="background:rgba(15,18,37,0.6);border:1px solid rgba(255,255,255,0.07)">
           <div class="flex items-center gap-3 mb-5">
