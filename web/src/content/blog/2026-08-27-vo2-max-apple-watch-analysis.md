@@ -7,8 +7,6 @@ tags: ["vo2-max", "apple-watch", "healthkit", "mcp", "fitness", "analysis", "lon
 draft: false
 ---
 
-# VO2 Max Trends from Apple Watch: Letting AI Spot the Patterns
-
 VO2 max is one of the most robust predictors of cardiovascular fitness and longevity. Apple Watch estimates it from outdoor walk/run workouts using GPS speed, heart rate, and motion data. The estimate isn't lab-accurate, but it's consistent — meaning the trend is reliable even if the absolute number has a margin of error.
 
 Here's how to query and interpret your Apple Watch VO2 max data.

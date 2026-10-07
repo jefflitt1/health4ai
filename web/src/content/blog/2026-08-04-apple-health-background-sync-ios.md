@@ -7,8 +7,6 @@ tags: ["ios", "background-sync", "healthkit", "hkobserverquery", "bgprocessingta
 draft: false
 ---
 
-# Apple Health Background Sync: Why Most Solutions Fail
-
 The reason most HealthKit sync solutions have unreliable data freshness comes down to a single architecture decision: how they handle iOS background execution. iOS is aggressive about killing background processes. The mechanism you use to wake your app when new health data is available determines whether you get real-time sync or data that can be hours — or days — stale.
 
 ## iOS Background Execution: The Constraint

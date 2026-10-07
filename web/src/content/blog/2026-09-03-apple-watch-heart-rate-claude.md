@@ -7,8 +7,6 @@ tags: ["heart-rate", "apple-watch", "healthkit", "mcp", "resting-hr", "analysis"
 draft: false
 ---
 
-# Apple Watch Heart Rate Data in Claude: What to Ask
-
 Apple Watch captures several distinct heart rate metrics. They serve different analytical purposes, and knowing which one to query for which question matters. Here's a guide to the HealthKit heart rate data available and what to do with it in Claude.
 
 ## The Heart Rate Metrics in HealthKit

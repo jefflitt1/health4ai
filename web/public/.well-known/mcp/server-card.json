@@ -1,7 +1,7 @@
 {
   "name": "io.github.jefflitt1/health4ai",
   "title": "health4.ai",
-  "description": "Query your own Apple Health data from Claude, Cursor, ChatGPT, or any MCP client. Local stdio server that reads from a Supabase/Postgres database you own; health4.ai never receives or stores your health data.",
+  "description": "Query your own Apple Health data from Claude, Cursor, ChatGPT, or any MCP client. Local stdio server that reads from the Supabase/Postgres database you own (the database option of the free health4ai iOS app; the Google Sheet option needs no server); health4.ai never receives or stores your health data.",
   "version": "0.1.0",
   "serverInfo": {
     "name": "health4ai",

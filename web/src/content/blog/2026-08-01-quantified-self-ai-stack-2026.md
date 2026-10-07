@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# The Quantified Self Stack in 2026: Hardware, Apps, and AI
-
 Quantified self has been a niche since the late 2000s — people tracking sleep, steps, and heart rate before it was built into every wrist. In 2026 the niche has expanded dramatically: Apple Watch has 100M+ active users, Oura is mainstream, and LLMs can now analyze health data in natural language. The bottleneck has shifted from "how do I collect this data?" to "how do I actually use it?"
 
 Here's the full stack as it exists today — hardware, software, and AI layers.

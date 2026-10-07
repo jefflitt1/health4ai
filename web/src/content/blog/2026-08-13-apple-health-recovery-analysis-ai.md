@@ -7,8 +7,6 @@ tags: ["recovery", "hrv", "sleep", "apple-health", "training", "claude-code", "m
 draft: false
 ---
 
-# Apple Health HRV, Sleep, and Recovery: Letting Claude Analyze Your Training
-
 Recovery monitoring is one of the more useful applications for continuous health data. The metrics Apple Watch captures — HRV, resting HR, sleep stages, training load — are individually meaningful and more meaningful in combination. Here's how to query and interpret them in Claude Code.
 
 ## The Recovery Picture

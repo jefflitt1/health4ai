@@ -39,13 +39,13 @@ import BrandLogo from './BrandLogo.astro';
         Apple Health MCP<br><span style="color:var(--accent)">for Claude &amp; Cursor.</span>
       </h1>
       <p class="text-base leading-relaxed mb-5" style="color:var(--muted)">
-        Your Apple Health data stays in a Supabase/Postgres database you own — health4.ai does not keep a copy. Sync continuously from HealthKit, then ask Claude, Claude Code, Cursor, ChatGPT, or Ollama via a local MCP server.
+        Send your Apple Health data to a Google Sheet in your own Google Drive, or to your own database. health4.ai has no account and no server, and never receives a copy. Then ask Claude, Claude Code, Cursor, ChatGPT, or Ollama about your sleep, HRV, and workouts.
       </p>
       <p class="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs font-semibold mb-8" style="color:#e2c8d4">
         <span class="sr-only">Three steps: </span>
         <span class="px-2.5 py-1 rounded-md" style="background:rgba(255,45,120,0.08);border:1px solid rgba(255,45,120,0.18)">Sync Apple Health</span>
         <span aria-hidden="true" style="color:var(--muted)">→</span>
-        <span class="px-2.5 py-1 rounded-md" style="background:rgba(255,45,120,0.08);border:1px solid rgba(255,45,120,0.18)">Your database</span>
+        <span class="px-2.5 py-1 rounded-md" style="background:rgba(255,45,120,0.08);border:1px solid rgba(255,45,120,0.18)">Your Sheet or database</span>
         <span aria-hidden="true" style="color:var(--muted)">→</span>
         <span class="px-2.5 py-1 rounded-md" style="background:rgba(255,45,120,0.08);border:1px solid rgba(255,45,120,0.18)">Ask Claude/Cursor</span>
       </p>
@@ -71,9 +71,9 @@ import BrandLogo from './BrandLogo.astro';
       >
         Download on the App Store
       </a>
-      <p class="text-xs mt-2.5" style="color:var(--muted)">Free · bring your own Supabase database.</p>
+      <p class="text-xs mt-2.5" style="color:var(--muted)">Free · no account · start with a Google Sheet.</p>
       <p class="wl-explore text-xs mt-3" style="color:var(--muted)">
-        Or explore first:
+        Or explore first:{' '}
         <a href="/setup/" class="hover:text-white transition-colors underline-offset-2 hover:underline" style="color:var(--accent-light)">Apple Health MCP setup</a>
         <span aria-hidden="true"> · </span>
         <a href="/compare/" class="hover:text-white transition-colors underline-offset-2 hover:underline" style="color:var(--accent-light)">vs Health Auto Export</a>

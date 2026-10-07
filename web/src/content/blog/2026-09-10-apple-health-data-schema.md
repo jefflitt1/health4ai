@@ -7,8 +7,6 @@ tags: ["schema", "postgres", "healthkit", "apple-health", "sql", "database", "re
 draft: false
 ---
 
-# Apple Health Data Schema: What's in Your Database
-
 Understanding the health4ai database schema lets you write custom SQL queries, build dashboards directly on the database, and debug sync issues. Here's a complete reference.
 
 ## Two Tables

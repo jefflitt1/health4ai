@@ -3,7 +3,7 @@ import Layout from '../layouts/Layout.astro';
 ---
 <Layout
   title="About — health4.ai"
-  description="What health4.ai is, who built it, and how it works: a free, open-source iOS app and MCP server that syncs Apple Health data to a database you own."
+  description="What health4.ai is, who built it, and how it works: a free iOS app that moves Apple Health data to a Google Sheet or database you own, plus an open-source MCP server."
 >
   <nav class="flex items-center justify-between px-6 py-5 max-w-3xl mx-auto">
     <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
@@ -15,12 +15,13 @@ import Layout from '../layouts/Layout.astro';
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">What it is</h2>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        health4.ai is a free, open-source iOS app that connects Apple HealthKit to a
-        Supabase/Postgres database you create and own, and an open-source MCP (Model
-        Context Protocol) server that exposes that data as native tool calls to Claude,
-        ChatGPT, Cursor, and any MCP-compatible AI client. It uses HKObserverQuery and
-        BGProcessingTask for reliable background sync, so it does not require the app to
-        stay open or the phone to be on the same Wi-Fi network as the AI client.
+        health4.ai is a free iOS app that moves Apple Health data to a destination you
+        own: a Google Sheet in your own Google Drive (one row per day, the easiest option),
+        or your own Postgres/Supabase database (every HealthKit sample, for power users).
+        An open-source MCP (Model Context Protocol) server and in-app Connect Your AI
+        config (database option) let Claude, ChatGPT, Cursor, and other MCP-compatible clients use that
+        data. Background sync is best-effort, since iOS decides when the app runs, and
+        the phone does not need to be on the same Wi-Fi network as the AI client.
       </p>
     </section>
 
@@ -30,20 +31,21 @@ import Layout from '../layouts/Layout.astro';
         Apple has no server-side HealthKit API, so most tools that connect health data to
         an AI either require the phone and the AI client to be on the same local network,
         or only work inside a single vendor's web app. health4.ai closes that gap by
-        syncing HealthKit data to a Postgres database the user controls, reachable from
-        anywhere, and then serving it through a standard MCP server that any compatible
-        client can call.
+        syncing HealthKit data to a Google Sheet or database the user controls, reachable from
+        anywhere, so that standard MCP clients can work with it.
       </p>
     </section>
 
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">How data flows</h2>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        iPhone (HKObserverQuery + BGProcessingTask) syncs to a Supabase project the user
-        creates and owns, via a Supabase Edge Function. The MCP server (FastMCP, Python)
-        then reads from that same database and answers tool calls from Claude, Cursor, or
-        any other MCP client. health4.ai does not run a shared backend and never receives,
-        stores, or has access to a user's health data — see the{' '}
+        The iPhone app sends data directly to a Google Sheet in the user's own Drive
+        (Google scope drive.file, so the app only sees files it creates), or to a Supabase
+        project the user owns via a Supabase Edge Function. For the database option, the
+        MCP server (FastMCP, Python) reads from that database and answers tool calls from
+        Claude, Cursor, or any other MCP client. There is no health4.ai account and no
+        health4.ai server, and health4.ai never receives, stores, or has access to a
+        user's health data. See the{' '}
         <a href="/privacy/" class="text-green-400 hover:underline">Privacy Policy</a> for
         the full data-handling description.
       </p>

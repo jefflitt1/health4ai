@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# Every Way to Get Apple Health Data into an AI in 2026 — Compared
-
 The fundamental problem is simple: Apple has no server-side HealthKit API. Your health data lives on your device. There is no endpoint you can call to fetch someone's step count or HRV trend. Every solution in this space is working around the same constraint, and the approach each one takes determines what you can and can't do.
 
 Here's a direct comparison of the options available today.

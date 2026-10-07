@@ -4,7 +4,7 @@ import TrackerFlow from '../components/TrackerFlow.astro';
 ---
 <Layout
   title="How health4.ai works — connect your Apple Health data to any AI"
-  description="Set up health4.ai in under 5 minutes. Create a Supabase project, connect the iOS app, run the open-source MCP server, and query your health data from any AI."
+  description="Set up health4.ai: install the free iOS app, sign in with Google to save to a Sheet in your own Drive, or connect your own database, then ask any AI about your health data."
 >
   <nav class="flex items-center justify-between px-6 py-5 max-w-3xl mx-auto">
     <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
@@ -21,17 +21,30 @@ import TrackerFlow from '../components/TrackerFlow.astro';
     <!-- Hero -->
     <h1 class="text-2xl font-bold text-white mb-3">How health4.ai works</h1>
     <p class="text-neutral-400 text-sm leading-relaxed mb-12">
-      Apple has no server-side HealthKit API — there is no webhook, no OAuth flow, no REST endpoint that lets a remote
-      server pull your health data. health4.ai solves this with a tiny iOS app that syncs HealthKit directly to a
-      Postgres database you control, then an open-source MCP server gives any AI structured access to it.
-      Your data never touches health4.ai's servers.
+      Apple has no server-side HealthKit API: there is no webhook, no OAuth flow, no REST endpoint that lets a remote
+      server pull your health data. health4.ai solves this with a free iOS app that moves HealthKit data to a
+      destination you own: a Google Sheet in your own Google Drive (the easiest option), or your own Postgres/Supabase
+      database for power users. There is no health4.ai account and no health4.ai server, so your data never touches us.
     </p>
 
     <TrackerFlow />
 
     <!-- Setup guide -->
     <section class="mb-14">
-      <h2 class="text-green-400 font-semibold text-base mb-6">Setup — step by step</h2>
+      <h2 class="text-green-400 font-semibold text-base mb-6">Setup: start with a Google Sheet</h2>
+
+      <div class="border border-neutral-800 rounded-lg p-5 mb-10 bg-neutral-900/30">
+        <ol class="text-neutral-400 text-sm leading-relaxed space-y-2 list-decimal pl-5">
+          <li>Download <a href="https://apps.apple.com/app/health4ai/id6783074944" class="text-green-400 hover:underline" target="_blank" rel="noopener">health4.ai from the App Store</a> (free).</li>
+          <li>Choose <strong class="text-neutral-300">Save to Google Sheets</strong> and sign in with Google. The app creates one spreadsheet in your Drive, with one row per day: steps, sleep, heart rate, HRV, workouts and more. It uses the narrow <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">drive.file</code> scope, so it can only see files it creates.</li>
+          <li>Allow Health access. The app syncs in the background when iOS allows it, and you can sync from the app any time. Background timing is decided by iOS.</li>
+          <li>Open the sheet in Google Drive. Share it with an AI assistant that has Google Drive access, or download it as CSV and give it to any AI assistant. Want your AI to query live data over MCP? Use the database option below.</li>
+        </ol>
+        <p class="text-neutral-500 text-xs mt-3">The in-app setup checklist, Sync History, and Your Sources screen (every device and app writing to Health) help you confirm it is working. If iOS shares only recent Health data, the app tells you.</p>
+      </div>
+
+      <h2 class="text-green-400 font-semibold text-base mb-2">Power users: your own database</h2>
+      <p class="text-neutral-400 text-sm leading-relaxed mb-6">Want every HealthKit sample, queryable by any MCP client? Send data to a Postgres/Supabase database you own instead. Steps 1 to 5 below are for this option; you do not need them for Google Sheets.</p>
 
       <div class="space-y-8">
 
@@ -58,7 +71,7 @@ supabase functions deploy healthkit-ingest \
           <div class="min-w-0 flex-1">
             <h3 class="text-white font-semibold mb-2">Install the iOS app and connect your database</h3>
             <p class="text-neutral-400 text-sm leading-relaxed mb-3">
-              Download health4.ai from the App Store. Tap through the Welcome and Privacy screens, then open the <strong class="text-neutral-300">Connect</strong> tab. If asked for a backend, choose <strong class="text-neutral-300">Supabase</strong>. Paste your project URL and anon key, then tap <strong class="text-neutral-300">Sign In</strong> as the user you added.
+              Download health4.ai from the App Store. Tap through the Welcome and Privacy screens, then open the <strong class="text-neutral-300">Connect</strong> tab and choose the database option (<strong class="text-neutral-300">Supabase</strong>). Paste your project URL and anon key, then tap <strong class="text-neutral-300">Sign In</strong> as the user you added.
             </p>
             <div class="bg-neutral-900 border border-neutral-800 rounded-lg p-4 text-xs text-neutral-400 space-y-1">
               <div><span class="text-neutral-500">Project URL:</span> <code class="text-green-300">https://abc123.supabase.co</code> — Settings → API</div>
@@ -71,9 +84,9 @@ supabase functions deploy healthkit-ingest \
         <div class="flex gap-5">
           <div class="flex-shrink-0 w-8 h-8 rounded-full bg-green-500/15 border border-green-500/30 flex items-center justify-center text-green-400 font-bold text-sm">3</div>
           <div class="min-w-0 flex-1">
-            <h3 class="text-white font-semibold mb-2">Grant HealthKit access — sync begins</h3>
+            <h3 class="text-white font-semibold mb-2">Grant HealthKit access, and sync begins</h3>
             <p class="text-neutral-400 text-sm leading-relaxed">
-              Tap <strong class="text-neutral-300">Allow Health Access</strong> during onboarding. iOS shows the standard HealthKit permission sheet — you choose which types to share. The app immediately begins a full historical backfill (your entire Apple Health archive), then switches to live incremental sync via <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">HKObserverQuery</code> — iOS wakes the app in the background whenever new data arrives.
+              Tap <strong class="text-neutral-300">Allow Health Access</strong> during onboarding. iOS shows the standard HealthKit permission sheet, and you choose which types to share. The app imports the history iOS shares with it, then keeps syncing new data in the background when iOS allows it (it registers <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">HKObserverQuery</code>, but iOS decides when the app actually wakes). If you only share "Past 30 Days" on iOS 27, the app warns you; widen access in Settings or the Health app.
             </p>
           </div>
         </div>
@@ -119,7 +132,7 @@ cp .env.example .env
           <div class="min-w-0 flex-1">
             <h3 class="text-white font-semibold mb-2">Ask your AI about your health</h3>
             <p class="text-neutral-400 text-sm leading-relaxed mb-3">
-              Once the backfill completes (usually 2–10 minutes depending on your history), go to your AI and ask:
+              Once the first sync completes (the time depends on how much history iOS shares), go to your AI and ask:
             </p>
             <div class="space-y-2">
               {[
@@ -147,11 +160,11 @@ cp .env.example .env
 
         <details class="group border border-neutral-800 rounded-lg overflow-hidden">
           <summary class="px-5 py-4 text-sm text-neutral-300 cursor-pointer hover:text-white list-none flex items-center justify-between">
-            Can I use Neon or a local Postgres instead of Supabase?
+            Can I use Neon or a local Postgres for the database option?
             <span class="text-neutral-600 group-open:rotate-180 transition-transform">▾</span>
           </summary>
           <p class="px-5 pb-4 text-neutral-400 text-sm leading-relaxed border-t border-neutral-800 pt-4">
-            No. The iOS app signs in with Supabase Auth and sends data to a Supabase Edge Function, so it needs a Supabase project you own. Neon, local Docker and other plain Postgres hosts have no way to receive data from the app. <a href="https://github.com/jefflitt1/health4ai/blob/main/docs/SETUP.md" class="text-green-400 hover:underline">Full setup guide</a>
+            No. The database option signs in with Supabase Auth and sends data to a Supabase Edge Function, so it needs a Supabase project you own. The Google Sheet option needs no database at all. Neon, local Docker and other plain Postgres hosts have no way to receive data from the app. <a href="https://github.com/jefflitt1/health4ai/blob/main/docs/SETUP.md" class="text-green-400 hover:underline">Full setup guide</a>
           </p>
         </details>
 
@@ -161,7 +174,7 @@ cp .env.example .env
             <span class="text-neutral-600 group-open:rotate-180 transition-transform">▾</span>
           </summary>
           <p class="px-5 pb-4 text-neutral-400 text-sm leading-relaxed border-t border-neutral-800 pt-4">
-            Yes. The MCP server is a local stdio process — point as many AI clients as you like at the same <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">main.py</code>. Add the server entry to Claude Desktop, Cursor, Continue, or any MCP-compatible client. All clients read from the same Supabase database.
+            Yes. With the database option, the MCP server is a local stdio process: point as many AI clients as you like at the same <code class="text-green-300 bg-neutral-900 px-1 rounded text-xs">main.py</code>. Add the server entry to Claude Desktop, Cursor, Continue, or any MCP-compatible client. All clients read from the same Supabase database.
           </p>
         </details>
 
@@ -171,7 +184,7 @@ cp .env.example .env
             <span class="text-neutral-600 group-open:rotate-180 transition-colors">▾</span>
           </summary>
           <p class="px-5 pb-4 text-neutral-400 text-sm leading-relaxed border-t border-neutral-800 pt-4">
-            No. The iOS app syncs directly from your iPhone to your Supabase database — health4.ai's servers are never in the path. The MCP server runs locally on your Mac and reads from your database. We never see your health data.
+            No. The iOS app sends data directly from your iPhone to your own Google Sheet or database. There is no health4.ai account and no health4.ai server in the path. We never see your health data.
           </p>
         </details>
 
@@ -181,7 +194,7 @@ cp .env.example .env
             <span class="text-neutral-600 group-open:rotate-180 transition-transform">▾</span>
           </summary>
           <p class="px-5 pb-4 text-neutral-400 text-sm leading-relaxed border-t border-neutral-800 pt-4">
-            Go to <strong class="text-neutral-300">iPhone Settings → Privacy &amp; Security → Health → health4ai</strong> and toggle off any or all data types. The app stops receiving new data immediately. Your historical data stays in your own Supabase database — delete it there directly if you want it gone.
+            Go to <strong class="text-neutral-300">iPhone Settings → Privacy &amp; Security → Health → health4ai</strong> and toggle off any or all data types. The app stops receiving new data immediately. Your historical data stays in your own Google Sheet or database; delete it there directly if you want it gone.
           </p>
         </details>
 
@@ -190,7 +203,7 @@ cp .env.example .env
 
     <!-- Architecture (condensed) -->
     <section class="mb-14">
-      <h2 class="text-green-400 font-semibold text-base mb-4">Under the hood</h2>
+      <h2 class="text-green-400 font-semibold text-base mb-4">Under the hood (database option)</h2>
       <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-5 text-xs text-green-300 leading-relaxed overflow-x-auto">iPhone (health4.ai iOS app)
   └─ HKObserverQuery ──► fires on every new HealthKit sample
   └─ BGProcessingTask ──► runs full sync while charging

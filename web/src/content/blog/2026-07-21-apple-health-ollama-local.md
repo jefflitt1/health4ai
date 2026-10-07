@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# Running health4ai Locally with Ollama — Zero Cloud Required
-
 If you self-host and care about data locality, running health4ai with Ollama is the configuration where your health data never touches a cloud AI service. The data lives in your Postgres database. The MCP server runs on your Mac. The model runs on your Mac. Queries happen entirely on your hardware.
 
 This is an option, not the only path. Claude Code is faster and more capable for complex analysis. But for developers who want full data sovereignty, the local stack works.

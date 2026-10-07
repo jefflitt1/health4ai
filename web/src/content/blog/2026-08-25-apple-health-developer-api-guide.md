@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# Apple Health + AI: The Missing Manual for Developers
-
 Apple's HealthKit documentation is complete for iOS developers building fitness apps. It's not written for developers trying to build AI tools that work with health data, and the gaps cause real confusion. This is what's missing from the official docs.
 
 ## The Fundamental Constraint Nobody Warns You About

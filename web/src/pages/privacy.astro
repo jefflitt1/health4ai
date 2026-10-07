@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-const lastUpdated = '2026-10-02';
+const lastUpdated = '2026-10-07';
 ---
 <style>
   /* Anyone linking directly to #testflight (historical TestFlight section)
@@ -20,13 +20,13 @@ const lastUpdated = '2026-10-02';
     <p class="text-neutral-500 text-xs mb-10">Last updated: {lastUpdated}</p>
 
     <p class="text-neutral-300 leading-relaxed mb-8">
-      health4.ai ("we", "us") provides an iOS app and MCP server that facilitate the transfer of Apple HealthKit data to a destination <em>you configure and control</em>, such as a Postgres database or, where available, a spreadsheet in your own Google Drive. We do not operate a shared health-data backend or collect, store, or have access to your health data. This policy explains what limited data we do collect and your rights.
+      health4.ai ("we", "us") provides an iOS app and MCP server that facilitate the transfer of Apple HealthKit data to a destination <em>you configure and control</em>: a spreadsheet in your own Google Drive or a Postgres/Supabase database. We do not operate a shared health-data backend or collect, store, or have access to your health data. This policy explains what limited data we do collect and your rights.
     </p>
 
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">1. What data we collect</h2>
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
-        <li><strong class="text-neutral-200">Health data: we do not collect it.</strong> HealthKit metrics you authorize flow directly from your device to a Supabase project you create and own (or, if you choose Save to Google Sheets, to a spreadsheet in your own Google Drive; see section 4). health4.ai never receives, stores, or has access to your health data. A cloud AI provider you separately connect to may process data you choose to send to it.</li>
+        <li><strong class="text-neutral-200">Health data: we do not collect it.</strong> HealthKit metrics you authorize flow directly from your device to a spreadsheet in your own Google Drive (if you choose Save to Google Sheets; see section 4) or to a Supabase project you create and own. health4.ai never receives, stores, or has access to your health data. A cloud AI provider you separately connect to may process data you choose to send to it.</li>
         <li><strong class="text-neutral-200">Account data</strong>: before launch, we collected email addresses from pre-launch waitlist sign-ups to notify people when the app shipped and, for those who opted in, to send a TestFlight beta invitation. The app is now live on the App Store and we no longer collect waitlist emails.</li>
         <li><strong class="text-neutral-200">Usage data</strong>: anonymous page views and feature interaction events via PostHog (US-hosted). PostHog never receives health data. We do not use advertising cookies or trackers.</li>
       </ul>
@@ -47,14 +47,14 @@ const lastUpdated = '2026-10-02';
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">3. Where data is stored</h2>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        Your health data lives in a Supabase project <em>you</em> create and own. You hold the credentials, and only you can query the data. health4.ai has no access to it. If you choose the optional Google Sheets destination, your data lives in a spreadsheet in your own Google Drive instead; see section 4.
+        Your health data lives in the destination <em>you</em> choose: a spreadsheet in your own Google Drive (see section 4), or a Supabase project you create and own. You hold the credentials, and only you can access the data. health4.ai has no access to it.
       </p>
     </section>
 
     <section id="google" class="mb-8 scroll-mt-6">
-      <h2 class="text-white font-semibold text-base mb-3">4. Google Sheets destination (optional)</h2>
+      <h2 class="text-white font-semibold text-base mb-3">4. Google Sheets destination</h2>
       <p class="text-neutral-400 text-sm leading-relaxed mb-3">
-        health4.ai offers an optional destination, "Save to Google Sheets", that writes your health summaries into a spreadsheet in your own Google Drive instead of a database. It is available in version 1.0.1 of the app and later. If you never connect a Google account, none of this section applies and we receive nothing from Google.
+        health4.ai offers a destination, "Save to Google Sheets", that writes your health summaries into a spreadsheet in your own Google Drive instead of a database. It is available in version 1.0.1 of the app and later. If you never connect a Google account, none of this section applies and we receive nothing from Google.
       </p>
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
         <li><strong class="text-neutral-200">What Google data the app accesses.</strong> When you choose this destination, the app asks you to sign in to Google on your device and requests a single permission (OAuth scope): <code class="break-all">https://www.googleapis.com/auth/drive.file</code>. This scope limits the app to files it creates itself. health4.ai cannot see, list, or open any other file in your Google Drive, and it does not request your name, email address, contacts, calendar, or Gmail.</li>

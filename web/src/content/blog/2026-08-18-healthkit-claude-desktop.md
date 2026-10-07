@@ -7,8 +7,6 @@ tags: ["claude-desktop", "healthkit", "apple-health", "mcp", "setup", "tutorial"
 draft: false
 ---
 
-# HealthKit Data in Claude Desktop: Setup Guide
-
 Claude Desktop is the macOS and Windows desktop application for Claude. It supports MCP servers using the same protocol as Claude Code, with a slightly different configuration file location. If Claude Desktop is your primary Claude client, here's the specific setup path.
 
 ## Claude Desktop vs Claude Code

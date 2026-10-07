@@ -7,8 +7,6 @@ tags: ["body-composition", "weight", "apple-health", "healthkit", "mcp", "long-t
 draft: false
 ---
 
-# Tracking Body Composition Over Time with AI
-
 Apple Watch doesn't measure body composition directly, but the Health app accepts data from compatible smart scales (Withings, Renpho, Eufy), manual entry, and Dexafit scans. If you log this data, it's in HealthKit alongside your activity and recovery metrics. Here's how to query and interpret it.
 
 ## What's Available in HealthKit

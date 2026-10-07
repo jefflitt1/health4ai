@@ -14,16 +14,17 @@ historical health data.
 It does NOT cover: real-time HealthKit access on-device (it syncs to a database first, so
 there is sync latency), medical diagnosis or treatment advice (health4.ai is not a medical
 device), Android or non-Apple wearables that never write into Apple Health, or any AI
-provider that is not MCP-compatible. It requires the user to run an iOS app and own a free
-Supabase project — there is no hosted service and no login on health4.ai itself.
+provider that is not MCP-compatible. It requires the user to run the free iOS app and own the
+destination: a Google Sheet in their own Google Drive (the easiest option) or their own Supabase/Postgres database
+(power users). There is no hosted service, no health4.ai account and no login on health4.ai itself.
 
 ## What Is health4.ai?
 
-health4.ai bridges the gap between Apple HealthKit and AI tools. Download the iOS app, connect it to a Supabase project you own, authorize HealthKit, and your health data becomes available as native tool calls to any AI agent. No same-WiFi requirement. Works from anywhere.
+health4.ai bridges the gap between Apple HealthKit and AI tools. Download the free iOS app, choose where your data goes (a Google Sheet in your own Drive, one row per day, using the drive.file scope; or your own Supabase/Postgres database with every HealthKit sample), and authorize HealthKit. With the database option, the in-app Connect Your AI screen gives copy-paste MCP config for Claude Desktop, Claude Code, and Cursor. No same-WiFi requirement. Works from anywhere.
 
 ## Why It Exists
 
-Apple has no server-side HealthKit API. Existing tools (Health Auto Export) only work over local WiFi and have unreliable background sync. health4.ai uses HKObserverQuery + BGProcessingTask for reliable background delivery and stores data in a Supabase project you own, reachable from anywhere. health4.ai runs no server and never receives it.
+Apple has no server-side HealthKit API. Existing tools (Health Auto Export) only work over local WiFi and have unreliable background sync. health4.ai syncs in the background when iOS allows it (best-effort, iOS decides when) to a Google Sheet or Supabase project you own, reachable from anywhere. health4.ai runs no server and never receives your data.
 
 ## MCP Tools (FastMCP, Python)
 
@@ -46,7 +47,7 @@ Apple has no server-side HealthKit API. Existing tools (Health Auto Export) only
 ## vs. Health Auto Export
 
 Health Auto Export: closed source, $30 one-time, MCP requires same-WiFi TCP connection.
-health4.ai: Free download, open source, works from any network. You set up your own Supabase project once.
+health4.ai: Free download, open source, works from any network. Sign in with Google for a Sheet in your own Drive, or set up your own Supabase project once for the database option.
 
 ## vs. claude.ai native Apple Health connector
 
@@ -63,7 +64,8 @@ All HKSampleTypes dynamically: steps, heart rate, HRV (SDNN), resting heart rate
 
 ## Architecture
 
-iPhone (HKObserverQuery + BGProcessingTask) → your Supabase project (healthkit-ingest Edge Function) → MCP server (FastMCP, Python) → Claude Code / any MCP client
+Sheet option: iPhone → Google Sheet in your Drive → your AI client.
+Database option: iPhone (HKObserverQuery + BGProcessingTask) → your Supabase project (healthkit-ingest Edge Function) → MCP server (FastMCP, Python) → Claude Code / any MCP client
 
 Queries within the last 30 days read raw samples; longer windows read pre-aggregated daily summaries where they exist. Callers do not need to handle this.
 

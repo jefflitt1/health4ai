@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# Apple Health MCP Server: Connecting HealthKit to Claude Code
-
 There's no official API to query Apple Health data from an AI client. HealthKit is on-device only — Apple intentionally keeps it there. If you want Claude Code, Cursor, or a local Ollama model to reason over your health data, you have to build the bridge yourself.
 
 This is how that bridge works, and what it looks like once it's running.

@@ -7,8 +7,6 @@ tags: ["mcp", "healthkit", "apple-health", "reference", "tools", "claude-code"]
 draft: false
 ---
 
-# The health4ai MCP Tools Reference — All 11 Tools Explained
-
 health4ai exposes 11 MCP tools. Here's what each one does, its parameters, what it returns, and when to reach for it instead of another tool.
 
 ## Architecture Note

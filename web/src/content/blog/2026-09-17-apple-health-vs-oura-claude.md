@@ -7,8 +7,6 @@ tags: ["oura", "apple-watch", "healthkit", "mcp", "sleep", "recovery", "hrv", "d
 draft: false
 ---
 
-# Apple Health vs Oura: Getting Both into Claude
-
 If you wear both an Apple Watch and an Oura Ring, you're generating overlapping health data. Both devices track sleep stages and HRV. Both write their measurements to HealthKit. The question of which one to trust for which metric — and how health4ai handles the coexistence — is worth understanding.
 
 ## How Both Devices Write to HealthKit

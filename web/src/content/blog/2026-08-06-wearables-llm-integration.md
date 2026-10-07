@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# Connecting Wearables to LLMs: A Developer Guide
-
 Getting wearable health data into an LLM for analysis isn't a solved problem. The wearable ecosystem is fragmented, each manufacturer has different data access policies, and LLMs have no built-in mechanism for reading time-series sensor data. Here's a practical overview of what exists and how to build for it.
 
 ## The Core Challenge

@@ -35,7 +35,7 @@ import Card_compare_periods from '../components/mcp-tool-cards/compare_periods.a
       <div class="text-green-500 text-xs font-mono mb-3 tracking-widest uppercase">MCP Server Reference</div>
       <h1 class="text-3xl font-bold text-white mb-4">MCP Tools Reference</h1>
       <p class="text-neutral-400 text-sm leading-relaxed max-w-2xl">
-        Once you install the iOS app and sync your HealthKit data, these are the 11 MCP tools your AI can call. The server is open source — clone the repo, drop in your Supabase credentials, and add one config block to your AI client.
+        Once you install the iOS app and sync your HealthKit data, these are the 11 MCP tools your AI can call. These tools read from the database option (your own Supabase/Postgres). The server is open source: clone the repo, drop in your database credentials, and add one config block to your AI client. The app's Connect Your AI screen has copy-paste config for Claude Desktop, Claude Code, and Cursor. Using the Google Sheet destination instead? An AI assistant with Google Drive access can read the sheet, or you can give it a CSV download; the MCP tools need the database option.
       </p>
     </div>
 
@@ -46,7 +46,7 @@ import Card_compare_periods from '../components/mcp-tool-cards/compare_periods.a
         Full verified checklist (~15 min): <a href="/setup/" class="text-green-400 hover:underline">/setup</a>.
         Detail: <a href="https://github.com/jefflitt1/health4ai/blob/main/docs/SETUP.md" target="_blank" rel="noopener" class="text-green-400 hover:underline">docs/SETUP.md</a>.
         Also listed on the <a href="https://glama.ai/mcp/servers" target="_blank" rel="noopener" class="text-green-400 hover:underline">Glama MCP registry</a>.
-        An npx one-liner is not published yet — clone + Python is the supported path.
+        An npx one-liner is not published yet: clone + Python is the supported path.
       </p>
       <div class="space-y-4 mb-6">
         <div class="flex gap-4 items-start">
@@ -162,7 +162,7 @@ pip install -r requirements.txt</code></pre>
       <div class="text-green-500 text-xs font-mono mb-3 tracking-widest uppercase">On the App Store</div>
       <h2 class="text-white font-bold text-xl mb-3">Connect your Apple Health data to Claude</h2>
       <p class="text-neutral-400 text-sm mb-6 max-w-md mx-auto">
-        Free, on the App Store now. Bring your own Supabase database.
+        Free, on the App Store now. Start with a Google Sheet, or bring your own database.
       </p>
       <a
         href="https://apps.apple.com/app/health4ai/id6783074944"

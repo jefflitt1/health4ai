@@ -7,8 +7,6 @@ tags: ["mcp", "model-context-protocol", "healthkit", "apple-health", "explainer"
 draft: false
 ---
 
-# What Is an MCP Server? (And Why Your Health Data Needs One)
-
 MCP stands for Model Context Protocol. It's a protocol Anthropic published in late 2024 that defines how AI clients (Claude Code, Cursor, any compatible tool) communicate with external data sources and services. An MCP server is a process that implements this protocol and exposes a set of callable tools to an AI client.
 
 If that's abstract, a concrete example makes it clear.

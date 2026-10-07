@@ -7,8 +7,6 @@ tags: ["workouts", "healthkit", "apple-health", "mcp", "training", "analysis", "
 draft: false
 ---
 
-# HealthKit Workout History: Querying with AI
-
 Apple Watch logs every workout you record — running, cycling, strength training, swimming, yoga, and dozens of other types — as `HKWorkoutType` records in HealthKit. Each workout carries metadata: duration, distance, calories, and for outdoor workouts, the GPS route. All of this is in your health4ai database.
 
 ## The get_workouts Tool

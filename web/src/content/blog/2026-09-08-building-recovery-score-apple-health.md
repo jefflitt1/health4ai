@@ -7,8 +7,6 @@ tags: ["recovery", "hrv", "sleep", "apple-health", "mcp", "claude-code", "traini
 draft: false
 ---
 
-# Building a Recovery Score with Apple Health Data
-
 Oura gives you a readiness score. Whoop gives you a recovery score. These are composite metrics that combine several physiological signals into a single number. You can build the equivalent from your own HealthKit data, using health4ai tools and a scoring formula defined in Claude.
 
 This isn't trying to replicate Oura's proprietary algorithm. It's building a recovery score that reflects your specific data, your personal baselines, and your definition of what recovery means.

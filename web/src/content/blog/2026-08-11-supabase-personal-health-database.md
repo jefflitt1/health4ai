@@ -7,8 +7,6 @@ tags: ["supabase", "postgres", "healthkit", "apple-health", "schema", "rls", "pe
 draft: false
 ---
 
-# Supabase as a Personal Health Database: Why It Works
-
 The choice of database backend for HealthKit data deserves more consideration than it usually gets. Health data is time-series, has specific query patterns (recent data accessed frequently, historical data occasionally), and benefits from predictable schema. Postgres is the right tool for this. Supabase makes Postgres trivially accessible. Here's why the combination works and what you need to know about the schema.
 
 ## Why Postgres (Not a Time-Series Database)

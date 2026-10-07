@@ -7,8 +7,6 @@ tags: ["apple-health", "supabase", "setup", "healthkit", "mcp", "tutorial"]
 draft: false
 ---
 
-# How to Set Up health4ai with Supabase
-
 This is the complete setup for health4ai. You need a Supabase project you own. The iOS app signs in with Supabase Auth and writes through a Supabase Edge Function, so Supabase is the only supported backend. health4ai itself runs no server and never receives your data.
 
 > **Updated September 12, 2026.** An earlier version of this post had you run a different schema, skip the ingest function, and set `HEALTHKIT_USER_ID` to any string. That setup could not sync data. The schema and ingest function below were verified end to end on a fresh local Supabase stack before this update was published.

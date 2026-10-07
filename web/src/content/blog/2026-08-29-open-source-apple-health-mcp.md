@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# Why I Open-Sourced My Apple Health MCP Server
-
 When we decided to open source the health4ai MCP server, it wasn't primarily a marketing decision. It was the right thing to do for a tool that handles personal health data, and the reasoning is worth explaining.
 
 ## Health Data Deserves Transparency

@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# Using health4ai with Cursor for Health Data Analysis
-
 Cursor is an MCP-compatible AI editor, which means you can connect health4ai to it the same way you connect it to Claude Code. If Cursor is your primary AI environment, this is the faster path — no context-switching to a terminal.
 
 ## Adding the MCP Server to Cursor
