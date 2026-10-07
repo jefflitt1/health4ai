@@ -20,7 +20,7 @@ destination: a Google Sheet in their own Google Drive (the easy default) or thei
 
 ## What Is health4.ai?
 
-health4.ai bridges the gap between Apple HealthKit and AI tools. Download the free iOS app, choose where your data goes (a Google Sheet in your own Drive, one row per day, using the drive.file scope; or your own Supabase/Postgres database with every HealthKit sample), authorize HealthKit, and use the in-app Connect Your AI screen for copy-paste MCP config for Claude Desktop, Claude Code, and Cursor. No same-WiFi requirement. Works from anywhere.
+health4.ai bridges the gap between Apple HealthKit and AI tools. Download the free iOS app, choose where your data goes (a Google Sheet in your own Drive, one row per day, using the drive.file scope; or your own Supabase/Postgres database with every HealthKit sample), and authorize HealthKit. With the database option, the in-app Connect Your AI screen gives copy-paste MCP config for Claude Desktop, Claude Code, and Cursor. No same-WiFi requirement. Works from anywhere.
 
 ## Why It Exists
 
