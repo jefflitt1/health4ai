@@ -1,7 +1,7 @@
 ---
 title: "Why Your Apple Health Export Only Shows 30 Days on iOS 27"
 description: "iOS 27 lets you share only the past 30 days of Health data with an app. Here is how to spot it, how to fix it for any app, and how health4ai handles it."
-pubDate: 2026-10-09
+pubDate: 2026-10-07
 slug: "apple-health-export-only-30-days-ios-27"
 tags: ["ios-27", "healthkit", "apple-health", "troubleshooting", "health4ai"]
 draft: false
@@ -33,7 +33,7 @@ You change the permission, and then the app needs to fetch history again.
 2. Look for the data access option and choose all data instead of the past 30 days.
 3. Return to the app and trigger a sync, or wait for the next one.
 
-I am deliberately not quoting exact button labels, since Apple words them differently between versions. Look for the data access choice and pick all recorded data.
+Apple words these options differently between iOS versions, so look for the data access choice and pick all recorded data.
 
 Step 3 depends on the app. Some apps notice the change and fetch the older history themselves. Others only pick up new samples and need a reset or a re-export. If an app keeps showing only 30 days after you widen access, check its documentation or support.
 
@@ -50,7 +50,7 @@ health4ai moves Health data to a Google Sheet in your own Drive or to your own P
 **It repairs the destination when you widen access.**
 
 - For Google Sheets, the sheet rebuilds itself when access widens. That has been true since 1.0.1.
-- For database users, version 1.0.2 re-imports the hidden history automatically when you widen access, as long as you widen it after installing 1.0.2. Version 1.0.2 is not live yet. Until it is, database users should not assume older history will appear on its own after widening access.
+- For database users, health4ai 1.0.2 and later re-import the hidden history automatically when you widen access, as long as you widen it after installing 1.0.2. On an earlier version, update the app first, then widen access.
 - The notice also tells you where to change the setting: iOS Settings or the Health app.
 
 A rebuild can take a little while for a long history. The first sync can backfill up to 10 years of data, and one real account reached 3,653 days. Sync History in the app shows when the work finished.

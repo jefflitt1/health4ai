@@ -44,8 +44,6 @@ Version 1.0.1 is already live. The changes:
 
 ## What 1.0.2 changes
 
-Version 1.0.2 is about to be submitted to Apple and is not live yet. This post stays unpublished until it is approved.
-
 **Google Sheet is the default for new installs.** Most people who want their Health data somewhere usable want a spreadsheet, not a database server. Starting there means fewer steps before the first sync. Existing users keep whatever destination they already chose. Nothing is migrated behind your back.
 
 **Sheet-first onboarding.** The first-run screens now lead with the Sheet path. The database path is still there for people who want it. The screens are also readable at large text sizes.
@@ -74,4 +72,4 @@ Background sync is best effort. iOS decides when an app gets to run, and that ca
 
 health4ai is free on the App Store: [apps.apple.com/app/health4ai/id6783074944](https://apps.apple.com/app/health4ai/id6783074944).
 
-Version 1.0.1 has everything in the first half of this post today. Version 1.0.2 follows once Apple approves it.
+Update from the App Store to get 1.0.2. Your destination and your data stay as they are.

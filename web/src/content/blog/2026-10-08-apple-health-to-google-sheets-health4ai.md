@@ -1,7 +1,7 @@
 ---
 title: "Apple Health to Google Sheets with health4ai"
 description: "Step by step: send your Apple Health data to a Google Sheet in your own Drive with health4ai, then chart it, compare weeks, and ask an AI about it."
-pubDate: 2026-10-08
+pubDate: 2026-10-07
 slug: "apple-health-to-google-sheets-health4ai"
 tags: ["google-sheets", "apple-health", "how-to", "healthkit", "health4ai"]
 draft: false
@@ -79,7 +79,7 @@ Apple Health lives on your phone. A sheet in your Drive is a copy you control, t
 
 - **Only about 30 days of data.** iOS may be sharing only recent Health data with the app. health4ai warns when this happens. Change the data access option to all data, as described in the explainer linked above. The sheet rebuilds itself when access widens.
 - **A day looks incomplete.** The row for today fills in as data arrives. Check it again tomorrow.
-- **Missing a metric.** Check Your Sources: the data may be written by an app you have not allowed, or may not exist for that day.
+- **Missing a metric.** iOS asks permission per data type, so that type may be switched off for health4ai in its Health access settings. Your Sources shows which devices and apps are sending data, and some days simply have no data for a metric.
 
 ## Sheet or database?
 
