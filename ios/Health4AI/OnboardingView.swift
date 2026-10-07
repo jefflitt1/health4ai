@@ -52,7 +52,7 @@ private struct WelcomeStep: View {
                     .multilineTextAlignment(.center)
                 // Says up front what the app needs. Onboarding used to run three screens
                 // without once saying it, then land the user on Home reading "Not
-                // connected" with nothing pointing anywhere. Since 1.0.1 the default is a
+                // connected" with nothing pointing anywhere. Since 1.0.2 the default is a
                 // Google Sheet, which needs only a Google account; the database is the
                 // technical option.
                 Text("Save your Apple Health data to a Google Sheet in your own Drive, then ask any AI about it. Prefer a database? You can sync to one you run instead.")
