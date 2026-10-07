@@ -3,7 +3,7 @@ import Layout from '../layouts/Layout.astro';
 ---
 <Layout
   title="Apple Health MCP comparison — vs Health Auto Export & export-file MCP"
-  description="Compare Apple Health MCP options: health4.ai (own Supabase/Postgres + local MCP for Claude/Cursor) vs Health Auto Export same-WiFi TCP and neiltron/apple-health-mcp export+npx."
+  description="Compare Apple Health MCP options: health4.ai (your own Google Sheet or Supabase/Postgres, for Claude/Cursor) vs Health Auto Export same-WiFi TCP and neiltron/apple-health-mcp export+npx."
 >
   <nav class="flex items-center justify-between px-6 py-5 max-w-5xl mx-auto">
     <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
@@ -21,13 +21,13 @@ import Layout from '../layouts/Layout.astro';
     <!-- ─── Hero ─── -->
     <section id="hero" class="mb-16 max-w-3xl">
       <h1 class="text-2xl sm:text-3xl font-bold text-white mb-4 leading-tight">
-        Apple Health MCP compared — own Postgres vs Health Auto Export &amp; export-file MCP
+        Apple Health MCP compared: your own Sheet or database vs Health Auto Export &amp; export-file MCP
       </h1>
       <p class="text-neutral-400 text-sm leading-relaxed mb-4">
         Apple has no server-side HealthKit API. Every sync must originate from your iPhone — so the bridge you pick decides whether Claude, Cursor, or ChatGPT can reach your health data at all.
       </p>
       <p class="text-neutral-400 text-sm leading-relaxed mb-4">
-        <strong class="text-neutral-300 font-medium">health4.ai's wedge:</strong> Apple Health → a Supabase/Postgres database you own → a local MCP server for Claude, Claude Code, Cursor, ChatGPT, and Ollama. Continuous <code class="text-amber-400 text-xs">HKObserverQuery</code> sync — not same-WiFi phone TCP, and not a one-shot XML export.
+        <strong class="text-neutral-300 font-medium">health4.ai's wedge:</strong> Apple Health → a Google Sheet in your own Drive (easy default) or a Supabase/Postgres database you own (power users) → Claude, Claude Code, Cursor, ChatGPT, and Ollama. Ongoing background sync (best-effort, as iOS decides when apps run), not same-WiFi phone TCP and not a one-shot XML export.
       </p>
       <p class="text-neutral-400 text-sm leading-relaxed">
         This page compares the realistic options today: health4.ai, Health Auto Export, ChatGPT Health, neiltron/apple-health-mcp-style export+npx MCP, the claude.ai native connector, VitalTrends, and manual XML export. Ready to try the own-DB path? Start with the
@@ -53,7 +53,7 @@ import Layout from '../layouts/Layout.astro';
 
           <tr class="hover:bg-neutral-900/30 transition-colors">
             <td class="py-3 px-4 text-neutral-400 font-medium">Works remotely (no home WiFi needed)</td>
-            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓ Your own Postgres</td>
+            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓ Your own Sheet or database</td>
             <td class="py-3 px-4 text-center text-neutral-500">✗ Same-WiFi TCP only</td>
             <td class="py-3 px-4 text-center text-neutral-400">✓ Web only</td>
             <td class="py-3 px-4 text-center text-neutral-400">✓</td>
@@ -80,7 +80,7 @@ import Layout from '../layouts/Layout.astro';
 
           <tr class="hover:bg-neutral-900/30 transition-colors">
             <td class="py-3 px-4 text-neutral-400 font-medium">Continuous background sync</td>
-            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓ HKObserverQuery → BYO Supabase</td>
+            <td class="py-3 px-4 text-center text-green-400 bg-green-950/10">✓ Background sync (best-effort) → your Sheet or database</td>
             <td class="py-3 px-4 text-center text-neutral-400">Unreliable / same-WiFi TCP</td>
             <td class="py-3 px-4 text-center text-neutral-400">✓</td>
             <td class="py-3 px-4 text-center text-neutral-400">✓</td>
@@ -114,12 +114,12 @@ import Layout from '../layouts/Layout.astro';
 
     <!-- ─── Continuous BYO vs same-WiFi ─── -->
     <section id="same-wifi-problem" class="mb-14 max-w-3xl">
-      <h2 class="text-white font-semibold text-base mb-4">Continuous BYO-Supabase vs same-WiFi HAE TCP</h2>
+      <h2 class="text-white font-semibold text-base mb-4">Your own Sheet or database vs same-WiFi HAE TCP</h2>
       <p class="text-neutral-400 text-sm leading-relaxed mb-3">
         Health Auto Export's MCP server opens a local TCP port on your iPhone and expects Claude Code (or another MCP client) to connect directly across your LAN. That works fine when your Mac and your phone are on the same home network — but Claude Code runs on your laptop, your laptop travels, and your phone doesn't always follow. The moment you open a terminal at a coffee shop or in the office, the MCP server is unreachable and your agent loses all health context.
       </p>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        health4.ai syncs continuously via <code class="text-amber-400 text-xs">HKObserverQuery</code> into a Supabase project you control. The MCP server connects to that database from anywhere with an internet connection — bring-your-own Postgres, not a phone-side TCP socket.
+        health4.ai syncs in the background (when iOS allows it) into a Google Sheet in your Drive or a Supabase database you control. Your data sits in the cloud account you own, reachable from anywhere with an internet connection, not behind a phone-side TCP socket.
       </p>
     </section>
 
@@ -130,7 +130,7 @@ import Layout from '../layouts/Layout.astro';
         Projects like <a href="https://github.com/neiltron/apple-health-mcp" target="_blank" rel="noopener" class="text-green-400 hover:underline">neiltron/apple-health-mcp</a> take a one-shot Apple Health XML/CSV export and wrap it in an MCP server you can often start with <code class="text-amber-400 text-xs">npx</code>. That is a fine weekend project: zero iOS app, fast to try, and useful for a static snapshot.
       </p>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        The trade-off is freshness. You re-export whenever you want new data; there is no continuous HealthKit observer and no always-on Postgres of your own. health4.ai is the opposite bet — an iOS app that keeps syncing into your Supabase so Claude/Cursor agents always see recent samples. We do not publish an npx one-liner yet; install is still clone + Python (see <a href="/setup/" class="text-green-400 hover:underline">Apple Health MCP setup</a>).
+        The trade-off is freshness. You re-export whenever you want new data; there is no ongoing HealthKit sync and no always-on destination of your own. health4.ai is the opposite bet: an iOS app that keeps syncing into your Google Sheet or Supabase so Claude/Cursor agents see recent samples (timing is up to iOS). We do not publish an npx one-liner yet; install is still clone + Python (see <a href="/setup/" class="text-green-400 hover:underline">Apple Health MCP setup</a>).
       </p>
     </section>
 
@@ -162,7 +162,7 @@ import Layout from '../layouts/Layout.astro';
     <!-- ─── CTA ─── -->
     <section id="cta" class="max-w-3xl">
       <div class="border border-neutral-800 rounded-lg px-8 py-8 bg-neutral-900/30 text-center">
-        <p class="text-neutral-300 text-sm mb-2 font-medium">Ready to give your AI agent real-time Apple Health access?</p>
+        <p class="text-neutral-300 text-sm mb-2 font-medium">Ready to give your AI agent access to your Apple Health data?</p>
         <p class="text-neutral-500 text-xs mb-6">Free, on the App Store now.</p>
         <a
           href="https://apps.apple.com/app/health4ai/id6783074944"

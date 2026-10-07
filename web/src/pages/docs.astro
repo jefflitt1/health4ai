@@ -3,7 +3,7 @@ import Layout from '../layouts/Layout.astro';
 ---
 <Layout
   title="Apple Health MCP Docs — setup for Claude & Cursor | health4.ai"
-  description="Docs hub for Apple Health MCP: ~15-minute Apple Health → Supabase → MCP setup for Claude and Cursor, tools reference, and comparisons vs Health Auto Export."
+  description="Docs hub for Apple Health MCP: set up a Google Sheet or your own database, connect Claude and Cursor, browse the tools reference, and compare options."
 >
   <nav class="flex items-center justify-between px-6 py-5 max-w-5xl mx-auto">
     <a href="/" class="text-green-400 font-bold text-lg tracking-tight hover:opacity-80 transition-opacity">health4.ai</a>
@@ -20,15 +20,15 @@ import Layout from '../layouts/Layout.astro';
       <div class="text-green-500 text-xs font-mono mb-3 tracking-widest uppercase">Documentation</div>
       <h1 class="text-3xl font-bold text-white mb-4">Apple Health MCP docs</h1>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        Everything you need to run Apple Health MCP with health4.ai — from a verified ~15-minute HealthKit → your Supabase → local MCP path for Claude and Cursor, to the tools reference and honest comparisons.
+        Everything you need to run Apple Health MCP with health4.ai: from the easy Google Sheet setup to the power-user database path for Claude and Cursor, plus the tools reference and honest comparisons.
       </p>
     </div>
 
     <section class="mb-16 grid sm:grid-cols-2 gap-4">
       <a href="/setup/" class="block border border-neutral-800 rounded-lg p-6 bg-neutral-900/40 hover:border-green-900/50 transition-colors">
         <div class="text-green-400 text-xs font-mono mb-2 uppercase tracking-wider">Start here</div>
-        <h2 class="text-white font-semibold text-base mb-2">Apple Health → Supabase → MCP setup</h2>
-        <p class="text-neutral-500 text-sm leading-relaxed">Verified ~15-minute path: Supabase/Postgres → schema → edge function → App Store download → MCP for Claude/Cursor → verify tools.</p>
+        <h2 class="text-white font-semibold text-base mb-2">Set up: Google Sheet or database</h2>
+        <p class="text-neutral-500 text-sm leading-relaxed">Start with a Google Sheet in your own Drive. Power users can follow the database path: Supabase/Postgres → schema → edge function → app → MCP for Claude/Cursor.</p>
       </a>
       <a href="/mcp-tools/" class="block border border-neutral-800 rounded-lg p-6 bg-neutral-900/40 hover:border-green-900/50 transition-colors">
         <div class="text-green-400 text-xs font-mono mb-2 uppercase tracking-wider">Reference</div>
@@ -38,12 +38,12 @@ import Layout from '../layouts/Layout.astro';
       <a href="/compare/" class="block border border-neutral-800 rounded-lg p-6 bg-neutral-900/40 hover:border-green-900/50 transition-colors">
         <div class="text-green-400 text-xs font-mono mb-2 uppercase tracking-wider">Positioning</div>
         <h2 class="text-white font-semibold text-base mb-2">Apple Health MCP vs alternatives</h2>
-        <p class="text-neutral-500 text-sm leading-relaxed">Own-DB + MCP vs Health Auto Export same-WiFi TCP, neiltron export+npx MCP, ChatGPT Health, and more.</p>
+        <p class="text-neutral-500 text-sm leading-relaxed">Own-destination + MCP vs Health Auto Export same-WiFi TCP, neiltron export+npx MCP, ChatGPT Health, and more.</p>
       </a>
       <a href="/how-it-works/" class="block border border-neutral-800 rounded-lg p-6 bg-neutral-900/40 hover:border-green-900/50 transition-colors">
         <div class="text-green-400 text-xs font-mono mb-2 uppercase tracking-wider">Architecture</div>
         <h2 class="text-white font-semibold text-base mb-2">How it works</h2>
-        <p class="text-neutral-500 text-sm leading-relaxed">HealthKit → your Supabase → local MCP → Claude, Cursor, and any MCP client.</p>
+        <p class="text-neutral-500 text-sm leading-relaxed">HealthKit → your Google Sheet or database → Claude, Cursor, and any MCP client.</p>
       </a>
     </section>
 
@@ -52,7 +52,7 @@ import Layout from '../layouts/Layout.astro';
       <ul class="space-y-3 text-sm">
         <li>
           <a href="https://github.com/jefflitt1/health4ai/blob/main/docs/SETUP.md" target="_blank" rel="noopener" class="text-green-400 hover:underline">docs/SETUP.md</a>
-          <span class="text-neutral-500"> — full setup detail (schema, edge function, MCP env, verify)</span>
+          <span class="text-neutral-500">: full setup detail for the database path (schema, edge function, MCP env, verify)</span>
         </li>
         <li>
           <a href="https://github.com/jefflitt1/health4ai/blob/main/docs/TESTFLIGHT-BETA.md" target="_blank" rel="noopener" class="text-green-400 hover:underline">docs/TESTFLIGHT-BETA.md</a>

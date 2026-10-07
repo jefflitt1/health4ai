@@ -54,20 +54,23 @@
 <section class="px-6 py-20 border-t" style="border-color:rgba(255,255,255,0.06)">
   <div class="max-w-6xl mx-auto">
     <div class="max-w-2xl mb-12">
-      <div class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:var(--accent)">Your database, your rules</div>
-      <h2 class="text-3xl font-extrabold tracking-tight text-white mb-4">Set up once.<br>Own your data forever.</h2>
+      <div class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:var(--accent)">Your Sheet, or your database</div>
+      <h2 class="text-3xl font-extrabold tracking-tight text-white mb-4">Start with a Google Sheet.<br>Go further with a database.</h2>
       <p style="color:var(--muted)" class="text-base leading-relaxed">
-        health4.ai syncs Apple Health into a Supabase Postgres project you create and own — we do not keep a copy. Run the schema, deploy one Edge Function, sign in from the iOS app — then point a local MCP server at that database for Claude and Cursor. No subscriptions, no health4.ai server, no lock-in.
+        The easy path: sign in with Google and health4.ai creates a spreadsheet in your own Drive, one row per day with steps, sleep, heart rate, HRV, workouts and more. It uses the narrow drive.file permission, so the app can only see files it creates. No account with us, no health4.ai server, no subscription.
+      </p>
+      <p style="color:var(--muted)" class="text-base leading-relaxed mt-4">
+        Power users can send every HealthKit sample to their own Postgres/Supabase database instead, then query it from any MCP client. The setup below is for that option.
       </p>
       <p class="mt-4 text-sm" style="color:var(--muted)">
-        <a href="/setup/" class="hover:text-white transition-colors underline-offset-2 hover:underline" style="color:var(--accent-light)">Apple Health → Supabase → MCP setup</a>
+        <a href="/setup/" class="hover:text-white transition-colors underline-offset-2 hover:underline" style="color:var(--accent-light)">Setup: Google Sheet or database</a>
         <span aria-hidden="true"> · </span>
         <a href="/compare/" class="hover:text-white transition-colors underline-offset-2 hover:underline" style="color:var(--accent-light)">Compare Apple Health MCP options</a>
       </p>
     </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6">
-        <pre class="code-block"><code><span class="cm"># 1. Create a free project at supabase.com, then in its</span>
+        <pre class="code-block"><code><span class="cm"># Database option only. 1. Create a free project at supabase.com, then in its</span>
 <span class="cm">#    SQL editor run https://health4.ai/schema.sql</span>
 
 <span class="cm"># 2. Deploy the ingest function (Supabase CLI)</span>
@@ -77,7 +80,7 @@
 <span class="cm"># 3. Authentication → Users → add yourself, then sign</span>
 <span class="cm">#    in from the iOS app with your URL + anon key.</span></code></pre>
         <div class="rounded-xl p-5 space-y-3" style="background:rgba(15,18,37,0.7);border:1px solid var(--border)">
-          <div class="text-sm font-bold text-white mb-1">Why Supabase</div>
+          <div class="text-sm font-bold text-white mb-1">Why Supabase (database option)</div>
           {[['Free tier','500 MB storage, no credit card'],['Hosted Postgres','No server to maintain'],['Row-level security','Built-in RLS — your data stays yours'],['Dashboard','Query your health data in a web UI']].map(([k,v])=>(
             <div class="flex gap-3 text-xs">
               <span style="color:var(--accent)">✓</span>
@@ -88,7 +91,7 @@
       </div>
 
     <p class="mt-5 text-xs" style="color:var(--muted)">
-      Schema file: <a href="/schema.sql" class="hover:text-white transition-colors" style="color:var(--accent)">health4.ai/schema.sql</a> · Supabase only
+      Database option schema: <a href="/schema.sql" class="hover:text-white transition-colors" style="color:var(--accent)">health4.ai/schema.sql</a> · Supabase only. Not needed for Google Sheets.
     </p>
   </div>
 </section>
@@ -99,9 +102,9 @@
     <div class="text-xs font-semibold uppercase tracking-widest mb-12" style="color:var(--muted)">How it works</div>
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
       {[
-        { n:'01', title:'Install the iOS app', body:'Tap to authorize HealthKit. Background sync starts immediately — HKObserverQuery + BGProcessingTask push every new sample as it arrives, without opening the app.', icon:'📱' },
-        { n:'02', title:'Connect your database', body:'Create a Supabase project you own, run the schema, deploy the ingest function. Your decade of health history lands on day one.', icon:'🗄️' },
-        { n:'03', title:'Ask Claude / Cursor anything', body:'Add the Apple Health MCP server to Claude Desktop, Claude Code, or Cursor. Then ask: "How\'s my sleep debt this week?" "When was my HRV last above 70?" "Am I ready to train tomorrow?"', icon:'🤖' },
+        { n:'01', title:'Install the iOS app', body:'Tap to authorize HealthKit. The app syncs new Health data in the background when iOS allows it, and you can sync from the app any time. Background timing is up to iOS.', icon:'📱' },
+        { n:'02', title:'Pick where it goes', body:'Sign in with Google and the app creates a Sheet in your own Drive. Or connect your own Supabase/Postgres database if you want every sample and a queryable history.', icon:'🗄️' },
+        { n:'03', title:'Ask Claude / Cursor anything', body:'The Connect Your AI screen in the app gives you copy-paste MCP config for Claude Desktop, Claude Code, and Cursor. Then ask: "How\'s my sleep debt this week?" "When was my HRV last above 70?" "Am I ready to train tomorrow?"', icon:'🤖' },
       ].map(({ n, title, body, icon }) => (
         <div class="rounded-2xl p-6 flex flex-col" style="background:rgba(15,18,37,0.6);border:1px solid rgba(255,255,255,0.07)">
           <div class="flex items-center gap-3 mb-5">
@@ -123,9 +126,9 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
       {[
         { title:'Works with every AI — not just claude.ai', detail:"Claude's native Apple Health connector only works on claude.ai web. health4.ai also works with Claude Code, the Claude API, ChatGPT, Cursor, and any tool that supports MCP." },
-        { title:'A decade of history, queryable in seconds', detail:'The iOS app backfills your full Apple Health archive on first sync — every step, heartbeat, and workout going back to when you first wore a wearable.' },
-        { title:'Background sync — nothing to export', detail:'HKObserverQuery fires the moment Apple Health gets a new sample. Your AI always has fresh data without you doing anything.' },
-        { title:'Private by design — you own the database', detail:"Your health data syncs to a Supabase project you control. We don't store a copy, sell it, or have access to it. GDPR-friendly by construction." },
+        { title:'Your Health history, queryable', detail:'The app imports the Health history iOS shares with it. iOS can limit sharing to recent data, and the app warns you when that happens so you can widen access in Settings or the Health app.' },
+        { title:'Background sync, nothing to export', detail:'The app syncs in the background when iOS allows it. Timing is best-effort and decided by iOS, so open the app and tap sync if you need data right now.' },
+        { title:'Private by design: you own the destination', detail:"Your data goes to a Google Sheet in your Drive or to a database you control. There is no health4.ai account and no health4.ai server, so we never receive, store, or sell it." },
       ].map(({ title, detail }) => (
         <div class="flex gap-4 rounded-2xl p-5" style="background:rgba(15,18,37,0.5);border:1px solid rgba(255,255,255,0.06)">
           <div class="mt-0.5 flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center" style="background:rgba(255,45,120,0.15)">

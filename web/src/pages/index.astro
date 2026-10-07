@@ -43,7 +43,7 @@ import TrackerFlow from '../components/TrackerFlow.astro';
   </div>
   <div class="relative max-w-lg mx-auto">
     <h2 class="text-3xl font-extrabold text-white tracking-tight mb-3">Get health4.ai</h2>
-    <p class="text-sm mb-8" style="color:var(--muted)">Free, on the App Store now. Bring your own Supabase database; health4.ai never sees your health data.</p>
+    <p class="text-sm mb-8" style="color:var(--muted)">Free, on the App Store now. Sync to a Google Sheet in your own Drive or to your own database; health4.ai never sees your health data.</p>
     <a
       href="https://apps.apple.com/app/health4ai/id6783074944"
       target="_blank"
@@ -95,7 +95,7 @@ import TrackerFlow from '../components/TrackerFlow.astro';
       "name": "What is the best way to get Apple Health data into Claude Code?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "health4ai is an open-source iOS app and MCP server that syncs HealthKit data to a Supabase project you own and exposes it to Claude Code, Cursor, and Ollama as native tool calls. It uses HKObserverQuery for reliable background sync."
+        "text": "health4ai is a free iOS app that moves Apple Health data to a Google Sheet in your own Google Drive, or to your own Postgres/Supabase database, so Claude Code, Cursor, and other MCP clients can use it. Background sync is best-effort, as iOS decides when apps run."
       }
     },
     {
@@ -108,10 +108,10 @@ import TrackerFlow from '../components/TrackerFlow.astro';
     },
     {
       "@type": "Question",
-      "name": "What databases does health4ai support?",
+      "name": "Where does health4ai send my data?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "A Supabase project you own. The iOS app signs in with Supabase Auth and writes through a Supabase Edge Function, so plain Postgres such as Neon or a self-hosted database is not supported. Supabase's free tier covers personal use."
+        "text": "Either a Google Sheet in your own Google Drive (the easy default: one row per day, using the drive.file scope so the app only sees files it creates), or a Supabase project you own for every HealthKit sample. The database option signs in with Supabase Auth and writes through a Supabase Edge Function, so plain Postgres such as Neon is not supported."
       }
     },
     {
@@ -127,7 +127,7 @@ import TrackerFlow from '../components/TrackerFlow.astro';
       "name": "Does health4ai store my health data?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "No. Your health data syncs directly to your own database. health4ai never stores, transmits, or has access to your health data."
+        "text": "No. Your health data goes straight from your phone to your own Google Sheet or database. There is no health4ai account and no health4ai server, so we never receive your health data."
       }
     },
     {
