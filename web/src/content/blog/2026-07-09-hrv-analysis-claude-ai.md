@@ -7,8 +7,6 @@ tags: ["hrv", "apple-health", "claude-code", "mcp", "healthkit", "recovery", "an
 draft: false
 ---
 
-# Analyzing HRV Trends with Claude: A Practical Guide
-
 HRV (heart rate variability) is one of the more informative metrics Apple Watch captures — but the raw number on any given morning tells you almost nothing in isolation. 52ms means you're recovered if your baseline is 48ms. It means you're suppressed if your baseline is 62ms.
 
 The signal is in the trend, and the trend requires history. Here's how to extract meaningful information from your HealthKit HRV data using Claude Code.

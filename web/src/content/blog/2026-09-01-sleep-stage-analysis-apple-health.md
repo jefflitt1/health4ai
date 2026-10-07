@@ -7,8 +7,6 @@ tags: ["sleep", "apple-health", "healthkit", "mcp", "rem", "deep-sleep", "analys
 draft: false
 ---
 
-# Sleep Stage Analysis with Apple Health and Claude
-
 Apple Watch (watchOS 9+) tracks sleep stages and writes them to HealthKit. If you also wear an Oura Ring, its stages land in HealthKit too. Either way, the data is in your database and queryable. Here's what to do with it.
 
 ## What HealthKit Stores for Sleep

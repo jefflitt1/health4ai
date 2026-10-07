@@ -7,8 +7,6 @@ tags: ["apple-health", "postgres", "supabase", "healthkit", "mcp", "own-db"]
 draft: false
 ---
 
-# Apple Health → Postgres: The Own-DB Path to Claude and Cursor
-
 **Apple Health Postgres** is the search phrase people use when they already know the punchline: HealthKit on the phone is not enough. They want samples in a database they control so Claude, Cursor, or a local model can query years of history with SQL-backed MCP tools.
 
 That is the own-DB wedge. health4.ai implements it as **HealthKit → your Supabase/Postgres → local MCP**. This post is about *why* that path exists, what "Postgres" means in practice (spoiler: Supabase Auth + Edge Functions for the iOS app), and how it differs from Health Auto Export LAN MCP and neiltron-style export+npx stacks.

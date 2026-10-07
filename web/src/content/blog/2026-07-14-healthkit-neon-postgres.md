@@ -7,8 +7,6 @@ tags: ["neon", "postgres", "supabase", "setup", "apple-health", "mcp"]
 draft: false
 ---
 
-# Can health4ai use Neon? Not with the iOS app
-
 An earlier version of this post walked through setting up health4ai on Neon. That setup could not work, so this post now explains why and what to use instead.
 
 ## Why Neon doesn't work

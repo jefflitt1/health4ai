@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# Using health4ai to Build a Personal Health Dashboard
-
 A health dashboard shows you where you are across multiple metrics at a glance. Claude Code, with health4ai's MCP tools, can generate dashboard-style output on demand — no running web server, no visualization library, just structured text you can read or pipe somewhere useful.
 
 ## What a Useful Health Dashboard Shows

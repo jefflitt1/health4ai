@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# Why Claude's Apple Health Connector Doesn't Work for Developers
-
 Anthropic shipped an Apple Health connector for claude.ai in early 2026. You can find it in your account settings, connect it to Health on your iPhone, and ask Claude questions about your step count or sleep. It works.
 
 If you then open Claude Code — Anthropic's terminal-based AI client — and ask the same question, Claude has no idea what you're talking about.

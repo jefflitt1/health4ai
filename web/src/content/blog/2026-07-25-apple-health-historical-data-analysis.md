@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# Querying 10 Years of Apple Health Data with SQL and AI
-
 Apple Watch has been around since 2015. If you've worn one since then, you have nearly a decade of health data sitting in HealthKit — steps, heart rate, sleep (watchOS 9+), HRV, VO2 max, workouts, and more. Most of it has never been systematically analyzed, because the Health app shows you 7-day and 30-day windows, and there's been no good way to ask questions that span years.
 
 That changes when the data is in Postgres.

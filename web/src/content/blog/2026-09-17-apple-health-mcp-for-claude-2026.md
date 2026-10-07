@@ -7,8 +7,6 @@ tags: ["apple-health", "mcp", "claude", "claude-code", "healthkit", "decision-gu
 draft: false
 ---
 
-# Apple Health MCP for Claude in 2026: Own-DB Decision Guide
-
 If you searched for **apple health mcp**, you probably want Claude — Desktop, Claude Code, or Cursor — to query your HealthKit data with real tool calls, not pasted CSV dumps. In 2026 that is a solvable problem, but the stack you pick decides whether the data stays fresh, whether it works off your home Wi‑Fi, and whether *you* own the database.
 
 This is a decision guide, not a setup dump. For the step-by-step checklist see the [Apple Health MCP setup](/setup/). For a feature matrix see [compare](/compare/). Product and schema notes live under [docs](/docs/).

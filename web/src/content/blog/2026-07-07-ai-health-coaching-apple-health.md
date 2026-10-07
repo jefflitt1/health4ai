@@ -7,8 +7,6 @@ tags: ["apple-health", "ai-coaching", "healthkit", "claude-code", "mcp", "hrv", 
 draft: false
 ---
 
-# Building an AI Health Coaching System with Apple Health and Claude
-
 AI coaching tools have a data problem. They ask you to self-report: how did you sleep? How did the workout feel? Rate your energy on a scale of 1-10. The problem is that self-reporting is noisy, biased toward recent events, and disconnected from the underlying physiology.
 
 Apple Watch has been measuring your HRV, resting heart rate, sleep stages, and VO2 max for years. That data is in HealthKit. The question is how to get it into your AI coaching context in a form that's actually useful.

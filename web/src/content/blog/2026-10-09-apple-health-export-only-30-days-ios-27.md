@@ -7,8 +7,6 @@ tags: ["ios-27", "healthkit", "apple-health", "troubleshooting", "health4ai"]
 draft: false
 ---
 
-# Why Your Apple Health Export Only Shows 30 Days on iOS 27
-
 You connect a health app, run an export, and the data starts about a month ago. You have years of history in Apple Health, so something looks wrong. On iOS 27 the cause is probably not a bug in the app. It is a permission you granted, possibly without noticing.
 
 ## What changed in iOS 27

@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# HealthKit Integration for n8n Beginners
-
 n8n is an open-source workflow automation platform. If you self-host it (or use n8n Cloud), you can build workflows that pull health data, process it, and route it to Telegram, email, Slack, or anywhere else. Here's how to connect Apple Health to n8n.
 
 ## The Architecture

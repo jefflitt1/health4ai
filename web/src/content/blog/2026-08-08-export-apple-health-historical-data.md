@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# How to Get 10 Years of Apple Health Data Out of Your iPhone
-
 If you've been wearing an Apple Watch for several years, there's a substantial dataset in HealthKit — steps, heart rate, HRV, sleep, workouts, VO2 max, and more. Apple provides a way to export this as XML, and health4ai imports it all into Postgres on first launch. Here's what's in the export and how the import works.
 
 ## The Apple Health Export

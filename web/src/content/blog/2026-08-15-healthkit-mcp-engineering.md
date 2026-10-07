@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# From HealthKit to Claude: An Engineering Journey
-
 Building health4ai involved learning enough about HealthKit to know why other approaches were breaking down, then building the correct architecture from scratch. This is a technical account of those decisions.
 
 ## The Problem Start

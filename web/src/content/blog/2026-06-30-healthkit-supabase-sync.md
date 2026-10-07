@@ -7,8 +7,6 @@ tags: ["healthkit", "supabase", "background-sync", "ios", "postgres", "mcp"]
 draft: false
 ---
 
-# HealthKit → Supabase: Reliable Background Sync That Actually Works
-
 Getting HealthKit data syncing reliably to a remote database is harder than it looks. iOS has a set of background execution mechanisms, and the wrong one will give you data that's hours or days stale. The right one gives you near-real-time delivery.
 
 Here's the technical difference, why most solutions use the wrong approach, and what the correct architecture looks like.

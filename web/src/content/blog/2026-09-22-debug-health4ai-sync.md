@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# How to Debug Your health4ai Sync Setup
-
 Sync issues in a system with multiple components — iOS app, Postgres database, MCP server, AI client — can have multiple root causes. Here's a systematic debugging approach.
 
 ## The Full Pipeline

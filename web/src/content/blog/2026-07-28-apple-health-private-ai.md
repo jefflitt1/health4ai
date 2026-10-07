@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# Apple Health Privacy-First AI Integration: Your Data Never Leaves Your Database
-
 Health data is personal in a way that most other data isn't. Heart rate variability trends, sleep patterns, medication adherence, blood glucose readings — this is information about your body over time. The question of where it lives and who can see it deserves a direct answer.
 
 Here's exactly how health4ai handles it.

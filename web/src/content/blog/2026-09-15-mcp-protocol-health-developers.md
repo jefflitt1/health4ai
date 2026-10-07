@@ -7,8 +7,6 @@ tags: ["mcp", "model-context-protocol", "healthkit", "developer", "protocol", "t
 draft: false
 ---
 
-# The MCP Protocol Explained for Health Developers
-
 The Model Context Protocol (MCP) is Anthropic's open protocol for connecting AI models to external data and services. For health data developers, it's the mechanism that makes HealthKit data queryable in Claude Code, Cursor, and any other MCP-compatible AI client. Here's a technical walkthrough.
 
 ## Protocol Structure

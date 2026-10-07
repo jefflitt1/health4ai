@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# Automating a Morning Health Brief with Claude Code and Apple Health
-
 A morning health brief is useful when it answers two questions: how did I recover last night, and what does that tell me about today? Most health apps show you numbers. A brief that interprets those numbers saves the cognitive step.
 
 Here's how to build one using Claude Code and health4ai.

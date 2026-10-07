@@ -7,8 +7,6 @@ tags: ["release", "google-sheets", "ios-27", "healthkit", "health4ai"]
 draft: true
 ---
 
-# health4ai 1.0.2: Google Sheets by Default
-
 health4ai is a free iOS app that moves your Apple Health data to a destination you own. Version 1.0.1 added a second destination, a Google Sheet in your own Google Drive. Version 1.0.2 makes that Sheet the default for new installs and smooths over a few things that iOS 27 made more confusing.
 
 This post covers both releases, what they mean in practice, and who each destination suits.

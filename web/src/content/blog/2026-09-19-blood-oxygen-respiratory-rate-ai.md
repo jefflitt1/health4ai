@@ -7,8 +7,6 @@ tags: ["blood-oxygen", "spo2", "respiratory-rate", "apple-health", "healthkit", 
 draft: false
 ---
 
-# Blood Oxygen and Respiratory Rate: AI Analysis with Apple Health Data
-
 Blood oxygen (SpO2) and respiratory rate are two metrics Apple Watch captures that get less attention than HRV and sleep, but they're meaningfully informative — particularly for spotting illness onset, altitude effects, and sleep quality indicators. Here's how to query and interpret them.
 
 ## Blood Oxygen (SpO2)

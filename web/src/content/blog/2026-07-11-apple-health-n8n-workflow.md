@@ -8,8 +8,6 @@ draft: false
 legacySetup: true
 ---
 
-# Building a Weekly Health Review Workflow with n8n and health4ai
-
 A weekly health digest that runs automatically is more useful than a dashboard you have to remember to open. Here's how to build one using n8n, health4ai's MCP server, and Claude — with delivery to Telegram or email.
 
 ## What the Workflow Does

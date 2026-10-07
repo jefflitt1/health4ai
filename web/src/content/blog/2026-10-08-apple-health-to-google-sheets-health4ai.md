@@ -7,8 +7,6 @@ tags: ["google-sheets", "apple-health", "how-to", "healthkit", "health4ai"]
 draft: false
 ---
 
-# Apple Health to Google Sheets with health4ai
-
 Apple Health holds years of data, but it is awkward to work with. You can scroll charts inside the Health app, but you cannot easily sort, filter, or hand the numbers to another tool. A spreadsheet fixes that.
 
 health4ai is a free iOS app that writes your Health data to a Google Sheet in your own Google Drive, one row per day. This post walks through setup and then four things worth doing with the result.
@@ -83,6 +81,6 @@ Apple Health lives on your phone. A sheet in your Drive is a copy you control, t
 
 ## Sheet or database?
 
-The sheet is the easiest path. If you later want every raw sample and SQL access, health4ai also supports your own Postgres or Supabase database. Compare them in [how it works](/how-it-works/). Your data stays yours either way, see [privacy](/privacy/).
+The sheet is the easiest path. If you later want every raw sample and SQL access, health4ai also supports your own Postgres or Supabase database. Compare them in [how it works](/how-it-works/). Your data stays yours either way. See [privacy](/privacy/).
 
 health4ai is free on the App Store: [Download on the App Store](https://apps.apple.com/app/health4ai/id6783074944).
