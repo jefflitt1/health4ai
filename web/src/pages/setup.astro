@@ -49,21 +49,21 @@ import Layout from '../layouts/Layout.astro';
       <ol class="space-y-6">
         <li class="flex gap-4 items-start">
           <span class="text-green-500 font-mono font-bold text-sm w-6 shrink-0">1</span>
-          <div>
+          <div class="min-w-0 flex-1">
             <div class="text-white text-sm font-medium mb-1">Create a Supabase project</div>
             <p class="text-neutral-500 text-sm leading-relaxed">Free tier at <a href="https://supabase.com" target="_blank" rel="noopener" class="text-green-400 hover:underline">supabase.com</a>. The database option needs Supabase Auth + Edge Functions: plain Postgres alone is not enough.</p>
           </div>
         </li>
         <li class="flex gap-4 items-start">
           <span class="text-green-500 font-mono font-bold text-sm w-6 shrink-0">2</span>
-          <div>
+          <div class="min-w-0 flex-1">
             <div class="text-white text-sm font-medium mb-1">Create the health tables</div>
             <p class="text-neutral-500 text-sm leading-relaxed mb-2">Paste and run <a href="/schema.sql" class="text-green-400 hover:underline">health4.ai/schema.sql</a> in the SQL editor. Do <strong class="text-neutral-400 font-medium">not</strong> use <code class="text-amber-400 text-xs">supabase db push</code> on a fresh project.</p>
           </div>
         </li>
         <li class="flex gap-4 items-start">
           <span class="text-green-500 font-mono font-bold text-sm w-6 shrink-0">3</span>
-          <div>
+          <div class="min-w-0 flex-1">
             <div class="text-white text-sm font-medium mb-1">Deploy the ingest function</div>
             <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-4 overflow-x-auto text-xs text-neutral-300 mb-2"><code>git clone https://github.com/jefflitt1/health4ai.git
 cd health4ai
@@ -73,7 +73,7 @@ supabase functions deploy healthkit-ingest --project-ref &lt;ref&gt; --no-verify
         </li>
         <li class="flex gap-4 items-start">
           <span class="text-green-500 font-mono font-bold text-sm w-6 shrink-0">4</span>
-          <div>
+          <div class="min-w-0 flex-1">
             <div class="text-white text-sm font-medium mb-1">Install the iOS app and choose the database</div>
             <p class="text-neutral-500 text-sm leading-relaxed">
               <a href="https://apps.apple.com/app/health4ai/id6783074944" target="_blank" rel="noopener" class="text-green-400 hover:underline">Download health4.ai from the App Store</a>.
@@ -83,7 +83,7 @@ supabase functions deploy healthkit-ingest --project-ref &lt;ref&gt; --no-verify
         </li>
         <li class="flex gap-4 items-start">
           <span class="text-green-500 font-mono font-bold text-sm w-6 shrink-0">5</span>
-          <div>
+          <div class="min-w-0 flex-1">
             <div class="text-white text-sm font-medium mb-1">Install the local MCP server</div>
             <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-4 overflow-x-auto text-xs text-neutral-300"><code>cd health4ai/mcp-server
 pip install -r requirements.txt
@@ -92,7 +92,7 @@ cp .env.example .env</code></pre>
         </li>
         <li class="flex gap-4 items-start">
           <span class="text-green-500 font-mono font-bold text-sm w-6 shrink-0">6</span>
-          <div>
+          <div class="min-w-0 flex-1">
             <div class="text-white text-sm font-medium mb-1">Point MCP at your database</div>
             <p class="text-neutral-500 text-sm mb-2">The app's <strong class="text-neutral-400 font-medium">Connect Your AI</strong> screen has copy-paste MCP config for Claude Desktop, Claude Code, and Cursor.</p>
             <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-4 overflow-x-auto text-xs text-neutral-300"><code>DATABASE_URL=postgresql://...   # transaction pooler, database password
@@ -101,7 +101,7 @@ HEALTHKIT_USER_ID=&lt;your auth UID&gt;</code></pre>
         </li>
         <li class="flex gap-4 items-start">
           <span class="text-green-500 font-mono font-bold text-sm w-6 shrink-0">7</span>
-          <div>
+          <div class="min-w-0 flex-1">
             <div class="text-white text-sm font-medium mb-1">Connect Claude or Cursor</div>
             <pre class="bg-neutral-900 border border-neutral-800 rounded-lg p-4 overflow-x-auto text-xs text-neutral-300"><code>{`{
   "mcpServers": {
@@ -120,7 +120,7 @@ HEALTHKIT_USER_ID=&lt;your auth UID&gt;</code></pre>
         </li>
         <li class="flex gap-4 items-start">
           <span class="text-green-500 font-mono font-bold text-sm w-6 shrink-0">8</span>
-          <div>
+          <div class="min-w-0 flex-1">
             <div class="text-white text-sm font-medium mb-1">Ask Claude for a health summary</div>
             <p class="text-neutral-500 text-sm leading-relaxed">
               In Claude Code run <code class="text-amber-400 text-xs">/mcp</code> and confirm <code class="text-green-400 text-xs">health4ai</code> is connected with 11 tools.
