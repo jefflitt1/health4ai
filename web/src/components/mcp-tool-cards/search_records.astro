@@ -8,7 +8,7 @@
             search_records(metric_type: str, days: int = 90, min_value: float | None = None, max_value: float | None = None, limit: int = 100) → &#123;results: [&#123;date, value, source&#125;], filters, …&#125;
           </p>
           <p class="text-neutral-400 text-sm mb-4">Find days where a metric crossed a threshold. Cumulative metrics filter on daily total; rate metrics on daily average. Results sorted highest-to-lowest.</p>
-          <div class="grid sm:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Example prompt</div>
               <div class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs italic">"What were my worst HRV days this year?" → max_value=40</div>

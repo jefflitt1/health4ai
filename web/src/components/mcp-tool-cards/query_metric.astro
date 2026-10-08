@@ -8,7 +8,7 @@
             query_metric(metric_type: str, days: int = 7, limit: int = 200) → &#123;granularity, count, avg, samples|daily, …&#125;
           </p>
           <p class="text-neutral-400 text-sm mb-4">Time series for any HKQuantityType. ≤30 days returns raw samples; longer windows return daily aggregates. Empty results may include data_status.</p>
-          <div class="grid sm:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <div class="text-neutral-600 text-xs mb-1 uppercase tracking-wider">Example prompt</div>
               <div class="bg-neutral-950 border border-neutral-800/60 rounded px-3 py-2 text-neutral-300 text-xs italic">"Show me my VO2 max readings for the last 90 days"</div>

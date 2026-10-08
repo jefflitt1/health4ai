@@ -18,7 +18,7 @@ if (!post) {
 const { Content } = await render(post);
 
 function formatDate(d: Date) {
-  return new Date(d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 ---
 <Layout
@@ -44,16 +44,16 @@ function formatDate(d: Date) {
   .prose li { margin-bottom: 0.35rem; }
   .prose pre { background: #06070f; border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 18px 22px; margin: 1.4rem 0; overflow-x: auto; font-family: ui-monospace,'SF Mono',monospace; font-size: 0.8rem; line-height: 1.7; color: #c8d0e8; }
   .prose code { font-family: ui-monospace,'SF Mono',monospace; font-size: 0.82rem; background: rgba(255,255,255,0.06); border-radius: 4px; padding: 2px 5px; color: #e2c8d4; }
-  /* Rendered markdown does not carry Astro's scoping attribute, so rules meant for it must be
-     :global. Without this, long code-block lines widened the whole page on phones (measured 335-555px
-     at 320px wide) instead of scrolling inside their own box. */
-  .prose :global(pre) { overflow-x: auto; max-width: 100%; }
-  .prose :global(:not(pre) > code) { overflow-wrap: anywhere; }
+  /* This block is already is:global, so plain selectors reach the rendered markdown; a :global()
+     wrapper here compiles literally and the browser drops the rule. Without these, long code lines
+     and tables widened the whole page on phones instead of scrolling inside their own box. */
+  .prose pre { overflow-x: auto; max-width: 100%; }
+  .prose :not(pre) > code { overflow-wrap: anywhere; }
   .prose pre code { background: transparent; padding: 0; border-radius: 0; color: inherit; }
   .prose strong { color: #e2e8f0; font-weight: 600; }
   .prose blockquote { border-left: 3px solid rgba(255,45,120,0.4); padding-left: 1rem; margin: 1.4rem 0; color: #718096; font-style: italic; }
   .prose hr { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 2rem 0; }
-  .prose table { width: 100%; border-collapse: collapse; margin: 1.4rem 0; font-size: 0.85rem; }
+  .prose table { display: block; overflow-x: auto; width: 100%; border-collapse: collapse; margin: 1.4rem 0; font-size: 0.85rem; }
   .prose th { text-align: left; padding: 8px 12px; color: #e2e8f0; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.1); }
   .prose td { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
 </style>
