@@ -1,11 +1,13 @@
 ---
-title: "health4ai 1.0.2: Google Sheets by Default"
-description: "What changed in health4ai 1.0.1 and 1.0.2: Save to Google Sheets, Sync History, Your Sources, a Sheet-first first run, and better handling of iOS 27 limited Health access."
-pubDate: 2026-10-07
+title: "health4ai 1.0.2 Is Live: Google Sheets by Default"
+description: "health4ai 1.0.2 is live on the App Store. What changed in health4ai 1.0.1 and 1.0.2: Save to Google Sheets, Sync History, Your Sources, a Sheet-first first run, and better handling of iOS 27 limited Health access."
+pubDate: 2026-10-09
 slug: "health4ai-1-0-2-google-sheets-default"
 tags: ["release", "google-sheets", "ios-27", "healthkit", "health4ai"]
-draft: true
+draft: false
 ---
+
+health4ai 1.0.2 is live on the App Store as of October 8, 2026. The short pitch: install it, sign in with Google, and your Apple Health data lands in a spreadsheet in your own Google Drive. No server to set up, no account with us, and no one in the middle.
 
 health4ai is a free iOS app that moves your Apple Health data to a destination you own. Version 1.0.1 added a second destination, a Google Sheet in your own Google Drive. Version 1.0.2 makes that Sheet the default for new installs and smooths over a few things that iOS 27 made more confusing.
 
@@ -68,6 +70,6 @@ Background sync is best effort. iOS decides when an app gets to run, and that ca
 
 ## Get it
 
-health4ai is free on the App Store: [apps.apple.com/app/health4ai/id6783074944](https://apps.apple.com/app/health4ai/id6783074944).
+You could have years of Apple Health history in a spreadsheet you own within minutes. health4ai is free on the App Store: [apps.apple.com/app/health4ai/id6783074944](https://apps.apple.com/app/health4ai/id6783074944).
 
 Update from the App Store to get 1.0.2. Your destination and your data stay as they are.
