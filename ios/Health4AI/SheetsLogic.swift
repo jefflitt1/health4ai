@@ -215,7 +215,10 @@ enum HistoryVersion {
     /// rebuild, for a sheet that still started on 2026-08-22 after build 57's rebuild.
     /// 3: build 59. Sheets built under iOS 27 limited ("Past 30 Days") access before the
     /// app recorded the cutoff (AccessLimit) rebuild once, in case access has since widened.
-    static let current = 3
+    /// 4: 1.0.3. The sweep start now considers every type the sheet reads, not only steps,
+    /// heart rate, sleep and workouts, so a sheet whose oldest data is weight, HRV or resting
+    /// HR starts earlier; rebuild once so existing sheets pick that history up.
+    static let current = 4
 
     /// True for a sheet that already has rows but was last swept before `current`. A sheet
     /// that has never written (`lastWrittenDay == nil`) does a full sweep anyway.
