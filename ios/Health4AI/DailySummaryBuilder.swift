@@ -118,36 +118,63 @@ final class DailySummaryBuilder {
         self.calendar = calendar
     }
 
-    /// Earliest day worth sweeping on a first connect: the oldest step, heart rate, sleep or
-    /// workout sample, capped at ten years back so a first sync always finishes. THROWS if any type's
+    /// The four types the Sheets card names in "History found from"; every other read type is
+    /// summarised as one "Other types" line (weight, HRV, resting HR, VO2 max, ...).
+    private static let namedHistoryTypes: [(HKSampleType, String)] = [
+        (HKQuantityType(.stepCount), "Steps"), (HKQuantityType(.heartRate), "Heart rate"),
+        (HKCategoryType(.sleepAnalysis), "Sleep"), (HKWorkoutType.workoutType(), "Workouts")]
+
+    /// Earliest day worth sweeping on a first connect: the oldest sample of ANY type the sheet
+    /// reads, capped at ten years back so a first sync always finishes. Until 1.0.3 only steps,
+    /// heart rate, sleep and workouts were asked, so someone whose data came from a scale or an
+    /// HRV app started at today and was told "No health data found". THROWS if any type's
     /// query fails (locked device, cancelled background task): starting from the other types'
     /// oldest day would silently leave the earlier history out of the sheet.
     func earliestDataDay(now: Date = Date()) async throws -> Date {
         let today = calendar.startOfDay(for: now)
         let floor = calendar.date(byAdding: .year, value: -10, to: today)!
-        let types: [(HKSampleType, String)] = [(HKQuantityType(.stepCount), "Steps"),
-                                               (HKQuantityType(.heartRate), "Heart rate"),
-                                               (HKCategoryType(.sleepAnalysis), "Sleep"),
-                                               (HKWorkoutType.workoutType(), "Workouts")]
+        let named = Self.namedHistoryTypes
+        let others = Self.readTypes.subtracting(named.map(\.0)).sorted { $0.identifier < $1.identifier }
         var results: [SweepStart.TypeResult] = []
         var found: [HistoryFound.Entry] = []
         // A cancelled or locked-device pass fails every type; keep the last good record then.
         defer { if found.contains(where: { !$0.failed }) { HistoryFound.record(checked: now, entries: found) } }
-        for (type, label) in types {
-            let d = HKSampleQueryDescriptor(predicates: [.sample(type: type)],
-                                            sortDescriptors: [SortDescriptor(\.startDate, order: .forward)], limit: 1)
-            do {
-                let first = try await d.result(for: store).first
-                Self.logger.info("earliest \(type.identifier, privacy: .public): \(first?.startDate.description ?? "none", privacy: .public)")
-                results.append(.success(first?.startDate))
-                found.append(.init(label: label, oldest: first.map { DayKey.string(for: $0.startDate, calendar: calendar) }, failed: false))
-            } catch {
-                Self.logger.error("earliest \(type.identifier, privacy: .public) query failed: \(error.localizedDescription, privacy: .public)")
-                results.append(.failure(error))
-                found.append(.init(label: label, oldest: nil, failed: true))
+        for (type, label) in named {
+            let result = await oldestSample(of: type)
+            results.append(result)
+            found.append(entry(label: label, [result]))
+        }
+        var otherResults: [SweepStart.TypeResult] = []
+        for type in others { otherResults.append(await oldestSample(of: type)) }
+        results += otherResults
+        found.append(entry(label: "Other types", otherResults))
+        return try SweepStart.resolve(results, today: today, floor: floor, calendar: calendar)
+    }
+
+    private func oldestSample(of type: HKSampleType) async -> SweepStart.TypeResult {
+        let d = HKSampleQueryDescriptor(predicates: [.sample(type: type)],
+                                        sortDescriptors: [SortDescriptor(\.startDate, order: .forward)], limit: 1)
+        do {
+            let first = try await d.result(for: store).first
+            Self.logger.info("earliest \(type.identifier, privacy: .public): \(first?.startDate.description ?? "none", privacy: .public)")
+            return .success(first?.startDate)
+        } catch {
+            Self.logger.error("earliest \(type.identifier, privacy: .public) query failed: \(error.localizedDescription, privacy: .public)")
+            return .failure(error)
+        }
+    }
+
+    /// One card line for a group of types: the oldest date found, or failed if any query failed.
+    private func entry(label: String, _ results: [SweepStart.TypeResult]) -> HistoryFound.Entry {
+        var oldest: Date?
+        var failed = false
+        for r in results {
+            switch r {
+            case .success(let date): if let date, oldest.map({ date < $0 }) ?? true { oldest = date }
+            case .failure: failed = true
             }
         }
-        return try SweepStart.resolve(results, today: today, floor: floor, calendar: calendar)
+        return .init(label: label, oldest: oldest.map { DayKey.string(for: $0, calendar: calendar) }, failed: failed)
     }
 
     /// One Daily row per day in [start, end], each beginning with its date key.

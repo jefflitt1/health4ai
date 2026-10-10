@@ -349,7 +349,8 @@ enum SheetsScreenshotFixture {
                 .init(label: "Steps", oldest: "2014-09-21", failed: false),
                 .init(label: "Heart rate", oldest: "2014-09-21", failed: false),
                 .init(label: "Sleep", oldest: nil, failed: true),
-                .init(label: "Workouts", oldest: nil, failed: false)],
+                .init(label: "Workouts", oldest: nil, failed: false),
+                .init(label: "Other types", oldest: "2013-04-02", failed: false)],
                          outcome: "Rebuilt 3,653 days.").save()
             syncState.isAuthenticated = true
             syncState.lastSyncDate = Date()

@@ -71,12 +71,21 @@ mutate "workouts not merged"           'let added = try await addWorkouts(id: id
 mutate "raw workout names left"        'try await tidyWorkoutNames(id: id)
         return SheetsPassResult' 'return SheetsPassResult' sync
 mutate "failed rebuild not backed off" 'progress.rebuildNotBefore = now.addingTimeInterval(RebuildBackoff.interval)
+                progress.rebuildFailed = true
                 persist(progress)
-                throw error' 'throw error' sync
+                throw error' 'progress.rebuildFailed = true
+                throw error' sync
 mutate "backoff ignored"               'allowRebuild, !RebuildBackoff.isBlocked(notBefore: progress.rebuildNotBefore, now: now),' 'allowRebuild,' sync
 mutate "daily written in one request"  'static let writeChunkRows = 800' 'static let writeChunkRows = 100000' sync
 mutate "stale clear wipes any text"    'guard row > keptRows, isKey(raw.trimmingCharacters(in: .whitespaces)) else { continue }' 'guard row > keptRows else { continue }'
 mutate "stray keys steer the guard"    'minYear: Int = 2000' 'minYear: Int = 0'
 mutate "cancel treated as failure"     'throw CancellationError()   // iOS took' 'throw Injected()   // iOS took' sync
+mutate "empty first chunk fails the sweep" 'guard chunkEnd < today else {
+                    throw SheetsError.noHealthData(checked: Self.checkedRange(start, today, calendar: calendar))
+                }' 'throw SheetsError.noHealthData(checked: "")' sync
+mutate "empty history reported as synced" 'guard chunkEnd < today else {
+                    throw SheetsError.noHealthData(checked: Self.checkedRange(start, today, calendar: calendar))
+                }
+                chunkStart' 'chunkStart' sync
 echo "survivors: $survivors"
 [ "$survivors" -eq 0 ]

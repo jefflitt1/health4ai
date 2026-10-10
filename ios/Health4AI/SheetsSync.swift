@@ -13,7 +13,8 @@ enum SheetsError: LocalizedError {
     /// A first sync found no health data at all. HealthKit reports a DENIED read as an empty
     /// result, so this is usually missing Health access, not an empty history; treating it as
     /// success is how this app once showed a green "Complete" for three months with no data.
-    case noHealthData
+    /// `checked` says which days were read, so Sync History carries it for support (2026-10-09).
+    case noHealthData(checked: String)
     /// iOS has never been asked for some type the daily summary reads. Unlike a denial this
     /// makes HealthKit throw, so it gets its own fix: ask, then sync.
     case healthNotAsked
@@ -23,7 +24,7 @@ enum SheetsError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .spreadsheetMissing: return "Your health4ai sheet was deleted or moved out of reach."
-        case .noHealthData: return "No health data found to add to your sheet."
+        case .noHealthData(let checked): return "No health data found to add to your sheet. Checked \(checked)."
         case .healthNotAsked: return "health4ai has not yet asked for all the Health data your sheet uses."
         case .http(let status, _): return "Google Sheets returned an error (HTTP \(status))."
         case .badResponse: return "Google Sheets returned an unexpected response."
@@ -133,6 +134,7 @@ struct SheetsSyncCore {
         }
 
         var pendingFirstWrite = freshSweep
+        var firstDay = start
         var gridRows = 0
         var workoutsDone = false
         var chunkStart = start
@@ -141,16 +143,26 @@ struct SheetsSyncCore {
             let chunkEnd = min(calendar.date(byAdding: .day, value: Self.chunkDays - 1, to: chunkStart)!, today)
             let rows = try await source.dailyRows(from: chunkStart, through: chunkEnd)
             // First connect with nothing to write: do not report success and do not advance
-            // lastWrittenDay over it (Reviewboard B, 2026-09-28).
-            if pendingFirstWrite, !Self.hasData(rows) { throw SheetsError.noHealthData }
+            // lastWrittenDay over it (Reviewboard B, 2026-09-28). An empty chunk with later
+            // days still to read is skipped, not failed: the sweep can start well before the
+            // first day with data (an oldest sample past the ten-year floor, then a gap), and
+            // failing there told someone with years of data they had none (2026-10-09).
+            if pendingFirstWrite, !Self.hasData(rows) {
+                guard chunkEnd < today else {
+                    throw SheetsError.noHealthData(checked: Self.checkedRange(start, today, calendar: calendar))
+                }
+                chunkStart = calendar.date(byAdding: .day, value: 1, to: chunkEnd)!
+                firstDay = chunkStart
+                continue
+            }
             if pendingFirstWrite {
                 // One growth request sized for the whole sweep, instead of one per chunk.
-                let days = (calendar.dateComponents([.day], from: start, to: today).day ?? 0) + 1
+                let days = (calendar.dateComponents([.day], from: firstDay, to: today).day ?? 0) + 1
                 gridRows = try await api.ensureRows(spreadsheetId: id, tab: SheetTabs.daily,
                                                     needed: existing.count + 1 + days, headroom: Self.gridHeadroom)
                 // Workouts first: a sweep cut short resumes from a recent day and would never
                 // come back for older workouts.
-                result.workoutsAdded += try await addWorkouts(id: id, from: start, today: today)
+                result.workoutsAdded += try await addWorkouts(id: id, from: firstDay, today: today)
                 workoutsDone = true
             }
             let plan = UpsertPlan.make(existingDates: existing, rows: rows)
@@ -201,7 +213,7 @@ struct SheetsSyncCore {
             daily += try await source.dailyRows(from: chunkStart, through: chunkEnd)
             chunkStart = calendar.date(byAdding: .day, value: 1, to: chunkEnd)!
         }
-        guard Self.hasData(daily) else { throw SheetsError.noHealthData }
+        guard Self.hasData(daily) else { throw SheetsError.noHealthData(checked: Self.checkedRange(start, today, calendar: calendar)) }
         try Task.checkCancellation()
 
         _ = try await api.ensureRows(spreadsheetId: id, tab: SheetTabs.daily, needed: daily.count + 1, headroom: Self.gridHeadroom)
@@ -247,6 +259,11 @@ struct SheetsSyncCore {
         let fresh = rows.filter { !known.contains($0[7]) }
         try await api.append(spreadsheetId: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)
         return fresh.count
+    }
+
+    static func checkedRange(_ start: Date, _ end: Date, calendar: Calendar) -> String {
+        let days = (calendar.dateComponents([.day], from: start, to: end).day ?? 0) + 1
+        return "\(DayKey.string(for: start, calendar: calendar)) through \(DayKey.string(for: end, calendar: calendar)) (\(days) days)"
     }
 
     private static func hasData(_ rows: [[String]]) -> Bool {

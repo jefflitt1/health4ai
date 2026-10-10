@@ -100,6 +100,7 @@ struct FakeSource: SheetsHistorySource {
     var earliestCalls: Int { counter.n }
     let counter = Counter()
     var workoutDays: [Date] = []
+    var emptyBefore: Date?              // days before this come back blank (a gap after the sweep start)
 
     func earliestDataDay(now: Date) async throws -> Date {
         counter.n += 1
@@ -109,8 +110,8 @@ struct FakeSource: SheetsHistorySource {
     func dailyRows(from: Date, through: Date) async throws -> [[String]] {
         if let f = failDailyFrom, from >= f { throw Injected() }
         if let c = cancelDailyFrom, from >= c { throw CancellationError() }
-        return DayKey.days(from: from, through: through, calendar: calendar).map {
-            [DayKey.string(for: $0, calendar: calendar), "100"] + Array(repeating: "", count: 14)
+        return DayKey.days(from: from, through: through, calendar: calendar).map { day in
+            [DayKey.string(for: day, calendar: calendar), emptyBefore.map { $0 > day } == true ? "" : "100"] + Array(repeating: "", count: 14)
         }
     }
     func workoutRows(from: Date, to: Date) async throws -> [[String]] {
@@ -260,4 +261,21 @@ func runSyncTests(_ check: (Bool, String) -> Void, calendar cal: Calendar, at: (
     core.rebuildExtras = []
     _ = try? await core.run(spreadsheetId: "s", progress: &again, allowRebuild: true, now: nextDay) { _ in }
     check(fresh.daily.count == 3654 && fresh.daily.last?.first == "2026-10-01" && fresh.growRequests == 1, "incremental_after_sweep_appends_without_growth_request")
+
+    // Fresh connect whose sweep starts years before the first day with data (an old stray
+    // sample floored to ten years back): the empty chunks are skipped and the data is written.
+    let gap = FakeSheet()
+    let g1 = await drive(gap, source { $0.emptyBefore = day("2019-06-01"); $0.workoutDays = [day("2020-01-05")] },
+                         progress: SheetsProgress(lastWrittenDay: nil, historyVersion: nil))
+    check(g1.error == nil && gap.daily.last?.first == "2026-09-30" && gap.daily.contains { $0.first == "2019-06-01" && $0[1] == "100" },
+          "fresh_sweep_skips_empty_leading_chunks")
+    check((gap.daily.first?.first ?? "") > "2018-12-01" && gap.workouts.count == 1 && g1.progress.lastWrittenDay == "2026-09-30",
+          "fresh_sweep_after_gap_starts_at_first_chunk_with_data")
+
+    // Fresh connect with no data anywhere still fails, with nothing written or saved.
+    let none = FakeSheet()
+    let g2 = await drive(none, source { $0.emptyBefore = day("2030-01-01"); $0.workoutDays = [] },
+                         progress: SheetsProgress(lastWrittenDay: nil, historyVersion: nil))
+    check({ if case SheetsError.noHealthData(let checked)? = g2.error { return checked == "2016-09-30 through 2026-09-30 (3653 days)" }; return false }() && none.daily.isEmpty
+          && !none.ops.contains("write") && g2.progress.lastWrittenDay == nil && saved.isEmpty, "fresh_sweep_with_no_data_fails_untouched")
 }
