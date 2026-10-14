@@ -22,7 +22,7 @@ For health data, this matters more than for most domains. Health metrics have pe
 
 ## Why Local-Only MCP Solutions Fall Short
 
-One existing approach — used by Health Auto Export — runs the MCP server locally on your machine and connects to your AI client over TCP on the same WiFi network. This works when your laptop and iPhone are on the same network. It stops working the moment you're in Claude Code on a remote server, in a terminal session over Tailscale, or anywhere your Mac isn't reachable.
+One existing approach — used by [Health Auto Export](/compare/) — runs the MCP server locally on your machine and connects to your AI client over TCP on the same WiFi network. This works when your laptop and iPhone are on the same network. It stops working the moment you're in Claude Code on a remote server, in a terminal session over Tailscale, or anywhere your Mac isn't reachable.
 
 More fundamentally: the data doesn't persist anywhere. Each query goes through the iOS app in real time. There's no database you can run SQL against, no historical analysis beyond what the app can return in one response, and no way to query 5+ years of data without hitting timeouts.
 

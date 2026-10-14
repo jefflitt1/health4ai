@@ -8,7 +8,7 @@ draft: false
 legacySetup: true
 ---
 
-A health dashboard shows you where you are across multiple metrics at a glance. Claude Code, with health4ai's MCP tools, can generate dashboard-style output on demand — no running web server, no visualization library, just structured text you can read or pipe somewhere useful.
+A health dashboard shows you where you are across multiple metrics at a glance. Claude Code, with health4ai's [MCP tools](/mcp-tools/), can generate dashboard-style output on demand — no running web server, no visualization library, just structured text you can read or pipe somewhere useful.
 
 ## What a Useful Health Dashboard Shows
 

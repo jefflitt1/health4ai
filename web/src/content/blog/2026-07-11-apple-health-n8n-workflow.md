@@ -14,7 +14,7 @@ A weekly health digest that runs automatically is more useful than a dashboard y
 
 Every Monday morning:
 1. n8n triggers the workflow on a cron schedule
-2. An HTTP node calls health4ai's MCP tools via the MCP server
+2. An HTTP node calls health4ai's [MCP tools](/mcp-tools/) via the MCP server
 3. Claude synthesizes the data into a weekly digest
 4. n8n delivers the digest to Telegram (or email)
 
