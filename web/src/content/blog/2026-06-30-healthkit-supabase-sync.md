@@ -25,7 +25,7 @@ The practical difference: `BGProcessingTask` runs when iOS decides it's convenie
 
 ## Why Health Auto Export's Sync Fails
 
-Health Auto Export — the most established app in this space — uses background processing for sync rather than HealthKit observer queries. This is why users report their data in the MCP server being hours out of date.
+[Health Auto Export](/compare/) — the most established app in this space — uses background processing for sync rather than HealthKit observer queries. This is why users report their data in the MCP server being hours out of date.
 
 It's not a bug in the implementation — it's the ceiling of what `BGProcessingTask` can provide. When you ask the MCP server for your HRV from this morning's Apple Watch reading, the server returns what was synced during the last background processing window. If iOS didn't schedule one today, you don't have today's data.
 

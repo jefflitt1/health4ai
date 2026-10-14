@@ -35,7 +35,7 @@ Consider a typical day:
 
 For a personal health dashboard where you're checking data occasionally, 14-hour staleness might be acceptable. For an AI coaching brief that runs at 7:30 AM, it's not — you'd be asking Claude to analyze yesterday's HRV, not today's.
 
-**Health Auto Export** uses BGProcessingTask for its sync mechanism. This is the documented reason why its data can be stale — not a bug, just the constraint of the mechanism.
+**[Health Auto Export](/compare/)** uses BGProcessingTask for its sync mechanism. This is the documented reason why its data can be stale — not a bug, just the constraint of the mechanism.
 
 ## How HKObserverQuery Works
 
