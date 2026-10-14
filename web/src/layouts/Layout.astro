@@ -25,6 +25,9 @@ const canonicalUrl = Astro.props.canonicalUrl
 
 const clarityId   = import.meta.env.PUBLIC_CLARITY_PROJECT_ID as string | undefined;
 const metaPixelId = import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined;
+// Non-production hosts never initialise Clarity or the Meta Pixel (same regex as posthog.astro).
+const NON_PRODUCTION_HOST = /^([^.]+|\[.*\]|127(\.\d{1,3}){3}|0\.0\.0\.0|10(\.\d{1,3}){3}|192\.168(\.\d{1,3}){2}|172\.(1[6-9]|2\d|3[01])(\.\d{1,3}){2}|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])(\.\d{1,3}){2}|169\.254(\.\d{1,3}){2}|.+\.(local|localhost|ts\.net|pages\.dev|workers\.dev))$/i;
+const onlyInProduction = (code: string) => `if(!/${NON_PRODUCTION_HOST.source}/i.test(location.hostname)){${code}}`;
 ---
 <!doctype html>
 <html lang="en">
@@ -110,12 +113,12 @@ const metaPixelId = import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined;
 
     <!-- Microsoft Clarity -->
     {clarityId && (
-      <script is:inline set:html={`(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y)})(window,document,"clarity","script","${clarityId}");`}></script>
+      <script is:inline set:html={onlyInProduction(`(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y)})(window,document,"clarity","script","${clarityId}");`)}></script>
     )}
 
     <!-- Meta Pixel -->
     {metaPixelId && (
-      <script is:inline set:html={`!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','${metaPixelId}');fbq('track','PageView');`}></script>
+      <script is:inline set:html={onlyInProduction(`!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','${metaPixelId}');fbq('track','PageView');`)}></script>
     )}
     {metaPixelId && <noscript><img height="1" width="1" style="display:none" src={`https://www.facebook.com/tr?id=${metaPixelId}&ev=PageView&noscript=1`}/></noscript>}
   </head>
