@@ -11,6 +11,11 @@ final class FakeSheet: SheetsAPI {
     var workouts: [[String]] = []       // Workouts rows from row 2
     var grid = [SheetTabs.daily: 1000, SheetTabs.workouts: 1000]
     var about: [[String]] = []
+    var sleep: [[String]] = []          // Sleep stages rows from row 2
+    var sleepHeader: [String] = []
+    var tabs: Set<String> = [SheetTabs.daily, SheetTabs.workouts, SheetTabs.about]
+    var sleepAppendSizes: [Int] = []
+    var failSleepAppendNumber: Int?     // the Nth append to Sleep stages throws
     var ops: [String] = []
     var failOp: String?                 // throws Injected when this op is reached
     var writes = 0
@@ -26,16 +31,23 @@ final class FakeSheet: SheetsAPI {
     private func parse(_ r: String) -> (tab: String, first: Int, last: Int?, col: Character) {
         let parts = r.split(separator: "!"); let cells = parts[1].split(separator: ":")
         func row(_ c: Substring) -> Int? { Int(c.drop { $0.isLetter }) }
-        return (String(parts[0]), row(cells[0]) ?? 1, cells.count > 1 ? row(cells[1]) : nil, cells[0].first!)
+        let tab = String(parts[0]).trimmingCharacters(in: CharacterSet(charactersIn: "'"))
+        return (tab, row(cells[0]) ?? 1, cells.count > 1 ? row(cells[1]) : nil, cells[0].first!)
     }
 
     func readDateColumn(spreadsheetId: String, range: String) async throws -> [String] {
+        if parse(range).tab == SheetTabs.sleepStages { try hit("readNights"); return sleep.map { $0.first ?? "" } }
         try hit("readDates"); reads += 1
         let snapshot = daily.map { $0.first ?? "" }
         if reads == 1 { afterFirstRead?() }
         return snapshot
     }
     func readColumn(spreadsheetId: String, range: String) async throws -> [String] {
+        let p = parse(range)
+        if p.tab == SheetTabs.sleepStages {
+            try hit("readSleepIds")
+            return sleep.dropFirst(p.first - 2).map { $0.count > 6 ? $0[6] : "" }
+        }
         try hit("readWorkoutIds")
         if range.contains("C2") { return workouts.map { $0.count > 2 ? $0[2] : "" } }
         return workouts.map { $0[7] }
@@ -52,6 +64,7 @@ final class FakeSheet: SheetsAPI {
             switch p.tab {
             case SheetTabs.daily: place(&daily, r.rows, at: p.first - 2)
             case SheetTabs.workouts: place(&workouts, r.rows, at: p.first - 2, col: p.col)
+            case SheetTabs.sleepStages: if p.first == 1 { sleepHeader = r.rows[0] } else { place(&sleep, r.rows, at: p.first - 2) }
             default: about = r.rows
             }
         }
@@ -66,6 +79,11 @@ final class FakeSheet: SheetsAPI {
         }
     }
     func append(spreadsheetId: String, range: String, rows: [[String]]) async throws {
+        if parse(range).tab == SheetTabs.sleepStages {
+            try hit("appendSleep"); sleepAppendSizes.append(rows.count)
+            if failSleepAppendNumber == sleepAppendSizes.count { throw Injected() }
+            sleep += rows; return
+        }
         try hit("append"); workouts += rows
     }
     func clear(spreadsheetId: String, ranges: [String]) async throws {
@@ -79,6 +97,10 @@ final class FakeSheet: SheetsAPI {
             }
             if p.tab == SheetTabs.daily { wipe(&daily) } else { wipe(&workouts) }
         }
+    }
+    func ensureTab(spreadsheetId: String, title: String) async throws -> Bool {
+        try hit("ensureTab")
+        return tabs.insert(title).inserted
     }
     func ensureRows(spreadsheetId: String, tab: String, needed: Int, headroom: Int) async throws -> Int {
         try hit("ensureRows")
@@ -101,6 +123,9 @@ struct FakeSource: SheetsHistorySource {
     let counter = Counter()
     var workoutDays: [Date] = []
     var emptyBefore: Date?              // days before this come back blank (a gap after the sweep start)
+    var sleepNights: [Date] = []        // nights (wake-up dates) with sleep recorded
+    var recordsPerNight = 3
+    var lateRecords: [Date] = []        // nights that gained one more record after a sync
 
     func earliestDataDay(now: Date) async throws -> Date {
         counter.n += 1
@@ -112,6 +137,18 @@ struct FakeSource: SheetsHistorySource {
         if let c = cancelDailyFrom, from >= c { throw CancellationError() }
         return DayKey.days(from: from, through: through, calendar: calendar).map { day in
             [DayKey.string(for: day, calendar: calendar), emptyBefore.map { $0 > day } == true ? "" : "100"] + Array(repeating: "", count: 14)
+        }
+    }
+    func oldestSleepRecord() async throws -> Date? {
+        sleepNights.min().map { calendar.date(byAdding: .hour, value: -2, to: $0)! }   // 22:00 the evening before
+    }
+    func sleepStageRows(nights from: Date, through: Date) async throws -> [[String]] {
+        func rows(_ night: Date, _ ids: Range<Int>) -> [[String]] {
+            let key = DayKey.string(for: night, calendar: calendar)
+            return ids.map { [key, "Core", "\(key) 01:00", "\(key) 02:00", "60.0", "Watch", "sl-\(key)-\($0)"] }
+        }
+        return sleepNights.filter { $0 >= from && $0 <= through }.flatMap { night in
+            rows(night, 0..<recordsPerNight) + (lateRecords.contains(night) ? rows(night, 100..<101) : [])
         }
     }
     func workoutRows(from: Date, to: Date) async throws -> [[String]] {
@@ -278,4 +315,111 @@ func runSyncTests(_ check: (Bool, String) -> Void, calendar cal: Calendar, at: (
                          progress: SheetsProgress(lastWrittenDay: nil, historyVersion: nil))
     check({ if case SheetsError.noHealthData(let checked)? = g2.error { return checked == "2016-09-30 through 2026-09-30 (3653 days)" }; return false }() && none.daily.isEmpty
           && !none.ops.contains("write") && g2.progress.lastWrittenDay == nil && saved.isEmpty, "fresh_sweep_with_no_data_fails_untouched")
+
+    await runSaveChoiceTests(check, calendar: cal, at: at)
+}
+
+/// "What to save": the Sleep stages tab and the Workouts switch.
+func runSaveChoiceTests(_ check: (Bool, String) -> Void, calendar cal: Calendar, at: (String) -> Date) async {
+    let now = at("2026-09-30T12:00:00-04:00")
+    func day(_ k: String) -> Date { cal.startOfDay(for: at("\(k)T12:00:00-04:00")) }
+    let current = SheetsProgress(lastWrittenDay: "2026-09-30", historyVersion: HistoryVersion.current)
+    func nights(from k: String, through end: String = "2026-09-30") -> [Date] {
+        DayKey.days(from: day(k), through: day(end), calendar: cal)
+    }
+    func source(_ configure: (inout FakeSource) -> Void = { _ in }) -> FakeSource {
+        var src = FakeSource(earliest: day("2026-09-01"), calendar: cal, workoutDays: [])
+        configure(&src); return src
+    }
+    func drive(_ sheet: FakeSheet, _ src: FakeSource, progress: SheetsProgress = current, at passNow: Date? = nil,
+               _ configure: (inout SheetsSyncCore) -> Void = { $0.saveSleepStages = true })
+        async -> (progress: SheetsProgress, error: Error?, result: SheetsPassResult?, saves: Int) {
+        var p = progress; var saves = 0
+        var core = SheetsSyncCore(api: sheet, source: src, calendar: cal)
+        core.rebuildExtras = [("About!A1:B1", [["Column", "Meaning"]])]
+        configure(&core)
+        do {
+            let r = try await core.run(spreadsheetId: "s", progress: &p, allowRebuild: true, now: passNow ?? now) { _ in saves += 1 }
+            return (p, nil, r, saves)
+        } catch { return (p, error, nil, saves) }
+    }
+    func ids(_ s: FakeSheet) -> [String] { s.sleep.map { $0[6] } }
+
+    // Off by default: no tab, no request.
+    let off = FakeSheet()
+    _ = await drive(off, source { $0.sleepNights = nights(from: "2026-09-20") }) { _ in }
+    check(!off.ops.contains("ensureTab") && off.sleep.isEmpty && !off.tabs.contains(SheetTabs.sleepStages), "sleep_stages_off_by_default")
+
+    // Switched on for an existing sheet: the tab is added with its header and the About text,
+    // and every night since the oldest record is written once, through last night.
+    let on = FakeSheet()
+    let s1 = await drive(on, source { $0.sleepNights = nights(from: "2026-06-01") })
+    check(s1.error == nil && on.tabs.contains(SheetTabs.sleepStages) && on.sleepHeader == SleepStageLayout.header
+          && on.about == [["Column", "Meaning"]], "sleep_stages_tab_added_with_header_and_about")
+    check(on.sleep.count == 122 * 3 && Set(ids(on)).count == on.sleep.count && on.sleep.first?.first == "2026-06-01"
+          && on.sleep.last?.first == "2026-09-30" && s1.result?.sleepStagesAdded == 366, "sleep_stages_first_sweep_complete")
+    check(s1.progress.sleepStagesThrough == "2026-09-30" && s1.progress.lastWrittenDay == "2026-09-30", "sleep_stages_progress_saved")
+
+    // The next day: only the new night, and a record that arrived late for the night before.
+    let nextDay = at("2026-10-01T12:00:00-04:00")
+    let s2 = await drive(on, source { $0.sleepNights = nights(from: "2026-06-01", through: "2026-10-01"); $0.lateRecords = [day("2026-09-29")] },
+                         progress: s1.progress, at: nextDay)
+    check(s2.error == nil && on.sleep.count == 122 * 3 + 3 + 1 && Set(ids(on)).count == on.sleep.count
+          && s2.progress.sleepStagesThrough == "2026-10-01", "sleep_stages_incremental_adds_new_and_late_once")
+    check(on.sleep.allSatisfy { $0.count == 7 }, "sleep_stages_rows_whole")
+
+    // A long history in big nights: appends are chunked, and progress is saved per chunk.
+    let big = FakeSheet()
+    let s3 = await drive(big, source { $0.sleepNights = nights(from: "2025-01-01"); $0.recordsPerNight = 12 })
+    check(s3.error == nil && (big.sleepAppendSizes.max() ?? 0) <= 2000 && big.sleepAppendSizes.count > 4
+          && Set(ids(big)).count == big.sleep.count, "sleep_stages_appends_in_chunks")
+    check(s3.saves >= 3, "sleep_stages_progress_saved_per_chunk")
+
+    // Cut off part-way: what was written stays, and the next pass finishes with no duplicates.
+    let cut = FakeSheet(); cut.failSleepAppendNumber = 3
+    let src = source { $0.sleepNights = nights(from: "2025-01-01"); $0.recordsPerNight = 12 }
+    let s4 = await drive(cut, src)
+    check(s4.error != nil && !cut.sleep.isEmpty && (s4.progress.sleepStagesThrough ?? "") < "2026-09-30", "sleep_stages_interrupted_keeps_progress")
+    cut.failSleepAppendNumber = nil
+    let s5 = await drive(cut, src, progress: s4.progress)
+    check(s5.error == nil && cut.sleep.count == big.sleep.count && Set(ids(cut)).count == cut.sleep.count, "sleep_stages_resume_without_duplicates")
+
+    // The person deleted the tab: it comes back and is filled from the beginning again.
+    on.tabs.remove(SheetTabs.sleepStages); on.sleep = []; on.sleepHeader = []
+    let s6 = await drive(on, source { $0.sleepNights = nights(from: "2026-06-01") }, progress: s1.progress)
+    check(s6.error == nil && on.sleepHeader == SleepStageLayout.header && on.sleep.first?.first == "2026-06-01" && on.sleep.count == 366,
+          "sleep_stages_deleted_tab_refilled")
+
+    // No sleep recorded at all: nothing written and nothing marked done.
+    let none = FakeSheet()
+    let s7 = await drive(none, source())
+    check(s7.error == nil && none.sleep.isEmpty && s7.progress.sleepStagesThrough == nil, "sleep_stages_none_not_marked_done")
+
+    // Cut off between adding the tab and writing its header: the next pass writes the header
+    // before any record, so no record ever sits in the header row.
+    let half = FakeSheet(); half.failWriteNumber = 2   // write 1 is the Daily update
+    let h1 = await drive(half, source { $0.sleepNights = nights(from: "2026-09-20") })
+    check(h1.error != nil && half.tabs.contains(SheetTabs.sleepStages) && half.sleepHeader.isEmpty && half.sleep.isEmpty, "sleep_stages_header_failure_writes_nothing")
+    half.failWriteNumber = nil
+    let h2 = await drive(half, source { $0.sleepNights = nights(from: "2026-09-20") }, progress: h1.progress)
+    check(h2.error == nil && half.sleepHeader == SleepStageLayout.header && half.sleep.count == 33, "sleep_stages_header_repaired_next_pass")
+
+    // Switched on while a pass was already running: that pass fills it.
+    let late = FakeSheet()
+    _ = await drive(late, source { $0.sleepNights = nights(from: "2026-09-20") }) {
+        $0.saveSleepStages = false
+        $0.latestChoices = { SaveChoiceFlags(workouts: true, sleepStages: true, workoutsCatchUp: false) }
+    }
+    check(late.sleep.count == 33, "sleep_stages_switched_on_mid_pass_filled")
+
+    // Workouts switched off: none added. Switched back on: the ones from while it was off too.
+    let w = FakeSheet()
+    let wsrc = source { $0.workoutDays = [day("2020-01-05"), day("2026-09-29")] }
+    _ = await drive(w, wsrc) { $0.saveWorkouts = false }
+    check(w.workouts.isEmpty, "workouts_off_adds_none")
+    let wc = await drive(w, wsrc) { $0.workoutsCatchUp = true }
+    check(wc.result?.workoutsCaughtUp == true, "workouts_catch_up_reported_done")
+    check(w.workouts.count == 2 && w.workouts.first?.first == "2020-01-05", "workouts_catch_up_adds_older")
+    _ = await drive(w, wsrc) { _ in }
+    check(w.workouts.count == 2, "workouts_merge_never_duplicates")
 }

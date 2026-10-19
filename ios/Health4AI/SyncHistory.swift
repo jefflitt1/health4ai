@@ -200,3 +200,21 @@ final class SyncHistoryStore: @unchecked Sendable {
     }
     #endif
 }
+
+/// The count keys a Google Sheets pass records, and how Sync History shows them. Kept outside
+/// H4A_SHEETS so an entry already on the device still reads correctly in a build without it.
+enum SheetsCountLines {
+    static let days = "Days written to your sheet"
+    static let workouts = "Workouts added"
+    static let sleepRecords = "Sleep records added"
+
+    /// One line per count, in a fixed order; nil for an entry that is not from a Sheets pass.
+    static func lines(_ counts: [String: Int]) -> [String]? {
+        guard let days = counts[Self.days] else { return nil }
+        func line(_ n: Int, _ one: String, _ many: String) -> String { "\(n.formatted()) \(n == 1 ? one : many)" }
+        var out = [line(days, "day written", "days written")]
+        if let n = counts[workouts], n > 0 { out.append(line(n, "workout added", "workouts added")) }
+        if let n = counts[sleepRecords], n > 0 { out.append(line(n, "sleep record added", "sleep records added")) }
+        return out
+    }
+}

@@ -68,6 +68,49 @@ enum SleepMath {
         if let cur = current { total += cur.duration }
         return total
     }
+
+    /// The night a sleep record belongs to: the date of the noon-to-noon window it starts in
+    /// (`window(for:)`), so the Sleep stages tab and the Daily tab's Sleep column agree.
+    static func night(for start: Date, calendar: Calendar) -> String {
+        DayKey.string(for: calendar.date(byAdding: .hour, value: 12, to: start)!, calendar: calendar)
+    }
+}
+
+// MARK: - Sleep stages tab
+
+enum SleepStageLayout {
+    static let header = ["Night", "Stage", "Start", "End", "Duration (min)", "Source", "Record ID"]
+    /// Column of the record ID, which is how a pass avoids writing a record twice.
+    static let idColumn = "G"
+    static let idIndex = 6
+
+    /// HKCategoryValueSleepAnalysis raw values (stable since iOS 16), named the way the
+    /// Health app names them. Before iOS 16 a Watch recorded only "asleep", which has no
+    /// stage: said so, rather than left looking like a gap.
+    static func stage(rawValue: Int) -> String {
+        switch rawValue {
+        case 0: return "In bed"
+        case 1: return "Asleep (no stage)"
+        case 2: return "Awake"
+        case 3: return "Core"
+        case 4: return "Deep"
+        case 5: return "REM"
+        default: return "Other"
+        }
+    }
+
+    /// The first sheet row (1-based, header is row 1) whose Night is on or after `key`. A
+    /// pass only needs the record IDs from there down: anything it re-reads from HealthKit
+    /// starts on or after that night. Rows are appended roughly in night order, but a late
+    /// record can land below a newer night; it is still below this row, so it is still seen.
+    /// Text a person typed into the column is skipped.
+    static func firstRow(nights: [String], onOrAfter key: String) -> Int? {
+        for (i, raw) in nights.enumerated() {
+            let night = raw.trimmingCharacters(in: .whitespaces)
+            if DateKeys.isKey(night), night >= key { return i + 2 }
+        }
+        return nil
+    }
 }
 
 // MARK: - Day keys

@@ -56,6 +56,17 @@ check(SleepMath.unionDuration([], clippedTo: w) == 0, "sleep_empty")
 let dst = SleepMath.window(for: at("2026-11-01T09:00:00-05:00"), calendar: ny)
 check(hours(dst.duration) == 25.0, "sleep_window_dst_fall_back")
 
+// A sleep record's night is the noon-to-noon window it starts in (the wake-up date).
+check(SleepMath.night(for: at("2026-09-27T23:00:00-04:00"), calendar: ny) == "2026-09-28"
+      && SleepMath.night(for: at("2026-09-27T13:00:00-04:00"), calendar: ny) == "2026-09-28"
+      && SleepMath.night(for: at("2026-09-27T11:00:00-04:00"), calendar: ny) == "2026-09-27", "sleep_night_noon_to_noon")
+check((0...5).map { SleepStageLayout.stage(rawValue: $0) } == ["In bed", "Asleep (no stage)", "Awake", "Core", "Deep", "REM"]
+      && SleepStageLayout.stage(rawValue: 99) == "Other", "sleep_stage_names")
+// Where a pass starts reading record IDs: the first row on or after the night, skipping typed text.
+check(SleepStageLayout.firstRow(nights: ["2026-07-01", "my notes", "2026-09-01", "2026-08-15"], onOrAfter: "2026-08-01") == 4
+      && SleepStageLayout.firstRow(nights: ["2026-07-01"], onOrAfter: "2026-08-01") == nil
+      && SleepStageLayout.firstRow(nights: [], onOrAfter: "2026-08-01") == nil, "sleep_tail_first_row")
+
 // Day keys and day stepping across DST.
 check(DayKey.string(for: at("2026-09-28T23:30:00-04:00"), calendar: ny) == "2026-09-28", "daykey_local_late_evening")
 let days = DayKey.days(from: at("2026-10-31T12:00:00-04:00"), through: at("2026-11-02T12:00:00-05:00"), calendar: ny)

@@ -24,6 +24,8 @@ struct SheetsDestinationState: Codable, Equatable {
     var rebuildNotBefore: Date?
     /// iOS 27 limited-history cutoff ("YYYY-MM-DD") seen on the last pass, nil for full access.
     var accessLimitDay: String?
+    /// Last night written to the Sleep stages tab (SheetsProgress.sleepStagesThrough).
+    var sleepStagesThrough: String?
 
     private static let key = "hkb.sheetsDestination"
 
@@ -37,6 +39,34 @@ struct SheetsDestinationState: Codable, Equatable {
     }
 
     static func clear() { UserDefaults.standard.removeObject(forKey: key) }
+}
+
+/// What the person chose to save ("What to save" on the Connection tab). Kept apart from
+/// SheetsDestinationState, which a running pass rewrites whole: a choice made mid-pass would
+/// otherwise be lost. Survives Disconnect (it is a preference, not sheet state); Erase Local
+/// Data removes it with the other `hkb.` keys. The Daily summary is not a choice.
+struct SheetsSaveChoices: Codable, Equatable {
+    var workouts = true
+    var sleepStages = false
+    /// Set when Workouts is switched back on; cleared after a pass merges every workout.
+    var workoutsCatchUp = false
+
+    init() {}
+    /// Missing keys keep their defaults, so a choice added later does not reset the others.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        workouts = try c.decodeIfPresent(Bool.self, forKey: .workouts) ?? true
+        sleepStages = try c.decodeIfPresent(Bool.self, forKey: .sleepStages) ?? false
+        workoutsCatchUp = try c.decodeIfPresent(Bool.self, forKey: .workoutsCatchUp) ?? false
+    }
+
+    private static let key = "hkb.sheetsSaveChoices"
+    static func load() -> SheetsSaveChoices {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let choices = try? JSONDecoder().decode(SheetsSaveChoices.self, from: data) else { return SheetsSaveChoices() }
+        return choices
+    }
+    func save() { UserDefaults.standard.set(try? JSONEncoder().encode(self), forKey: Self.key) }
 }
 
 /// Something only the person can fix. Each kind carries its own message and action so the
@@ -121,6 +151,9 @@ final class SheetsSink: @unchecked Sendable {
                 Self.logger.notice("history access widened from \(state.accessLimitDay ?? "", privacy: .public) to \(limitDay ?? "all", privacy: .public): rebuilding")
                 state.historyVersion = nil
                 state.rebuildNotBefore = nil
+                // The Sleep stages tab was filled under the old cutoff too: sweep it again from
+                // the oldest record (the record-ID check keeps what is already there).
+                state.sleepStagesThrough = nil
             }
             if widened || state.accessLimitDay != limitDay {
                 state.accessLimitDay = limitDay
@@ -135,8 +168,17 @@ final class SheetsSink: @unchecked Sendable {
                                   calendar: calendar)
         let about = SheetLayout.about(state.units)
         core.rebuildExtras = [("\(SheetLayout.aboutTab)!A1:B\(about.count)", about)]
+        let choices = SheetsSaveChoices.load()
+        core.saveWorkouts = choices.workouts
+        core.saveSleepStages = choices.sleepStages
+        core.workoutsCatchUp = choices.workoutsCatchUp
+        core.latestChoices = {
+            let c = SheetsSaveChoices.load()
+            return SaveChoiceFlags(workouts: c.workouts, sleepStages: c.sleepStages, workoutsCatchUp: c.workoutsCatchUp)
+        }
         var progress = SheetsProgress(lastWrittenDay: state.lastWrittenDay, historyVersion: state.historyVersion,
-                                      rebuildNotBefore: state.rebuildNotBefore)
+                                      rebuildNotBefore: state.rebuildNotBefore,
+                                      sleepStagesThrough: state.sleepStagesThrough)
         Self.logger.info("pass start lastWrittenDay \(progress.lastWrittenDay ?? "nil", privacy: .public) rebuildAllowed \(allowRebuild, privacy: .public)")
         let rebuildDue = allowRebuild && HistoryVersion.needsRebuild(lastWrittenDay: progress.lastWrittenDay,
                                                                      historyVersion: progress.historyVersion)
@@ -148,8 +190,15 @@ final class SheetsSink: @unchecked Sendable {
                 state.lastWrittenDay = saved.lastWrittenDay
                 state.historyVersion = saved.historyVersion
                 state.rebuildNotBefore = saved.rebuildNotBefore
+                state.sleepStagesThrough = saved.sleepStagesThrough
                 state.save()
                 Self.logger.info("progress saved through \(saved.lastWrittenDay ?? "", privacy: .private)")
+            }
+            if result.workoutsCaughtUp {
+                // Re-read: the person may have changed another choice while the pass ran.
+                var latest = SheetsSaveChoices.load()
+                latest.workoutsCatchUp = false
+                latest.save()
             }
             if result.rebuildSkipped {
                 // Deliberately not an error or attention state (no new UI): the incremental
@@ -211,6 +260,10 @@ private struct BoundHistorySource: SheetsHistorySource {
     }
     func workoutRows(from: Date, to: Date) async throws -> [[String]] {
         try await builder.workoutRows(from: from, to: to, units: units)
+    }
+    func oldestSleepRecord() async throws -> Date? { try await builder.oldestSleepRecord() }
+    func sleepStageRows(nights from: Date, through: Date) async throws -> [[String]] {
+        try await builder.sleepStageRows(nights: from, through: through)
     }
 }
 #endif

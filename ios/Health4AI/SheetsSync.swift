@@ -36,14 +36,31 @@ enum SheetTabs {
     static let daily = "Daily"
     static let workouts = "Workouts"
     static let about = "About"
+    static let sleepStages = "Sleep stages"
+
+    /// "'Sleep stages'!A2:A". A tab name with a space must be quoted in A1 notation; the
+    /// quotes are harmless on the others, but they are left bare to keep existing ranges as-is.
+    static func range(_ tab: String, _ cells: String) -> String {
+        tab.contains(" ") ? "'\(tab)'!\(cells)" : "\(tab)!\(cells)"
+    }
 }
 
 struct SheetsPassResult {
     var daysWritten: Int
     var workoutsAdded: Int
+    var sleepStagesAdded = 0
+    /// Every workout was merged, so the person's "catch up" request is done.
+    var workoutsCaughtUp = false
     /// A due history rebuild was not run because it would have destroyed rows (Health access
     /// for the older history is off). The incremental work still succeeded.
     var rebuildSkipped = false
+}
+
+/// What to save, as the sync core sees it (SheetsSaveChoices without the storage).
+struct SaveChoiceFlags {
+    var workouts: Bool
+    var sleepStages: Bool
+    var workoutsCatchUp: Bool
 }
 
 /// The two fields of the saved sheet state that sequencing reads and advances.
@@ -52,6 +69,10 @@ struct SheetsProgress: Equatable {
     var historyVersion: Int?
     /// No rebuild attempt before this time (set when one fails or is refused).
     var rebuildNotBefore: Date?
+    /// Last night fully written to the Sleep stages tab; nil before its first sweep. Kept
+    /// apart from `lastWrittenDay` because the tab can be switched on long after the sheet
+    /// was made, and only advances while it is on, so switching it back on fills the gap.
+    var sleepStagesThrough: String?
     /// Set (not persisted) when this pass attempted a history rebuild and it threw, so the
     /// caller can tell a failed rebuild from an incremental failure after a refusal.
     var rebuildFailed = false
@@ -64,6 +85,9 @@ protocol SheetsAPI {
     func append(spreadsheetId: String, range: String, rows: [[String]]) async throws
     func clear(spreadsheetId: String, ranges: [String]) async throws
     func ensureRows(spreadsheetId: String, tab: String, needed: Int, headroom: Int) async throws -> Int
+    /// Adds the tab (with a frozen header row) if the sheet has none by that name. True when
+    /// it was added, so the caller writes the header.
+    func ensureTab(spreadsheetId: String, title: String) async throws -> Bool
 }
 
 /// Where the rows come from (HealthKit, with the sheet's units already bound).
@@ -71,6 +95,11 @@ protocol SheetsHistorySource {
     func earliestDataDay(now: Date) async throws -> Date
     func dailyRows(from: Date, through: Date) async throws -> [[String]]
     func workoutRows(from: Date, to: Date) async throws -> [[String]]
+    /// Start of the oldest sleep record, nil when there is none.
+    func oldestSleepRecord() async throws -> Date?
+    /// Sleep stages tab rows for the nights `from` through `through` (by `SleepMath.night`),
+    /// each record once, ordered by start.
+    func sleepStageRows(nights from: Date, through: Date) async throws -> [[String]]
 }
 
 struct SheetsSyncCore {
@@ -84,12 +113,111 @@ struct SheetsSyncCore {
     let calendar: Calendar
     /// Rewritten with a rebuild (the About tab's current text).
     var rebuildExtras: [(range: String, rows: [[String]])] = []
+    /// What to save (the person's choices). The Daily tab is always written: its column A is
+    /// how a pass knows where the sheet is up to.
+    var saveWorkouts = true
+    var saveSleepStages = false
+    /// Workouts were just switched back on: merge every workout, not only the recent days,
+    /// so the ones recorded while it was off are not left out.
+    var workoutsCatchUp = false
+    /// The choices as saved right now, read after the Daily part of the pass.
+    var latestChoices: (() -> SaveChoiceFlags)?
+    /// Rows per append to the Sleep stages tab. Ten years of nights is ~100k rows; one
+    /// request that size is slow and fragile on a phone connection.
+    static let appendChunkRows = 2000
 
     /// One pass. `allowRebuild` is false in the background: a rebuild is ~20 chunks of
     /// HealthKit queries and a single write, which a background window cannot be trusted to
     /// finish, and a failure must not stall the ordinary incremental updates.
     func run(spreadsheetId id: String, progress: inout SheetsProgress, allowRebuild: Bool,
              now: Date, persist: (SheetsProgress) -> Void) async throws -> SheetsPassResult {
+        var result = try await syncDaily(spreadsheetId: id, progress: &progress, allowRebuild: allowRebuild,
+                                         now: now, persist: persist)
+        let today = calendar.startOfDay(for: now)
+        // Re-read now: a choice switched on while the Daily part ran (often a long first sweep)
+        // is acted on in this pass, because the switch's own sync is skipped as in-flight.
+        let latest = latestChoices?() ?? SaveChoiceFlags(workouts: saveWorkouts, sleepStages: saveSleepStages,
+                                                         workoutsCatchUp: workoutsCatchUp)
+        if latest.workouts && latest.workoutsCatchUp {
+            result.workoutsAdded += try await addWorkouts(id: id, from: Self.historyFloor(today, calendar: calendar), today: today)
+            result.workoutsCaughtUp = true
+        }
+        if latest.sleepStages {
+            result.sleepStagesAdded = try await syncSleepStages(id: id, progress: &progress, today: today, persist: persist)
+        }
+        return result
+    }
+
+    /// The oldest day any sweep goes back to, so a first sync always finishes.
+    static func historyFloor(_ today: Date, calendar: Calendar) -> Date {
+        calendar.date(byAdding: .year, value: -10, to: today)!
+    }
+
+    /// Appends sleep records the tab does not hold yet, from the night after the last one
+    /// written (less the overlap, for a Watch or ring that syncs late) through last night,
+    /// saving progress per chunk. Never clears or overwrites a row, like Workouts.
+    private func syncSleepStages(id: String, progress: inout SheetsProgress, today: Date,
+                                 persist: (SheetsProgress) -> Void) async throws -> Int {
+        let tab = SheetTabs.sleepStages
+        // New tab, or a person deleted it: start it from the beginning.
+        if try await api.ensureTab(spreadsheetId: id, title: tab) { progress.sleepStagesThrough = nil }
+        if progress.sleepStagesThrough == nil {
+            // Written on every sweep from the beginning, not only when the tab is added: a pass
+            // cut off between adding the tab and this write would otherwise leave no header,
+            // and every row would then sit one row above where the ID check reads.
+            var header = [(range: SheetTabs.range(tab, "A1:G1"), rows: [SleepStageLayout.header])]
+            header += rebuildExtras   // the About text that describes the new tab
+            try await api.writeRanges(spreadsheetId: id, header)
+        }
+        let start: Date
+        if let through = progress.sleepStagesThrough.flatMap({ Self.date(fromKey: $0, calendar: calendar) }) {
+            start = min(calendar.date(byAdding: .day, value: -Self.overlapDays, to: through)!, today)
+        } else {
+            // No sleep recorded at all: nothing to save, and nothing marked done, so history
+            // that arrives later (a new Watch, an import) is still picked up.
+            guard let oldest = try await source.oldestSleepRecord() else { return 0 }
+            let night = Self.date(fromKey: SleepMath.night(for: oldest, calendar: calendar), calendar: calendar)!
+            start = min(max(night, Self.historyFloor(today, calendar: calendar)), today)
+        }
+
+        // Record IDs already in the tab from a day before `start` down (a day early, because a
+        // time-zone change can move a record's night by one).
+        let fromKey = DayKey.string(for: calendar.date(byAdding: .day, value: -1, to: start)!, calendar: calendar)
+        let nights = try await api.readDateColumn(spreadsheetId: id, range: SheetTabs.range(tab, "A2:A"))
+        var known = Set<String>()
+        if let row = SleepStageLayout.firstRow(nights: nights, onOrAfter: fromKey) {
+            let col = SleepStageLayout.idColumn
+            known = Set(try await api.readColumn(spreadsheetId: id, range: SheetTabs.range(tab, "\(col)\(row):\(col)")))
+        }
+
+        var added = 0
+        var chunkStart = start
+        while chunkStart <= today {
+            try Task.checkCancellation()
+            let chunkEnd = min(calendar.date(byAdding: .day, value: Self.chunkDays - 1, to: chunkStart)!, today)
+            let fresh = try await source.sleepStageRows(nights: chunkStart, through: chunkEnd)
+                .filter { !known.contains($0[SleepStageLayout.idIndex]) }
+            var i = 0
+            while i < fresh.count {
+                let slice = Array(fresh[i..<min(i + Self.appendChunkRows, fresh.count)])
+                try await api.append(spreadsheetId: id, range: SheetTabs.range(tab, "A:G"), rows: slice)
+                i += slice.count
+            }
+            known.formUnion(fresh.map { $0[SleepStageLayout.idIndex] })
+            added += fresh.count
+            progress.sleepStagesThrough = DayKey.string(for: chunkEnd, calendar: calendar)
+            persist(progress)
+            chunkStart = calendar.date(byAdding: .day, value: 1, to: chunkEnd)!
+        }
+        return added
+    }
+
+    /// Workouts switched off: none added. Catching up: `run` merges them all afterwards.
+    private var mergeRecentWorkouts: Bool { saveWorkouts && !workoutsCatchUp }
+
+    /// The Daily tab (rebuild or incremental) and, unless switched off, recent workouts.
+    private func syncDaily(spreadsheetId id: String, progress: inout SheetsProgress, allowRebuild: Bool,
+                           now: Date, persist: (SheetsProgress) -> Void) async throws -> SheetsPassResult {
         let today = calendar.startOfDay(for: now)
         var existing = try await api.readDateColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!A2:A")
         var result = SheetsPassResult(daysWritten: 0, workoutsAdded: 0)
@@ -162,7 +290,7 @@ struct SheetsSyncCore {
                                                     needed: existing.count + 1 + days, headroom: Self.gridHeadroom)
                 // Workouts first: a sweep cut short resumes from a recent day and would never
                 // come back for older workouts.
-                result.workoutsAdded += try await addWorkouts(id: id, from: firstDay, today: today)
+                if mergeRecentWorkouts { result.workoutsAdded += try await addWorkouts(id: id, from: firstDay, today: today) }
                 workoutsDone = true
             }
             let plan = UpsertPlan.make(existingDates: existing, rows: rows)
@@ -187,7 +315,7 @@ struct SheetsSyncCore {
             persist(progress)
             chunkStart = calendar.date(byAdding: .day, value: 1, to: chunkEnd)!
         }
-        if !workoutsDone { result.workoutsAdded += try await addWorkouts(id: id, from: start, today: today) }
+        if !workoutsDone && mergeRecentWorkouts { result.workoutsAdded += try await addWorkouts(id: id, from: start, today: today) }
         // The incremental work above is done and saved; the sheet keeps its old history.
         result.rebuildSkipped = rebuildRefused
         return result
@@ -234,7 +362,7 @@ struct SheetsSyncCore {
             try await api.clear(spreadsheetId: id, ranges: stale.map { "\(SheetTabs.daily)!A\($0.lowerBound):P\($0.upperBound)" })
         }
 
-        let added = try await addWorkouts(id: id, from: start, today: today)
+        let added = mergeRecentWorkouts ? try await addWorkouts(id: id, from: start, today: today) : 0
         try await tidyWorkoutNames(id: id)
         return SheetsPassResult(daysWritten: daily.count, workoutsAdded: added)
     }

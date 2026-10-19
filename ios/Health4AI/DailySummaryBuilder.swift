@@ -55,6 +55,7 @@ enum SheetLayout {
          ["Weight / VO2 max", "Most recent reading that day."],
          ["Blank cell", "No data that day. Blank never means zero."],
          ["Workouts tab", "One row per workout. Workout ID is how health4ai avoids duplicates; please leave it."],
+         ["Sleep stages tab", "Added when you choose it in the app. One row per sleep record: each stretch of in bed, awake, core, deep or REM, with its start and end. Night is the date you woke up, the same night as the Daily tab's Sleep column. Records from every device are listed, so a night tracked by a Watch and a ring appears twice; the Daily tab counts it once. \"Asleep (no stage)\" is sleep recorded before stages existed. Record ID is how health4ai avoids duplicates; please leave it."],
          ["Units", "Distance in \(u.distanceLabel), weight in \(u.massLabel), energy in kcal."],
          ["Rebuilds", "After some updates health4ai rebuilds the Daily tab from your Health data: it rewrites the data rows in columns A to P, so anything typed into them is replaced, and dated rows left below the rebuilt table are removed. Keep your own notes in another tab or to the right of column P. The Workouts tab is never cleared; workouts are only added, and their type names tidied."],
          ["Privacy", "Written straight from your device to your Google Drive. It never passes through a health4ai server."]]
@@ -256,6 +257,36 @@ final class DailySummaryBuilder {
                     SheetCell.text(WorkoutName.display(fromIdentifier: w.workoutActivityType.name)), SheetCell.number(w.duration / 60, decimals: 0),
                     SheetCell.number(energy, decimals: 0), SheetCell.number(distance, decimals: 2),
                     SheetCell.text(w.sourceRevision.source.name), w.uuid.uuidString]
+        }
+    }
+
+    /// Start of the oldest sleep record, nil when there is none.
+    func oldestSleepRecord() async throws -> Date? {
+        let d = HKSampleQueryDescriptor(predicates: [.categorySample(type: HKCategoryType(.sleepAnalysis))],
+                                        sortDescriptors: [SortDescriptor(\.startDate, order: .forward)], limit: 1)
+        return try await d.result(for: store).first?.startDate
+    }
+
+    /// Sleep stages tab rows: every sleep record that STARTS in the nights `from` through
+    /// `through`. Strict start, so a record on a chunk boundary is in exactly one chunk.
+    /// Records are not merged: a Watch and a ring logging the same night both appear, with
+    /// their Source, because a person comparing devices wants exactly that.
+    func sleepStageRows(nights from: Date, through: Date) async throws -> [[String]] {
+        let start = SleepMath.window(for: from, calendar: calendar).start
+        let end = SleepMath.window(for: through, calendar: calendar).end
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let d = HKSampleQueryDescriptor(predicates: [.categorySample(type: HKCategoryType(.sleepAnalysis), predicate: predicate)],
+                                        sortDescriptors: [SortDescriptor(\.startDate)])
+        let time = DateFormatter()
+        time.calendar = calendar
+        time.timeZone = calendar.timeZone
+        time.locale = Locale(identifier: "en_US_POSIX")
+        time.dateFormat = "yyyy-MM-dd HH:mm"   // USER_ENTERED reads this as a date-time
+        return try await d.result(for: store).map { s in
+            [SleepMath.night(for: s.startDate, calendar: calendar), SleepStageLayout.stage(rawValue: s.value),
+             time.string(from: s.startDate), time.string(from: s.endDate),
+             SheetCell.number(max(0, s.endDate.timeIntervalSince(s.startDate)) / 60, decimals: 1),
+             SheetCell.text(s.sourceRevision.source.name), s.uuid.uuidString]
         }
     }
 

@@ -93,6 +93,16 @@ private struct SyncHistoryRow: View {
                         Text("\(entry.totalCount.formatted()) record\(entry.totalCount == 1 ? "" : "s") imported")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    } else if let lines = SheetsCountLines.lines(entry.counts) {
+                        // A Sheets pass writes days, workouts and sleep records: unlike things,
+                        // so each is its own line and they are never added up (design.md
+                        // "Honest numbers"). One Text per line keeps each number whole.
+                        ForEach(lines, id: \.self) { line in
+                            Text(line)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
                     } else {
                         let names = entry.counts.keys.sorted()
                         Text("\(entry.totalCount.formatted()) record\(entry.totalCount == 1 ? "" : "s") sent (\(names.joined(separator: ", ")))")

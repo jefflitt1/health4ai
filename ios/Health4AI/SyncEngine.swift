@@ -520,8 +520,9 @@ final class SyncEngine {
                 self.syncState.recordSyncComplete(count: result.daysWritten)
                 self.scheduleBackgroundSync()
             }
-            var counts = ["Days written to your sheet": result.daysWritten]
-            if result.workoutsAdded > 0 { counts["Workouts added"] = result.workoutsAdded }
+            var counts = [SheetsCountLines.days: result.daysWritten]
+            if result.workoutsAdded > 0 { counts[SheetsCountLines.workouts] = result.workoutsAdded }
+            if result.sleepStagesAdded > 0 { counts[SheetsCountLines.sleepRecords] = result.sleepStagesAdded }
             SyncHistoryStore.shared.record(SyncHistoryEntry(trigger: trigger, counts: counts, success: true))
             return .succeeded
         } catch is CancellationError {

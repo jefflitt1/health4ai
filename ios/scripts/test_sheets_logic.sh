@@ -65,9 +65,7 @@ mutate "rebuild never marks version"   'progress.historyVersion = HistoryVersion
 mutate "no up-front grid growth"       'needed: existing.count + 1 + days, headroom: Self.gridHeadroom)' 'needed: 1, headroom: 0)' sync
 mutate "rebuild drops stale tail"      'if !stale.isEmpty {' 'if false {' sync
 mutate "rebuild skips about rewrite"   'if !rebuildExtras.isEmpty { try await api.writeRanges' 'if false { try await api.writeRanges' sync
-mutate "workouts not merged"           'let added = try await addWorkouts(id: id, from: start, today: today)
-        try await tidyWorkoutNames' 'let added = 0
-        try await tidyWorkoutNames' sync
+mutate "workouts not merged"           'let added = mergeRecentWorkouts ? try await addWorkouts(id: id, from: start, today: today) : 0' 'let added = 0' sync
 mutate "raw workout names left"        'try await tidyWorkoutNames(id: id)
         return SheetsPassResult' 'return SheetsPassResult' sync
 mutate "failed rebuild not backed off" 'progress.rebuildNotBefore = now.addingTimeInterval(RebuildBackoff.interval)
@@ -87,5 +85,23 @@ mutate "empty history reported as synced" 'guard chunkEnd < today else {
                     throw SheetsError.noHealthData(checked: Self.checkedRange(start, today, calendar: calendar))
                 }
                 chunkStart' 'chunkStart' sync
+mutate "sleep night midnight-based"    'value: 12, to: start)!, calendar: calendar)' 'value: 0, to: start)!, calendar: calendar)'
+mutate "sleep stage names swapped"     'case 4: return "Deep"' 'case 4: return "REM"'
+mutate "sleep tail reads typed text"   'if DateKeys.isKey(night), night >= key { return i + 2 }' 'if night >= key { return i + 2 }'
+mutate "sleep stages on by default"    'var saveSleepStages = false' 'var saveSleepStages = true' sync
+mutate "sleep records not deduped"     '.filter { !known.contains($0[SleepStageLayout.idIndex]) }' '.filter { _ in true }' sync
+mutate "sleep no overlap re-read"      'value: -Self.overlapDays, to: through)!' 'value: 0, to: through)!' sync
+mutate "sleep progress never advances" 'progress.sleepStagesThrough = DayKey.string(for: chunkEnd, calendar: calendar)' '' sync
+mutate "deleted sleep tab not refilled" 'if try await api.ensureTab(spreadsheetId: id, title: tab) { progress.sleepStagesThrough = nil }' '_ = try await api.ensureTab(spreadsheetId: id, title: tab)' sync
+mutate "sleep header not written"      'try await api.writeRanges(spreadsheetId: id, header)' '' sync
+mutate "header only on a new tab"      'if progress.sleepStagesThrough == nil {
+            // Written' 'if false {
+            // Written' sync
+mutate "late choice ignored"           'let latest = latestChoices?() ?? SaveChoiceFlags' 'let latest = Optional<SaveChoiceFlags>.none ?? SaveChoiceFlags' sync
+mutate "catch-up never reported done"  'result.workoutsCaughtUp = true' '' sync
+mutate "sleep appended in one request" 'static let appendChunkRows = 2000' 'static let appendChunkRows = 1000000' sync
+mutate "empty sleep marked done"       'guard let oldest = try await source.oldestSleepRecord() else { return 0 }' 'guard let oldest = try await source.oldestSleepRecord() else { progress.sleepStagesThrough = DayKey.string(for: today, calendar: calendar); return 0 }' sync
+mutate "workouts off ignored"          'private var mergeRecentWorkouts: Bool { saveWorkouts && !workoutsCatchUp }' 'private var mergeRecentWorkouts: Bool { !workoutsCatchUp }' sync
+mutate "workouts catch-up ignored"     'if latest.workouts && latest.workoutsCatchUp {' 'if false {' sync
 echo "survivors: $survivors"
 [ "$survivors" -eq 0 ]
