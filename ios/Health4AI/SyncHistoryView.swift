@@ -49,8 +49,26 @@ private struct SyncHistoryRow: View {
                 // vertically instead of clipping to `…`; verified at accessibilityXXXL.
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
-            Image(systemName: entry.success ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .foregroundStyle(entry.success ? Color.green : Color.red)
+            statusIcon
+        }
+        .font(.subheadline.weight(.medium))
+    }
+
+    private var statusIcon: some View {
+        Image(systemName: entry.success ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+            .foregroundStyle(entry.success ? Color.green : Color.red)
+            // Same words in both layouts, not the symbol's own name.
+            .accessibilityLabel(entry.success ? "Succeeded" : "Failed")
+    }
+
+    /// Accessibility sizes: the icon on its own line above the title. Beside it, the icon took
+    /// enough width that "Automatic, app closed" broke before its comma (Sasha, 2026-10-19).
+    private var stackedTitle: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            statusIcon
+            Text(entry.trigger.displayName)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .font(.subheadline.weight(.medium))
     }
@@ -68,9 +86,12 @@ private struct SyncHistoryRow: View {
             // remaining sliver character-by-character rather than word-by-word — the exact
             // shape of bug this app has already been bitten by with numeric text (see
 			// HomeView.progressLines). Stacked instead, same as AdaptiveLabeledField.
-            if dynamicTypeSize >= .accessibility1 {
+            // From xxxLarge, not only the accessibility sizes: at xxxLarge the date column still
+            // left "Automatic, app closed" so little room that it broke before the comma
+            // (Sasha, 2026-10-19).
+            if dynamicTypeSize >= .xxxLarge {
                 VStack(alignment: .leading, spacing: 2) {
-                    titleLabel
+                    if dynamicTypeSize.isAccessibilitySize { stackedTitle } else { titleLabel }
                     relativeDate
                 }
             } else {

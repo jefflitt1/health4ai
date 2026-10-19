@@ -239,15 +239,18 @@ struct SheetsConnectSection: View {
 /// is removed. The Daily summary is always on, because its date column is how a sync knows
 /// where the sheet is up to.
 struct SheetsSaveChoicesSection: View {
+    @EnvironmentObject private var syncState: SyncState
     @State private var choices = SheetsSaveChoices.load()
+    /// Switched on here, and the pass that fills it has not finished yet.
+    @State private var filling: [String: UUID] = [:]
 
     var body: some View {
         Section {
             // A fact, not a locked switch: a dimmed switch reads as a third state and VoiceOver
             // gives no reason for it (Sasha, 2026-10-19).
             LabeledContent("Daily summary", value: "Always saved")
-            Toggle("Workouts", isOn: binding(\.workouts))
-            Toggle("Sleep stages", isOn: binding(\.sleepStages))
+            toggle("Workouts", \.workouts)
+            toggle("Sleep stages", \.sleepStages)
         } header: {
             Text("What to save")
         } footer: {
@@ -255,7 +258,35 @@ struct SheetsSaveChoicesSection: View {
         }
     }
 
-    private func binding(_ key: WritableKeyPath<SheetsSaveChoices, Bool>) -> Binding<Bool> {
+    /// Runs a pass for the newly chosen tab. A pass already running may have read the choices
+    /// before this one was made, and a request during it is dropped, so this waits for it to
+    /// end and runs its own (Codex, 2026-10-19). "Filling…" shows only while one is moving
+    /// (design.md: "A spinner is a claim too"); after ten minutes of waiting it gives up and
+    /// leaves the tab to the next sync, which reads the saved choice.
+    private func fill(_ title: String, _ key: WritableKeyPath<SheetsSaveChoices, Bool>) {
+        let run = UUID()
+        filling[title] = run
+        Task { @MainActor in
+            // Only this run's own mark: switched off and on again, a newer run owns it.
+            defer { if filling[title] == run { filling[title] = nil } }
+            for _ in 0..<300 {
+                guard SheetsSaveChoices.load()[keyPath: key] else { return }   // switched off meanwhile
+                if await SyncEngine.shared.runFullPass(trigger: .saveChoice) != .skipped { return }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
+    }
+
+    private func toggle(_ title: String, _ key: WritableKeyPath<SheetsSaveChoices, Bool>) -> some View {
+        Toggle(isOn: binding(title, key)) {
+            Text(title)
+            if filling[title] != nil && syncState.isSyncing && choices[keyPath: key] {
+                Text("Filling…")
+            }
+        }
+    }
+
+    private func binding(_ title: String, _ key: WritableKeyPath<SheetsSaveChoices, Bool>) -> Binding<Bool> {
         Binding(
             get: { choices[keyPath: key] },
             set: { on in
@@ -265,7 +296,7 @@ struct SheetsSaveChoicesSection: View {
                 updated.save()
                 choices = updated
                 // Fill the newly chosen tab now rather than at the next background sync.
-                if on { SyncEngine.shared.performForegroundSync(trigger: .manual) }
+                if on { fill(title, key) } else { filling[title] = nil }
             }
         )
     }

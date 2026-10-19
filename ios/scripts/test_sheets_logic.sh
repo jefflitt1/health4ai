@@ -6,28 +6,32 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/../Health4AI/SheetsLogic.swift"
 SYNC="$HERE/../Health4AI/SheetsSync.swift"
+SLEEP="$HERE/../Health4AI/SheetsSync+SleepStages.swift"
 SYNCTESTS="$HERE/SheetsSyncTests.swift"
 TESTS="$HERE/SheetsLogicTests.swift"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-run() { # $1 = logic file, $2 = sync file. Exit 2 = did not build (never counts as a killed mutant).
+run() { # $1 = logic, $2 = sync, $3 = sleep stages file. Exit 2 = did not build (never a killed mutant).
   # Top-level test code is only legal in a file named main.swift.
   cp "$TESTS" "$WORK/main.swift"
-  cp "$1" "$WORK/SheetsLogic.swift"; cp "$2" "$WORK/SheetsSync.swift"; cp "$SYNCTESTS" "$WORK/SheetsSyncTests.swift"
-  xcrun swiftc -O -D H4A_SHEETS -o "$WORK/t" "$WORK/SheetsLogic.swift" "$WORK/SheetsSync.swift" "$WORK/SheetsSyncTests.swift" "$WORK/main.swift" 2>"$WORK/build.log" || { cat "$WORK/build.log"; return 2; }
+  cp "$1" "$WORK/SheetsLogic.swift"; cp "$2" "$WORK/SheetsSync.swift"; cp "$3" "$WORK/SheetsSleep.swift"
+  cp "$SYNCTESTS" "$WORK/SheetsSyncTests.swift"
+  xcrun swiftc -O -D H4A_SHEETS -o "$WORK/t" "$WORK/SheetsLogic.swift" "$WORK/SheetsSync.swift" "$WORK/SheetsSleep.swift" \
+    "$WORK/SheetsSyncTests.swift" "$WORK/main.swift" 2>"$WORK/build.log" || { cat "$WORK/build.log"; return 2; }
   "$WORK/t"
 }
 
 if [ "${1:-}" != "--mutants" ]; then
-  run "$SRC" "$SYNC"
+  run "$SRC" "$SYNC" "$SLEEP"
   exit $?
 fi
 
 # Each mutant breaks one behaviour; the suite must FAIL on every one.
-mutate() { # name, old, new, [sync] - mutates SheetsLogic.swift, or SheetsSync.swift when a 4th arg is given
+mutate() { # name, old, new, [sync|sleep] - mutates SheetsLogic.swift unless a 4th arg names another file
   local name="$1" old="$2" new="$3" target="$SRC"
-  [ -n "${4:-}" ] && target="$SYNC"
+  [ "${4:-}" = sync ] && target="$SYNC"
+  [ "${4:-}" = sleep ] && target="$SLEEP"
   python3 - "$target" "$WORK/m.swift" "$old" "$new" <<'EOF'
 import sys
 src, out, old, new = sys.argv[1:]
@@ -36,7 +40,11 @@ assert s.count(old) == 1, f"mutant anchor not unique: {old!r}"
 open(out, "w").write(s.replace(old, new))
 EOF
   local rc=0
-  if [ -n "${4:-}" ]; then run "$SRC" "$WORK/m.swift" >/dev/null 2>&1 || rc=$?; else run "$WORK/m.swift" "$SYNC" >/dev/null 2>&1 || rc=$?; fi
+  case "${4:-}" in
+    sync)  run "$SRC" "$WORK/m.swift" "$SLEEP" >/dev/null 2>&1 || rc=$? ;;
+    sleep) run "$SRC" "$SYNC" "$WORK/m.swift" >/dev/null 2>&1 || rc=$? ;;
+    *)     run "$WORK/m.swift" "$SYNC" "$SLEEP" >/dev/null 2>&1 || rc=$? ;;
+  esac
   if [ "$rc" -eq 0 ]; then echo "MUTANT SURVIVED: $name"; survivors=$((survivors+1))
   elif [ "$rc" -eq 2 ]; then echo "MUTANT DID NOT BUILD (invalid mutant, not a kill): $name"; survivors=$((survivors+1))
   else echo "mutant killed: $name"; fi
@@ -89,19 +97,20 @@ mutate "sleep night midnight-based"    'value: 12, to: start)!, calendar: calend
 mutate "sleep stage names swapped"     'case 4: return "Deep"' 'case 4: return "REM"'
 mutate "sleep tail reads typed text"   'if DateKeys.isKey(night), night >= key { return i + 2 }' 'if night >= key { return i + 2 }'
 mutate "sleep stages on by default"    'var saveSleepStages = false' 'var saveSleepStages = true' sync
-mutate "sleep records not deduped"     '.filter { !known.contains($0[SleepStageLayout.idIndex]) }' '.filter { _ in true }' sync
-mutate "sleep no overlap re-read"      'value: -Self.overlapDays, to: through)!' 'value: 0, to: through)!' sync
-mutate "sleep progress never advances" 'progress.sleepStagesThrough = DayKey.string(for: chunkEnd, calendar: calendar)' '' sync
-mutate "deleted sleep tab not refilled" 'if try await api.ensureTab(spreadsheetId: id, title: tab) { progress.sleepStagesThrough = nil }' '_ = try await api.ensureTab(spreadsheetId: id, title: tab)' sync
-mutate "sleep header not written"      'try await api.writeRanges(spreadsheetId: id, header)' '' sync
+mutate "sleep records not deduped"     '.filter { !known.contains($0[SleepStageLayout.idIndex]) }' '.filter { _ in true }' sleep
+mutate "sleep overlap only two nights" 'static let sleepOverlapDays = 7' 'static let sleepOverlapDays = 2' sleep
+mutate "sleep progress never advances" 'progress.sleepStagesThrough = DayKey.string(for: chunkEnd, calendar: calendar)' '' sleep
+mutate "deleted sleep tab not refilled" 'if try await api.ensureTab(spreadsheetId: id, title: tab) { progress.sleepStagesThrough = nil }' '_ = try await api.ensureTab(spreadsheetId: id, title: tab)' sleep
+mutate "sleep header not written"      'try await api.writeRanges(spreadsheetId: id, header)' '' sleep
 mutate "header only on a new tab"      'if progress.sleepStagesThrough == nil {
             // Written' 'if false {
-            // Written' sync
+            // Written' sleep
 mutate "late choice ignored"           'let latest = latestChoices?() ?? SaveChoiceFlags' 'let latest = Optional<SaveChoiceFlags>.none ?? SaveChoiceFlags' sync
 mutate "catch-up never reported done"  'result.workoutsCaughtUp = true' '' sync
-mutate "sleep appended in one request" 'static let appendChunkRows = 2000' 'static let appendChunkRows = 1000000' sync
-mutate "empty sleep marked done"       'guard let oldest = try await source.oldestSleepRecord() else { return 0 }' 'guard let oldest = try await source.oldestSleepRecord() else { progress.sleepStagesThrough = DayKey.string(for: today, calendar: calendar); return 0 }' sync
+mutate "sleep appended in one request" 'static let appendChunkRows = 2000' 'static let appendChunkRows = 1000000' sleep
+mutate "empty sleep marked done"       'guard let oldest = try await source.oldestSleepRecord() else { return 0 }' 'guard let oldest = try await source.oldestSleepRecord() else { progress.sleepStagesThrough = DayKey.string(for: today, calendar: calendar); return 0 }' sleep
 mutate "workouts off ignored"          'private var mergeRecentWorkouts: Bool { saveWorkouts && !workoutsCatchUp }' 'private var mergeRecentWorkouts: Bool { !workoutsCatchUp }' sync
 mutate "workouts catch-up ignored"     'if latest.workouts && latest.workoutsCatchUp {' 'if false {' sync
+mutate "workouts appended in one request" 'try await appendInPieces(id: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)' 'try await api.append(spreadsheetId: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)' sync
 echo "survivors: $survivors"
 [ "$survivors" -eq 0 ]

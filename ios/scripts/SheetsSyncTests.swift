@@ -15,6 +15,7 @@ final class FakeSheet: SheetsAPI {
     var sleepHeader: [String] = []
     var tabs: Set<String> = [SheetTabs.daily, SheetTabs.workouts, SheetTabs.about]
     var sleepAppendSizes: [Int] = []
+    var workoutAppendSizes: [Int] = []
     var failSleepAppendNumber: Int?     // the Nth append to Sleep stages throws
     var ops: [String] = []
     var failOp: String?                 // throws Injected when this op is reached
@@ -84,7 +85,7 @@ final class FakeSheet: SheetsAPI {
             if failSleepAppendNumber == sleepAppendSizes.count { throw Injected() }
             sleep += rows; return
         }
-        try hit("append"); workouts += rows
+        try hit("append"); workoutAppendSizes.append(rows.count); workouts += rows
     }
     func clear(spreadsheetId: String, ranges: [String]) async throws {
         try hit("clear")
@@ -360,9 +361,10 @@ func runSaveChoiceTests(_ check: (Bool, String) -> Void, calendar cal: Calendar,
           && on.sleep.last?.first == "2026-09-30" && s1.result?.sleepStagesAdded == 366, "sleep_stages_first_sweep_complete")
     check(s1.progress.sleepStagesThrough == "2026-09-30" && s1.progress.lastWrittenDay == "2026-09-30", "sleep_stages_progress_saved")
 
-    // The next day: only the new night, and a record that arrived late for the night before.
+    // The next day: only the new night, and a record that reached Health five nights late
+    // (a ring left off the charger), inside the week that is re-read.
     let nextDay = at("2026-10-01T12:00:00-04:00")
-    let s2 = await drive(on, source { $0.sleepNights = nights(from: "2026-06-01", through: "2026-10-01"); $0.lateRecords = [day("2026-09-29")] },
+    let s2 = await drive(on, source { $0.sleepNights = nights(from: "2026-06-01", through: "2026-10-01"); $0.lateRecords = [day("2026-09-26")] },
                          progress: s1.progress, at: nextDay)
     check(s2.error == nil && on.sleep.count == 122 * 3 + 3 + 1 && Set(ids(on)).count == on.sleep.count
           && s2.progress.sleepStagesThrough == "2026-10-01", "sleep_stages_incremental_adds_new_and_late_once")
@@ -422,4 +424,11 @@ func runSaveChoiceTests(_ check: (Bool, String) -> Void, calendar cal: Calendar,
     check(w.workouts.count == 2 && w.workouts.first?.first == "2020-01-05", "workouts_catch_up_adds_older")
     _ = await drive(w, wsrc) { _ in }
     check(w.workouts.count == 2, "workouts_merge_never_duplicates")
+
+    // Years of workouts caught up at once: appended in pieces, each whole, none twice.
+    let many = FakeSheet()
+    let msrc = source { $0.workoutDays = nights(from: "2016-10-01") }   // ~3,650 workouts
+    _ = await drive(many, msrc) { $0.workoutsCatchUp = true }
+    check(many.workouts.count == msrc.workoutDays.count && (many.workoutAppendSizes.max() ?? 0) <= 2000
+          && many.workoutAppendSizes.count >= 2, "workouts_catch_up_appends_in_pieces")
 }

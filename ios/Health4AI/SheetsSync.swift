@@ -122,9 +122,6 @@ struct SheetsSyncCore {
     var workoutsCatchUp = false
     /// The choices as saved right now, read after the Daily part of the pass.
     var latestChoices: (() -> SaveChoiceFlags)?
-    /// Rows per append to the Sleep stages tab. Ten years of nights is ~100k rows; one
-    /// request that size is slow and fragile on a phone connection.
-    static let appendChunkRows = 2000
 
     /// One pass. `allowRebuild` is false in the background: a rebuild is ~20 chunks of
     /// HealthKit queries and a single write, which a background window cannot be trusted to
@@ -151,65 +148,6 @@ struct SheetsSyncCore {
     /// The oldest day any sweep goes back to, so a first sync always finishes.
     static func historyFloor(_ today: Date, calendar: Calendar) -> Date {
         calendar.date(byAdding: .year, value: -10, to: today)!
-    }
-
-    /// Appends sleep records the tab does not hold yet, from the night after the last one
-    /// written (less the overlap, for a Watch or ring that syncs late) through last night,
-    /// saving progress per chunk. Never clears or overwrites a row, like Workouts.
-    private func syncSleepStages(id: String, progress: inout SheetsProgress, today: Date,
-                                 persist: (SheetsProgress) -> Void) async throws -> Int {
-        let tab = SheetTabs.sleepStages
-        // New tab, or a person deleted it: start it from the beginning.
-        if try await api.ensureTab(spreadsheetId: id, title: tab) { progress.sleepStagesThrough = nil }
-        if progress.sleepStagesThrough == nil {
-            // Written on every sweep from the beginning, not only when the tab is added: a pass
-            // cut off between adding the tab and this write would otherwise leave no header,
-            // and every row would then sit one row above where the ID check reads.
-            var header = [(range: SheetTabs.range(tab, "A1:G1"), rows: [SleepStageLayout.header])]
-            header += rebuildExtras   // the About text that describes the new tab
-            try await api.writeRanges(spreadsheetId: id, header)
-        }
-        let start: Date
-        if let through = progress.sleepStagesThrough.flatMap({ Self.date(fromKey: $0, calendar: calendar) }) {
-            start = min(calendar.date(byAdding: .day, value: -Self.overlapDays, to: through)!, today)
-        } else {
-            // No sleep recorded at all: nothing to save, and nothing marked done, so history
-            // that arrives later (a new Watch, an import) is still picked up.
-            guard let oldest = try await source.oldestSleepRecord() else { return 0 }
-            let night = Self.date(fromKey: SleepMath.night(for: oldest, calendar: calendar), calendar: calendar)!
-            start = min(max(night, Self.historyFloor(today, calendar: calendar)), today)
-        }
-
-        // Record IDs already in the tab from a day before `start` down (a day early, because a
-        // time-zone change can move a record's night by one).
-        let fromKey = DayKey.string(for: calendar.date(byAdding: .day, value: -1, to: start)!, calendar: calendar)
-        let nights = try await api.readDateColumn(spreadsheetId: id, range: SheetTabs.range(tab, "A2:A"))
-        var known = Set<String>()
-        if let row = SleepStageLayout.firstRow(nights: nights, onOrAfter: fromKey) {
-            let col = SleepStageLayout.idColumn
-            known = Set(try await api.readColumn(spreadsheetId: id, range: SheetTabs.range(tab, "\(col)\(row):\(col)")))
-        }
-
-        var added = 0
-        var chunkStart = start
-        while chunkStart <= today {
-            try Task.checkCancellation()
-            let chunkEnd = min(calendar.date(byAdding: .day, value: Self.chunkDays - 1, to: chunkStart)!, today)
-            let fresh = try await source.sleepStageRows(nights: chunkStart, through: chunkEnd)
-                .filter { !known.contains($0[SleepStageLayout.idIndex]) }
-            var i = 0
-            while i < fresh.count {
-                let slice = Array(fresh[i..<min(i + Self.appendChunkRows, fresh.count)])
-                try await api.append(spreadsheetId: id, range: SheetTabs.range(tab, "A:G"), rows: slice)
-                i += slice.count
-            }
-            known.formUnion(fresh.map { $0[SleepStageLayout.idIndex] })
-            added += fresh.count
-            progress.sleepStagesThrough = DayKey.string(for: chunkEnd, calendar: calendar)
-            persist(progress)
-            chunkStart = calendar.date(byAdding: .day, value: 1, to: chunkEnd)!
-        }
-        return added
     }
 
     /// Workouts switched off: none added. Catching up: `run` merges them all afterwards.
@@ -385,7 +323,8 @@ struct SheetsSyncCore {
         guard !rows.isEmpty else { return 0 }
         let known = Set(try await api.readColumn(spreadsheetId: id, range: "\(SheetTabs.workouts)!H2:H"))
         let fresh = rows.filter { !known.contains($0[7]) }
-        try await api.append(spreadsheetId: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)
+        // In pieces: a catch-up after years with the switch off can be thousands of workouts.
+        try await appendInPieces(id: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)
         return fresh.count
     }
 

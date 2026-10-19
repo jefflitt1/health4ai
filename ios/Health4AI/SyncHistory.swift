@@ -13,6 +13,8 @@ enum SyncTrigger: String, Codable, CaseIterable {
     case backgroundTask
     case manual
     case importHistory
+    /// The person switched on a tab in "What to save", which fills it straight away.
+    case saveChoice
 
     var displayName: String {
         switch self {
@@ -22,6 +24,7 @@ enum SyncTrigger: String, Codable, CaseIterable {
         case .backgroundTask:     return "Scheduled, app closed"
         case .manual:             return "You tapped Sync Now"
         case .importHistory:     return "History import"
+        case .saveChoice:         return "You chose what to save"
         }
     }
 
@@ -33,6 +36,7 @@ enum SyncTrigger: String, Codable, CaseIterable {
         case .backgroundTask:     return "clock.arrow.circlepath"
         case .manual:             return "hand.tap"
         case .importHistory:     return "tray.and.arrow.down"
+        case .saveChoice:         return "checklist"
         }
     }
 }
@@ -186,8 +190,13 @@ final class SyncHistoryStore: @unchecked Sendable {
                               counts: ["Steps": 42, "Heart Rate": 18, "Active Energy": 6], success: true),
             SyncHistoryEntry(date: now.addingTimeInterval(-3_600), trigger: .foreground,
                               counts: ["Sleep Analysis": 6], success: true),
+            SyncHistoryEntry(date: now.addingTimeInterval(-5_400), trigger: .saveChoice,
+                              counts: [SheetsCountLines.days: 3, SheetsCountLines.workouts: 2,
+                                       SheetsCountLines.sleepRecords: 54_213], success: true),
             SyncHistoryEntry(date: now.addingTimeInterval(-7_300), trigger: .manual,
                               counts: [:], success: true),
+            SyncHistoryEntry(date: now.addingTimeInterval(-20_000), trigger: .backgroundDelivery,
+                              counts: [SheetsCountLines.days: 1], success: true),
             SyncHistoryEntry(date: now.addingTimeInterval(-30_000), trigger: .backgroundDelivery,
                               counts: ["Steps": 210], success: true),
             SyncHistoryEntry(date: now.addingTimeInterval(-90_000), trigger: .backgroundTask,
