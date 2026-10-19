@@ -3,7 +3,7 @@
 import Foundation
 import os
 
-// Minimal Google Sheets API v4 client: the four calls the Sheets destination needs, over
+// Minimal Google Sheets API v4 client: the few calls the Sheets destination needs, over
 // URLSession with the token from GoogleTokenStore. No SDK, same as GoogleAuth.
 
 struct CreatedSpreadsheet: Decodable {
@@ -102,6 +102,28 @@ final class SheetsClient: SheetsAPI, @unchecked Sendable {
             _ = try await send(method: "POST", url: url, json: GridGrowth.appendRowsBody(sheetId: props.sheetId, count: add))
         }
         return props.gridProperties.rowCount + add
+    }
+
+    /// Adds `title` as a new tab with a frozen header row, unless the sheet already has it.
+    /// Checked on every pass that writes the tab, so a tab the person deleted comes back
+    /// instead of every append failing on a range that no longer exists.
+    func ensureTab(spreadsheetId: String, title: String) async throws -> Bool {
+        var comps = URLComponents(url: Self.base.appendingPathComponent(spreadsheetId), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [URLQueryItem(name: "fields", value: "sheets.properties.title")]
+        let data = try await send(method: "GET", url: comps.url!, json: nil)
+        struct Meta: Decodable {
+            struct Sheet: Decodable { struct Props: Decodable { let title: String }; let properties: Props }
+            let sheets: [Sheet]
+        }
+        if try JSONDecoder().decode(Meta.self, from: data).sheets.contains(where: { $0.properties.title.caseInsensitiveCompare(title) == .orderedSame }) {
+            return false
+        }
+        let url = Self.base.appendingPathComponent("\(spreadsheetId):batchUpdate")
+        let body: [String: Any] = ["requests": [["addSheet": ["properties": [
+            "title": title, "gridProperties": ["frozenRowCount": 1]]]]]]
+        _ = try await send(method: "POST", url: url, json: body)
+        Self.logger.info("Added tab \(title, privacy: .public)")
+        return true
     }
 
     /// Clears values (not formatting or the header) from the given A1 ranges.

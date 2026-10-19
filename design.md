@@ -75,6 +75,10 @@ The app reports on data it does not own, so a number on screen is a claim.
   the trustworthy one — and never collapse the pair into one figure.
 - **A spinner is a claim too.** If nothing has moved, stop it. A spinner above the words
   "nothing has moved" is a contradiction, and the spinner wins.
+- **"Filling…" under a switch.** When turning a switch on starts work (a Sheets tab being
+  filled), a secondary line under the Toggle label says so, shown only while a sync that does
+  that work is running. It goes when the sync ends or the switch goes off. Plain `Text`, so the
+  Toggle gives it secondary styling; no spinner, no hand-set colour.
 - **Green means verified, not attempted.** An operation that completed without evidence
   gets attention colour, not success colour.
 

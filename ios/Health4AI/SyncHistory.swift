@@ -13,6 +13,8 @@ enum SyncTrigger: String, Codable, CaseIterable {
     case backgroundTask
     case manual
     case importHistory
+    /// The person switched on a tab in "What to save", which fills it straight away.
+    case saveChoice
 
     var displayName: String {
         switch self {
@@ -22,6 +24,7 @@ enum SyncTrigger: String, Codable, CaseIterable {
         case .backgroundTask:     return "Scheduled, app closed"
         case .manual:             return "You tapped Sync Now"
         case .importHistory:     return "History import"
+        case .saveChoice:         return "You chose what to save"
         }
     }
 
@@ -33,6 +36,7 @@ enum SyncTrigger: String, Codable, CaseIterable {
         case .backgroundTask:     return "clock.arrow.circlepath"
         case .manual:             return "hand.tap"
         case .importHistory:     return "tray.and.arrow.down"
+        case .saveChoice:         return "checklist"
         }
     }
 }
@@ -186,8 +190,13 @@ final class SyncHistoryStore: @unchecked Sendable {
                               counts: ["Steps": 42, "Heart Rate": 18, "Active Energy": 6], success: true),
             SyncHistoryEntry(date: now.addingTimeInterval(-3_600), trigger: .foreground,
                               counts: ["Sleep Analysis": 6], success: true),
+            SyncHistoryEntry(date: now.addingTimeInterval(-5_400), trigger: .saveChoice,
+                              counts: [SheetsCountLines.days: 3, SheetsCountLines.workouts: 2,
+                                       SheetsCountLines.sleepRecords: 54_213], success: true),
             SyncHistoryEntry(date: now.addingTimeInterval(-7_300), trigger: .manual,
                               counts: [:], success: true),
+            SyncHistoryEntry(date: now.addingTimeInterval(-20_000), trigger: .backgroundDelivery,
+                              counts: [SheetsCountLines.days: 1], success: true),
             SyncHistoryEntry(date: now.addingTimeInterval(-30_000), trigger: .backgroundDelivery,
                               counts: ["Steps": 210], success: true),
             SyncHistoryEntry(date: now.addingTimeInterval(-90_000), trigger: .backgroundTask,
@@ -199,4 +208,22 @@ final class SyncHistoryStore: @unchecked Sendable {
         save()
     }
     #endif
+}
+
+/// The count keys a Google Sheets pass records, and how Sync History shows them. Kept outside
+/// H4A_SHEETS so an entry already on the device still reads correctly in a build without it.
+enum SheetsCountLines {
+    static let days = "Days written to your sheet"
+    static let workouts = "Workouts added"
+    static let sleepRecords = "Sleep records added"
+
+    /// One line per count, in a fixed order; nil for an entry that is not from a Sheets pass.
+    static func lines(_ counts: [String: Int]) -> [String]? {
+        guard let days = counts[Self.days] else { return nil }
+        func line(_ n: Int, _ one: String, _ many: String) -> String { "\(n.formatted()) \(n == 1 ? one : many)" }
+        var out = [line(days, "day written", "days written")]
+        if let n = counts[workouts], n > 0 { out.append(line(n, "workout added", "workouts added")) }
+        if let n = counts[sleepRecords], n > 0 { out.append(line(n, "sleep record added", "sleep records added")) }
+        return out
+    }
 }

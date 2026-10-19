@@ -49,8 +49,26 @@ private struct SyncHistoryRow: View {
                 // vertically instead of clipping to `…`; verified at accessibilityXXXL.
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
-            Image(systemName: entry.success ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .foregroundStyle(entry.success ? Color.green : Color.red)
+            statusIcon
+        }
+        .font(.subheadline.weight(.medium))
+    }
+
+    private var statusIcon: some View {
+        Image(systemName: entry.success ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+            .foregroundStyle(entry.success ? Color.green : Color.red)
+            // Same words in both layouts, not the symbol's own name.
+            .accessibilityLabel(entry.success ? "Succeeded" : "Failed")
+    }
+
+    /// Accessibility sizes: the icon on its own line above the title. Beside it, the icon took
+    /// enough width that "Automatic, app closed" broke before its comma (Sasha, 2026-10-19).
+    private var stackedTitle: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            statusIcon
+            Text(entry.trigger.displayName)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .font(.subheadline.weight(.medium))
     }
@@ -68,9 +86,12 @@ private struct SyncHistoryRow: View {
             // remaining sliver character-by-character rather than word-by-word — the exact
             // shape of bug this app has already been bitten by with numeric text (see
 			// HomeView.progressLines). Stacked instead, same as AdaptiveLabeledField.
-            if dynamicTypeSize >= .accessibility1 {
+            // From xxxLarge, not only the accessibility sizes: at xxxLarge the date column still
+            // left "Automatic, app closed" so little room that it broke before the comma
+            // (Sasha, 2026-10-19).
+            if dynamicTypeSize >= .xxxLarge {
                 VStack(alignment: .leading, spacing: 2) {
-                    titleLabel
+                    if dynamicTypeSize.isAccessibilitySize { stackedTitle } else { titleLabel }
                     relativeDate
                 }
             } else {
@@ -93,6 +114,16 @@ private struct SyncHistoryRow: View {
                         Text("\(entry.totalCount.formatted()) record\(entry.totalCount == 1 ? "" : "s") imported")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    } else if let lines = SheetsCountLines.lines(entry.counts) {
+                        // A Sheets pass writes days, workouts and sleep records: unlike things,
+                        // so each is its own line and they are never added up (design.md
+                        // "Honest numbers"). One Text per line keeps each number whole.
+                        ForEach(lines, id: \.self) { line in
+                            Text(line)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
                     } else {
                         let names = entry.counts.keys.sorted()
                         Text("\(entry.totalCount.formatted()) record\(entry.totalCount == 1 ? "" : "s") sent (\(names.joined(separator: ", ")))")

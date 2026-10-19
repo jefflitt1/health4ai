@@ -64,6 +64,7 @@ struct ContentView: View {
         // At accessibility sizes the Sheets section sits below the fold of the full
         // Connection screen, and simctl cannot scroll; this shows the section on its own.
         if args.contains("-h4aiScreenshotSheetsSection") { return AnyView(List { SheetsConnectSection() }) }
+        if args.contains("-h4aiScreenshotSaveChoices") { return AnyView(List { SheetsSaveChoicesSection() }) }
         #endif
         return nil
     }
