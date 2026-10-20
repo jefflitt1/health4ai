@@ -137,6 +137,7 @@ struct FakeSource: SheetsHistorySource {
     var recordsPerNight = 3
     var lateRecords: [Date] = []        // nights that gained one more record after a sync
     var unreadStepDays: [Date] = []     // days HealthKit refused to read steps for (RangeSplit)
+    var duringDailyRead: (() -> Void)?  // the person edits the sheet while HealthKit is read
 
     func earliestDataDay(now: Date) async throws -> Date {
         counter.n += 1
@@ -144,6 +145,7 @@ struct FakeSource: SheetsHistorySource {
         return earliest
     }
     func dailyRows(from: Date, through: Date) async throws -> DailyChunk {
+        duringDailyRead?()
         if let f = failDailyFrom, from >= f { throw Injected() }
         if let c = cancelDailyFrom, from >= c { throw CancellationError() }
         let days = DayKey.days(from: from, through: through, calendar: calendar)
@@ -355,6 +357,15 @@ func runSyncTests(_ check: (Bool, String) -> Void, calendar cal: Calendar, at: (
     let newGap = oldSheet()
     _ = await drive(newGap, source { $0.unreadStepDays = [day("2016-09-30")] })
     check(newGap.daily.first { $0.first == "2016-09-30" }?[1] == "", "rebuild_refused_unheld_stays_blank")
+    // A row the person inserts while HealthKit is read shifts every row down: the held value
+    // still comes from the same date, not from the row that now sits at its old position.
+    let edited = oldSheet()
+    edited.daily[edited.daily.firstIndex { $0.first == "2026-09-29" }!][1] = "777"
+    _ = await drive(edited, source {
+        $0.unreadStepDays = [day("2026-09-29")]
+        $0.duringDailyRead = { if edited.daily.first?.first != "note" { edited.daily.insert(["note", "5"] + Array(repeating: "", count: 14), at: 0) } }
+    })
+    check(edited.daily.first { $0.first == "2026-09-29" }?[1] == "777", "rebuild_held_value_survives_mid_pass_edit")
     check(u1.progress.unreadDays == ["2025-03-05", "2025-03-06"], "unread_days_saved_for_retry")
 
     // Next pass, HealthKit answers again: the blank rows are filled in place and the notice clears.

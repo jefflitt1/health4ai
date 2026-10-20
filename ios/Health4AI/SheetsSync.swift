@@ -243,7 +243,7 @@ struct SheetsSyncCore {
                     progress.rebuildNotBefore = now.addingTimeInterval(RebuildBackoff.interval)
                     persist(progress)
                 } else {
-                    let rebuilt = try await rebuild(id: id, from: start, today: today, existing: existing)
+                    let rebuilt = try await rebuild(id: id, from: start, today: today)
                     progress.lastWrittenDay = DayKey.string(for: today, calendar: calendar)
                     progress.historyVersion = HistoryVersion.current
                     progress.rebuildNotBefore = nil
@@ -377,7 +377,7 @@ struct SheetsSyncCore {
     /// NEVER cleared or overwritten, because a denied or empty HealthKit read returns no
     /// workouts and would otherwise erase the person's history; they are merged by ID, and
     /// raw "HKWorkoutActivityType..." names from builds 54-55 are tidied in place.
-    private func rebuild(id: String, from start: Date, today: Date, existing: [String]) async throws -> SheetsPassResult {
+    private func rebuild(id: String, from start: Date, today: Date) async throws -> SheetsPassResult {
         var daily: [[String]] = []
         var unread = SheetsPassResult(daysWritten: 0, workoutsAdded: 0)
         var refused: [String: Set<Int>] = [:]
@@ -395,7 +395,7 @@ struct SheetsSyncCore {
             chunkStart = calendar.date(byAdding: .day, value: 1, to: chunkEnd)!
         }
         guard Self.hasData(daily) else { throw SheetsError.noHealthData(checked: Self.checkedRange(start, today, calendar: calendar)) }
-        try await keepHeldValues(id: id, existing: existing, refused: refused, in: &daily)
+        try await keepHeldValues(id: id, refused: refused, in: &daily)
         try Task.checkCancellation()
 
         _ = try await api.ensureRows(spreadsheetId: id, tab: SheetTabs.daily, needed: daily.count + 1, headroom: Self.gridHeadroom)
@@ -425,10 +425,14 @@ struct SheetsSyncCore {
 
     /// A rebuild rewrites whole rows, and rows can move (an earlier start shifts them down), so
     /// a cell HealthKit refused takes the value the sheet already holds for that date, matched
-    /// by date, not position. Read before the sheet is touched; one read per refused column.
-    private func keepHeldValues(id: String, existing: [String], refused: [String: Set<Int>],
+    /// by date, not position. Read before the sheet is touched: the dates, then one read per
+    /// refused column.
+    private func keepHeldValues(id: String, refused: [String: Set<Int>],
                                 in daily: inout [[String]]) async throws {
         guard !refused.isEmpty else { return }
+        // Dates re-read beside the values: the pass-start snapshot predates the HealthKit reads,
+        // and a row the person moved meanwhile would pair one day's value with another's date.
+        let existing = try await api.readDateColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!A2:A")
         var held: [Int: [String: String]] = [:]
         for col in Set(refused.values.joined()).sorted() {
             let letter = DailyColumn.letter(col)
