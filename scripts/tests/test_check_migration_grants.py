@@ -5,6 +5,7 @@ exit codes and the zero-files guard end to end. The two fixture files are the de
 """
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -93,6 +94,19 @@ CASES = {
     "sequence SELECT alone does not satisfy serial": ("create table public.t (id serial primary key);\nalter table public.t enable row level security;\ngrant select, insert on public.t to service_role;\ngrant select on sequence public.t_id_seq to service_role;", {"G005"}),
     "sequence grant revoked again": ("create table public.t (id serial primary key);\nalter table public.t enable row level security;\ngrant select, insert on public.t to service_role;\ngrant usage on sequence public.t_id_seq to service_role;\nrevoke usage on sequence public.t_id_seq from service_role;", {"G005"}),
     "else'..\\' is not an E-string": ("select case when true then 'a' else'C:\\' end;\ncreate table public.t (id int);", {"G001", "G002"}),
+    # --- independent review of #659, L1: relations the first version could not see ---
+    "foreign table without grant (no RLS rule: foreign tables cannot have it)": ("create foreign table public.ft (id int) server s;", {"G001"}),
+    "foreign table with grant": ("create foreign table public.ft (id int) server s;\ngrant select on public.ft to service_role;", set()),
+    "foreign table closed by design": ("-- data-api: none (read only through a definer function)\ncreate foreign table public.ft (id int) server s;", set()),
+    "foreign table if not exists": ("create foreign table if not exists public.ft (id int) server s;", {"G001"}),
+    "foreign table in another schema is not guarded": ("create foreign table remote.ft (id int) server s;", set()),
+    "foreign table moved into public": ("create foreign table remote.ft (id int) server s;\nalter foreign table remote.ft set schema public;", {"G001"}),
+    "top-level unqualified select into is a table": ("select * into t from other;", {"G001", "G002"}),
+    "top-level unqualified select into with rls and grant": ("select * into t from other;\nalter table t enable row level security;\ngrant select on t to service_role;", set()),
+    "top-level unqualified select into follows search_path": ("set search_path to staging;\nselect * into t from other;", set()),
+    "top-level select into temp is not a public relation": ("select * into temp t from other;\nselect * into temporary table u from other;", set()),
+    "select into inside a DO block fills a plpgsql variable": ("do $$ declare t int; begin select count(*) into t from pg_class; end $$;", set()),
+    "select into inside a function body fills a plpgsql variable": ("create function public.f() returns int language plpgsql as $$ declare n int; begin select 1 into n; return n; end $$;\ngrant execute on function public.f() to service_role;", set()),
 }
 
 
@@ -205,6 +219,65 @@ class Cli(unittest.TestCase):
             rc, out = self.run_cli("--root", str(d), "--baseline", str(base), str(old))
             self.assertEqual(rc, 0, out)
             self.assertIn("2 stale baseline line(s)", out)
+
+    def seed(self, d, **files):
+        for name, text in files.items():
+            (d / name).write_text(text)
+        base = d / "baseline.txt"
+        self.assertEqual(self.run_cli("--root", str(d), "--baseline", str(base), "--write-baseline", str(d))[0], 0)
+        return base
+
+    def test_editing_a_baselined_file_ends_its_grandfathering(self):
+        # review of #659, M3: the key was file|relation|rule, so rewriting a baselined file to recreate the same
+        # relation with no grant stayed green. Each entry now carries a hash of the file's content.
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            old = d / "legacy.sql"
+            base = self.seed(d, **{"legacy.sql": "create table public.legacy (id int);\n"})
+            lines = [x for x in base.read_text().splitlines() if not x.startswith("#")]
+            self.assertTrue(lines and all(re.fullmatch(r"legacy\.sql\|public\.legacy\|G00[12]\|[0-9a-f]{12}", x) for x in lines), lines)
+            self.assertEqual(self.run_cli("--root", str(d), "--baseline", str(base), str(d))[0], 0)
+            old.write_text("drop table public.legacy;\ncreate table public.legacy (id int, extra text);\n")
+            rc, out = self.run_cli("--root", str(d), "--baseline", str(base), str(d))
+            self.assertEqual(rc, 1, out)
+            self.assertIn("G001 public.legacy", out)
+            self.assertIn("file changed", out)
+
+    def test_reseeding_an_existing_baseline_never_adds_a_key(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            base = self.seed(d, **{"001_old.sql": "create table public.legacy (id int);\n"})
+            before = base.read_text()
+            reseed = ("--root", str(d), "--baseline", str(base), "--write-baseline")
+            (d / "002_new.sql").write_text("create table public.fresh (id int);\n")
+            rc, out = self.run_cli(*reseed, str(d))
+            self.assertEqual(rc, 2, out)
+            self.assertIn("refusing to grow", out)
+            self.assertEqual(base.read_text(), before)
+            (d / "002_new.sql").unlink()
+            (d / "001_old.sql").write_text("-- reworded\ncreate table public.legacy (id int);\n")  # the hash changes: that is a new key
+            self.assertEqual(self.run_cli(*reseed, str(d))[0], 2)
+            self.assertEqual(self.run_cli(*reseed, "--allow-additions", str(d))[0], 0)  # deliberate, and visible in the diff
+            self.assertNotEqual(base.read_text(), before)
+            (d / "001_old.sql").write_text("create table public.legacy (id int);\nalter table public.legacy enable row level security;\ngrant select on public.legacy to service_role;\n")
+            self.assertEqual(self.run_cli(*reseed, str(d))[0], 0)  # shrinking never needs the flag
+            self.assertEqual([x for x in base.read_text().splitlines() if not x.startswith("#")], [])
+
+    def test_stale_baseline_lines_are_counted_only_under_the_linted_paths(self):
+        # review of #659, M1: linting one registry must not report every other registry's baseline as stale.
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            for sub in ("a", "b"):
+                (d / sub).mkdir()
+                (d / sub / "001.sql").write_text("create table public.t (id int);\n")
+            base = d / "baseline.txt"
+            self.assertEqual(self.run_cli("--root", str(d), "--baseline", str(base), "--write-baseline", str(d))[0], 0)
+            rc, out = self.run_cli("--root", str(d), "--baseline", str(base), str(d / "a"))
+            self.assertEqual(rc, 0, out)
+            self.assertIn("0 stale baseline line(s)", out)
+            (d / "b" / "001.sql").unlink()
+            rc, out = self.run_cli("--root", str(d), "--baseline", str(base), str(d))
+            self.assertIn("2 stale baseline line(s)", out)  # a deleted baselined file is still reported when its directory is linted
 
 
 if __name__ == "__main__":

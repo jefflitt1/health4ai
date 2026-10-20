@@ -6,7 +6,8 @@
 # to supabase-js and PostgREST (service_role included). The grant must ship in the migration that creates
 # the table. Template: scripts/migration-templates/public_table.sql. Rules G001-G005: scripts/check-migration-grants.py.
 # Findings in migrations applied before this check are frozen in scripts/migration-grants-baseline.txt; the
-# baseline only shrinks. Re-seed after fixing: scripts/lint-migration-grants.sh --write-baseline
+# baseline only shrinks, and each entry is bound to a hash of its file: editing a baselined file ends its
+# grandfathering. Re-seed after fixing: scripts/lint-migration-grants.sh --write-baseline (it refuses to add a key unless --allow-additions).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 exec python3 scripts/check-migration-grants.py \

@@ -19,22 +19,25 @@ RULES (per migration file, evaluated on the END state of its GRANT/REVOKE statem
   G005 serial column whose sequence gets no USAGE/UPDATE grant (identity columns need none).
 Warning (never fails): a dynamic CREATE TABLE inside a DO block or function body is not analysed.
 
-A relation counts as created by CREATE TABLE/VIEW (CREATE OR REPLACE VIEW included: the lint cannot
-see whether the view exists, and re-stating a grant is harmless), CREATE TABLE AS, SELECT ... INTO
-schema.t, and ALTER ... SET SCHEMA into a guarded schema; ALTER ... RENAME TO follows the relation.
+A relation counts as created by CREATE TABLE/FOREIGN TABLE/VIEW (CREATE OR REPLACE VIEW included: the
+lint cannot see whether the view exists, and re-stating a grant is harmless), CREATE TABLE AS, a top-level
+SELECT ... INTO [schema.]t (unqualified only outside DO / EXECUTE, where it fills a plpgsql variable) and
+ALTER ... SET SCHEMA into a guarded schema; ALTER ... RENAME TO follows the relation.
 Unqualified names count as `public` unless the file sets search_path (first non-"$user" entry).
 `GRANT ... ON ALL TABLES IN SCHEMA public TO service_role` is accepted as an explicit grant.
 TEMP relations and PARTITION OF children are skipped (a partition is reached through its parent).
 
 KNOWN LIMITS (reviewed 2026-10-20, not detected): `set_config('search_path', ...)`, CREATE SEQUENCE
-and `default nextval('x')` columns, function EXECUTE grants, and ownership/ACL changes made outside
-the file. The baseline key is file|relation|rule, so a NEW statement against an already-baselined
-relation in the same file is not seen (G004 keys carry a statement hash and are not affected).
+and `default nextval('x')` columns, WITH ... SELECT INTO, function EXECUTE grants, and ownership/ACL
+changes made outside the file. A baseline key is file|relation|rule|sha256(file)[:12]: editing a
+baselined file changes the hash, so its findings stop being grandfathered until the entry is re-seeded
+in a reviewed PR (the changed baseline line is the signal). --write-baseline refuses to ADD a key to
+an existing baseline (new finding, or changed file) unless --allow-additions is given.
 In a DO-wrapped migration put `-- data-api: none (...)` / `-- anon-ok: ...` directly above the
 statement INSIDE the block, not above `do $m$`.
 
-USAGE: check-migration-grants.py [--baseline FILE] [--write-baseline] [--schemas public]
-       [--exclude '*/tests/*' ...] PATH...
+USAGE: check-migration-grants.py [--baseline FILE] [--write-baseline [--allow-additions]]
+       [--schemas public] [--exclude '*/tests/*' ...] PATH...
 PATH is a .sql file, a directory (recursive) or a glob. Findings listed in the baseline are
 grandfathered (migrations applied before this check existed); anything else exits 1. Exit 2 =
 usage error, or ANY path argument that matches no .sql file (a misspelled path or glob must not
@@ -49,15 +52,15 @@ PRIVS = TABLE_PRIVS | {"all", "usage", "execute"}
 SEQ_PRIVS = {"usage", "select", "update"}  # nextval() needs USAGE or UPDATE; SELECT alone only reads last_value
 ID = r'(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)'
 QN = rf"{ID}(?:\s*\.\s*{ID})?"
-CREATE = re.compile(rf"^\s*create\s+(?P<m>(?:(?:global\s+|local\s+)?temp(?:orary)?\s+|unlogged\s+|materialized\s+|or\s+replace\s+|recursive\s+)*)(?P<k>table|view)\s+(?:if\s+not\s+exists\s+)?(?P<n>{QN})", re.I)
+CREATE = re.compile(rf"^\s*create\s+(?P<m>(?:(?:global\s+|local\s+)?temp(?:orary)?\s+|unlogged\s+|materialized\s+|or\s+replace\s+|recursive\s+)*)(?P<k>foreign\s+table|table|view)\s+(?:if\s+not\s+exists\s+)?(?P<n>{QN})", re.I)
 GRANT = re.compile(r"^\s*(?P<v>grant|revoke)\s+(?P<go>grant\s+option\s+for\s+)?(?P<p>.+?)\s+on\s+(?P<t>.+?)\s+(?:to|from)\s+(?P<r>.+?)(?:\s+with\s+grant\s+option|\s+cascade|\s+restrict)?\s*$", re.I | re.S)
 ADP = re.compile(r"^\s*alter\s+default\s+privileges\b(?P<b>.*)$", re.I | re.S)
 RLS = re.compile(rf"^\s*alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?(?P<n>{QN})\s+enable\s+row\s+level\s+security", re.I)
 SEARCH = re.compile(r"^\s*set\s+(?:local\s+|session\s+)?search_path\s*(?:to|=)\s*(?P<s>.+)$", re.I | re.S)
 SERIAL = re.compile(rf"(?:^|[(,])\s*(?P<c>{ID})\s+(?:small|big)?serial[248]?\b", re.I)
-MOVE = re.compile(rf"^\s*alter\s+(?P<k>table|view|materialized\s+view)\s+(?:if\s+exists\s+)?(?:only\s+)?(?P<n>{QN})\s+set\s+schema\s+(?P<to>{ID})\s*$", re.I)
-RENAME = re.compile(rf"^\s*alter\s+(?:table|view|materialized\s+view)\s+(?:if\s+exists\s+)?(?:only\s+)?(?P<n>{QN})\s+rename\s+to\s+(?P<to>{ID})\s*$", re.I)
-SELINTO = re.compile(rf"^\s*select\b[^;]*?\binto\s+(?:unlogged\s+)?(?:table\s+)?(?P<n>{ID}\s*\.\s*{ID})(?=\s|$)", re.I | re.S)  # schema-qualified only: plpgsql variables never are
+MOVE = re.compile(rf"^\s*alter\s+(?P<k>table|view|materialized\s+view|foreign\s+table)\s+(?:if\s+exists\s+)?(?:only\s+)?(?P<n>{QN})\s+set\s+schema\s+(?P<to>{ID})\s*$", re.I)
+RENAME = re.compile(rf"^\s*alter\s+(?:table|view|materialized\s+view|foreign\s+table)\s+(?:if\s+exists\s+)?(?:only\s+)?(?P<n>{QN})\s+rename\s+to\s+(?P<to>{ID})\s*$", re.I)
+SELINTO = re.compile(rf"^\s*select\b[^;]*?\binto\s+(?P<tmp>temp(?:orary)?\s+)?(?:unlogged\s+)?(?:table\s+)?(?P<n>{QN})(?=\s|$)", re.I | re.S)  # unqualified counts only at top level: inside DO / EXECUTE it is a plpgsql variable
 NONE = re.compile(r"data-api:\s*none\b[\s(:-]*\S.{2,}", re.I)
 ANON_OK = re.compile(r"anon-ok:\s*\S{3,}", re.I)
 WRAP = re.compile(r"^\s*(?:begin\b|else\b|loop\b|(?:if|elsif|when)\b[^;]*?\bthen\b)\s*", re.I | re.S)
@@ -89,7 +92,7 @@ def seq_name(table, col):
 
 
 def split_sql(text, line=1):
-    """-> (statements [(clean_text, first_line, last_line)], comments {line: text}, code_lines, dynamic_lines).
+    """-> (statements [(clean_text, first_line, last_line, nested)], comments {line: text}, code_lines, dynamic_lines).
 
     The body of a DO block, and the string handed to EXECUTE, is split recursively: some migrations are
     applied as ONE DO block (a tool that takes a single statement), so the DDL lives inside it."""
@@ -104,7 +107,7 @@ def split_sql(text, line=1):
 
     def inner(body):  # statements of a DO body / EXECUTE string, lines offset to this file
         s2, c2, k2, d2 = split_sql(body, line)
-        out.extend(s2)
+        out.extend((t, x, y, True) for t, x, y, _ in s2)  # nested: plpgsql, where `SELECT .. INTO name` fills a variable
         comments.update(c2)
         code.update(k2)
         dyn.extend(d2)
@@ -163,14 +166,14 @@ def split_sql(text, line=1):
             i = stop
         elif c == ";":
             if first is not None:
-                out.append(("".join(buf).strip(), first, line))
+                out.append(("".join(buf).strip(), first, line, False))
             buf, first, i = [], None, i + 1
         else:
             put(c)
             line += c == "\n"
             i += 1
     if first is not None and "".join(buf).strip():
-        out.append(("".join(buf).strip(), first, line))
+        out.append(("".join(buf).strip(), first, line, False))
     return out, comments, code, dyn
 
 
@@ -219,27 +222,28 @@ def analyse(text, schemas):
     def new_rel(kind, a, b, serial=()):
         return dict(kind=kind, line=a, closed=bool(NONE.search(ctx(a, b))), rls=False, g={}, bare=set(), serial=list(serial))
 
-    for s, a, b in stmts:
+    for s, a, b, nested in stmts:
         s = unwrap(s)
         if m := SEARCH.match(s):
             names = [nid(x) for x in re.findall(ID, m.group("s")) if nid(x) != "$user"]
             default = names[0] if names and names[0] != "default" else "public"
         elif m := CREATE.match(s):
-            mods, kind = m.group("m").lower(), m.group("k").lower()
+            mods, kind = m.group("m").lower(), " ".join(m.group("k").lower().split())
             sch, name = qname(m.group("n"), default)
             if "temp" in mods or sch not in schemas or re.match(r"\s*partition\s+of\b", s[m.end():], re.I):
                 continue
             serial = [seq_name(name, nid(c.group("c"))) for c in SERIAL.finditer(s)] if kind == "table" else []
             rels[(sch, name)] = new_rel(kind, a, b, serial)
-        elif m := SELINTO.match(s):  # SELECT ... INTO schema.t creates a table
+        elif m := SELINTO.match(s):  # SELECT ... INTO [schema.]t creates a table (unqualified only outside DO / EXECUTE)
             sch, name = qname(m.group("n"), default)
-            if sch in schemas:
+            if sch in schemas and not m.group("tmp") and (not nested or len(re.findall(ID, m.group("n"))) >= 2):
                 rels[(sch, name)] = new_rel("table", a, b)
         elif m := MOVE.match(s):  # SET SCHEMA keeps the ACL the relation had, so a move into a guarded schema is a create
             src, to = qname(m.group("n"), default), nid(m.group("to"))
             old = rels.pop(src, None)
             if to in schemas:
-                rels[(to, src[1])] = old or new_rel("table" if m.group("k").lower() == "table" else "view", a, b)
+                k = " ".join(m.group("k").lower().split())
+                rels[(to, src[1])] = old or new_rel("view" if "view" in k else k, a, b)
         elif m := RENAME.match(s):
             src = qname(m.group("n"), default)
             if src in rels:
@@ -314,6 +318,8 @@ def main(argv=None):
     ap.add_argument("paths", nargs="+")
     ap.add_argument("--baseline")
     ap.add_argument("--write-baseline", action="store_true")
+    ap.add_argument("--allow-additions", action="store_true",
+                    help="with --write-baseline: also record keys the existing baseline does not hold (new finding, or a baselined file whose content changed)")
     ap.add_argument("--schemas", default="public", help="comma list of schemas whose new relations need grants")
     ap.add_argument("--root", default=".", help="baseline keys are file paths relative to this")
     ap.add_argument("--exclude", action="append", default=[], help="fnmatch pattern on /relative/path (tests, fixtures, rollbacks)")
@@ -324,30 +330,48 @@ def main(argv=None):
     if empty or not files:  # a typo in one registry path must not turn into a silent pass
         print("check-migration-grants: no .sql files matched " + " ".join(empty or a.paths), file=sys.stderr)
         return 2
-    base = set()
-    if a.baseline and os.path.exists(a.baseline) and not a.write_baseline:
-        base = {x.strip() for x in open(a.baseline) if x.strip() and not x.startswith("#")}
+    old = {x.strip() for x in open(a.baseline) if x.strip() and not x.startswith("#")} if a.baseline and os.path.exists(a.baseline) else set()
+    base = set() if a.write_baseline else old
+    loose = {k.rsplit("|", 1)[0] if k.count("|") >= 3 else k for k in base}  # file|relation|rule of every baselined finding
     keys, new, nrel, warn = set(), [], 0, 0
     for f in files:
         rel = os.path.relpath(f, a.root).replace(os.sep, "/")
-        found, dyn, n = analyse(open(f, encoding="utf-8", errors="replace").read(), schemas)
+        data = open(f, "rb").read()
+        digest = hashlib.sha256(data).hexdigest()[:12]
+        found, dyn, n = analyse(data.decode("utf-8", errors="replace"), schemas)
         nrel, warn = nrel + n, warn + len(dyn)
         for ln in dyn:
             print(f"{rel}:{ln}: WARN dynamic CREATE TABLE in a DO/function body is not analysed", file=sys.stderr)
         for line, who, rule, why in found:
-            keys.add(key := f"{rel}|{who}|{rule}")
+            keys.add(key := f"{rel}|{who}|{rule}|{digest}")  # the hash binds the entry to this exact file content
             if key not in base:
+                if key.rsplit("|", 1)[0] in loose:
+                    why = f"{why} [baselined, but the file changed (content hash now {digest}): no longer grandfathered; fix it with a grant, or re-seed the baseline in this PR so the change is reviewed]"
                 new.append((rel, line, rule, who, why))
     if a.write_baseline:
+        added = sorted(keys - old)
+        if a.baseline and os.path.exists(a.baseline) and added and not a.allow_additions:  # the baseline only shrinks
+            print(f"check-migration-grants: refusing to grow {a.baseline}: {len(added)} key(s) are not in it already "
+                  "(a new finding, or a baselined file whose content changed). Fix them with a grant; --allow-additions "
+                  "is for a deliberate, reviewed widening:\n  " + "\n  ".join(added[:10]), file=sys.stderr)
+            return 2
         with open(a.baseline, "w") as fh:
             fh.write("# check-migration-grants baseline: findings in migrations applied before this check existed.\n"
-                     "# Shrink it by fixing the follow-up migration, never by adding lines. key = file|relation|rule\n")
+                     "# Shrink it by fixing the follow-up migration, never by adding lines. key = file|relation|rule|sha256(file)[:12];\n"
+                     "# editing a baselined file changes its hash and fails the lint until the entry is re-seeded in a reviewed PR.\n")
             fh.writelines(k + "\n" for k in sorted(keys))
         print(f"wrote {len(keys)} baseline finding(s) from {len(files)} file(s), {nrel} relation(s), to {a.baseline}")
         return 0
+    roots = [os.path.relpath(p, a.root).replace(os.sep, "/").rstrip("/") for p in a.paths]
+
+    def scoped(k):  # is this baseline line's file under one of the paths being linted?
+        f = k.split("|", 1)[0]
+        return any(r in (".", "") or f == r or f.startswith(r + "/") or fnmatch.fnmatch(f, r) or fnmatch.fnmatch(f, r + "/*") for r in roots)
+
+    stale = {k for k in base - keys if scoped(k)}  # baseline lines under the linted paths that no longer match any finding
     for rel, line, rule, who, why in sorted(new):
         print(f"::error file={rel},line={line}::{rule} {who}: {why}" if os.environ.get("GITHUB_ACTIONS") else f"{rel}:{line}: {rule} {who}: {why}")
-    print(f"check-migration-grants: {len(files)} file(s), {nrel} relation(s) in {','.join(sorted(schemas))}, {len(keys)} finding(s), {len(keys) - len(new)} baselined, {len(new)} NEW, {warn} warning(s), {len(base - keys)} stale baseline line(s)")
+    print(f"check-migration-grants: {len(files)} file(s), {nrel} relation(s) in {','.join(sorted(schemas))}, {len(keys)} finding(s), {len(keys) - len(new)} baselined, {len(new)} NEW, {warn} warning(s), {len(stale)} stale baseline line(s)")
     return 1 if new else 0
 
 
