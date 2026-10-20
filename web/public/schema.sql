@@ -210,6 +210,20 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM anon, aut
 GRANT SELECT, DELETE ON public.healthkit_metrics         TO authenticated;
 GRANT SELECT, DELETE ON public.healthkit_daily_summaries TO authenticated;
 
+-- The ingest function writes with the service role, and the grant has to be spelled out here.
+-- Supabase stopped auto-granting Data API access (anon / authenticated / service_role) on new
+-- `public` tables: new projects first, existing projects from 2026-10-30. Without this line a
+-- freshly bootstrapped project answers every sync with 42501 "permission denied for table
+-- healthkit_metrics". Exactly what each caller does, and nothing more:
+--   * upsert (INSERT .. ON CONFLICT DO UPDATE) in healthkit-ingest: INSERT, UPDATE, and SELECT
+--     for the conflict check;
+--   * health4ai_replace_merged_hours (SECURITY INVOKER, so it runs as this role): DELETE.
+-- The daily-summaries and settings tables get no service_role grant: nothing in this repo
+-- reaches them through the Data API with that key (compaction runs as the table owner through the
+-- Management API SQL endpoint, see scripts/summarize_historical.py). The first caller that needs
+-- one adds a GRANT here, in the same change as the caller.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.healthkit_metrics TO service_role;
+
 CREATE POLICY metrics_own_rows ON public.healthkit_metrics
   FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY metrics_delete_own ON public.healthkit_metrics
@@ -242,6 +256,8 @@ CREATE POLICY settings_update_own ON public.health4ai_user_settings
 --
 -- No SELECT for anon. The legacy table got this right and it is repeated here:
 -- an email list that can be read back with a public key is a harvestable list.
+--
+-- anon-ok: public waitlist form on the landing page; column-scoped INSERT, no SELECT/UPDATE/DELETE
 GRANT INSERT (email, consent_testflight, consent_source)
   ON public.health4ai_waitlist TO anon;
 
