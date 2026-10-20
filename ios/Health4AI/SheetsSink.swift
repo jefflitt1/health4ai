@@ -26,6 +26,8 @@ struct SheetsDestinationState: Codable, Equatable {
     var accessLimitDay: String?
     /// Last night written to the Sleep stages tab (SheetsProgress.sleepStagesThrough).
     var sleepStagesThrough: String?
+    /// Day keys with Daily cells HealthKit refused to read (SheetsProgress.unreadDays).
+    var unreadDays: [String]?
 
     private static let key = "hkb.sheetsDestination"
 
@@ -112,6 +114,7 @@ enum SheetsAttention: Equatable {
 
 final class SheetsSink: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.jglittell.health4ai", category: "SheetsSink")
+    private static let unreadFilled = "HealthKit has now answered for the days it refused; they are filled in."
     /// Days per write on a first sync. Bounds memory for decade-long histories and saves
     /// progress between chunks, so a pass iOS cuts short resumes where it stopped.
 
@@ -178,12 +181,14 @@ final class SheetsSink: @unchecked Sendable {
         }
         var progress = SheetsProgress(lastWrittenDay: state.lastWrittenDay, historyVersion: state.historyVersion,
                                       rebuildNotBefore: state.rebuildNotBefore,
-                                      sleepStagesThrough: state.sleepStagesThrough)
+                                      sleepStagesThrough: state.sleepStagesThrough,
+                                      unreadDays: state.unreadDays ?? [])
         Self.logger.info("pass start lastWrittenDay \(progress.lastWrittenDay ?? "nil", privacy: .public) rebuildAllowed \(allowRebuild, privacy: .public)")
         let rebuildDue = allowRebuild && HistoryVersion.needsRebuild(lastWrittenDay: progress.lastWrittenDay,
                                                                      historyVersion: progress.historyVersion)
         let backedOff = RebuildBackoff.isBlocked(notBefore: progress.rebuildNotBefore, now: now)
         let wasFirstSweep = progress.lastWrittenDay == nil
+        let hadUnread = !progress.unreadDays.isEmpty
         do {
             let result = try await core.run(spreadsheetId: state.spreadsheetId, progress: &progress,
                                       allowRebuild: allowRebuild, now: now) { saved in
@@ -191,6 +196,10 @@ final class SheetsSink: @unchecked Sendable {
                 state.historyVersion = saved.historyVersion
                 state.rebuildNotBefore = saved.rebuildNotBefore
                 state.sleepStagesThrough = saved.sleepStagesThrough
+                // Replaced the moment the refused days are filled, not at the end of the pass:
+                // a later step (workouts, sleep stages) that throws would leave the old notice.
+                if state.unreadDays != nil && saved.unreadDays.isEmpty { HistoryFound.recordOutcome(Self.unreadFilled) }
+                state.unreadDays = saved.unreadDays.isEmpty ? nil : saved.unreadDays
                 state.save()
                 Self.logger.info("progress saved through \(saved.lastWrittenDay ?? "", privacy: .private)")
             }
@@ -200,18 +209,26 @@ final class SheetsSink: @unchecked Sendable {
                 latest.workoutsCatchUp = false
                 latest.save()
             }
+            var outcome: String?
             if result.rebuildSkipped {
                 // Deliberately not an error or attention state (no new UI): the incremental
                 // update succeeded. Logged so a stuck old history can be diagnosed.
                 Self.logger.notice("history rebuild skipped: the sweep start is later than the sheet's first row")
-                HistoryFound.recordOutcome("Rebuild skipped: the history found starts later than the sheet's first row. Retry after \(Self.shortTime(progress.rebuildNotBefore)).")
+                outcome = "Rebuild skipped: the history found starts later than the sheet's first row. Retry after \(Self.shortTime(progress.rebuildNotBefore))."
             } else if wasFirstSweep {
-                HistoryFound.recordOutcome("First sync wrote \(result.daysWritten) days.")
+                outcome = "First sync wrote \(result.daysWritten) days."
             } else if rebuildDue && !backedOff {
-                HistoryFound.recordOutcome("Rebuilt \(result.daysWritten) days.")
+                outcome = "Rebuilt \(result.daysWritten) days."
             } else if rebuildDue && backedOff {
-                HistoryFound.recordOutcome("Rebuild waiting until \(Self.shortTime(progress.rebuildNotBefore)) after an earlier failure.")
+                outcome = "Rebuild waiting until \(Self.shortTime(progress.rebuildNotBefore)) after an earlier failure."
             }
+            if let unread = result.unreadSummary {
+                outcome = [outcome, unread].compactMap { $0 }.joined(separator: " ")
+            } else if hadUnread {
+                // Replace the earlier notice, or it would outlive the blanks it described.
+                outcome = [outcome, Self.unreadFilled].compactMap { $0 }.joined(separator: " ")
+            }
+            if let outcome { HistoryFound.recordOutcome(outcome) }
             return result
         } catch is CancellationError {
             throw CancellationError()
@@ -255,7 +272,7 @@ private struct BoundHistorySource: SheetsHistorySource {
     let builder: DailySummaryBuilder
     let units: SheetUnits
     func earliestDataDay(now: Date) async throws -> Date { try await builder.earliestDataDay(now: now) }
-    func dailyRows(from: Date, through: Date) async throws -> [[String]] {
+    func dailyRows(from: Date, through: Date) async throws -> DailyChunk {
         try await builder.dailyRows(from: from, through: through, units: units)
     }
     func workoutRows(from: Date, to: Date) async throws -> [[String]] {

@@ -349,4 +349,45 @@ enum RebuildBackoff {
     static let interval: TimeInterval = 6 * 3600
     static func isBlocked(notBefore: Date?, now: Date) -> Bool { (notBefore ?? .distantPast) > now }
 }
+
+// MARK: - Splitting a query around days HealthKit refuses
+
+enum RangeSplit {
+    struct Outcome<T> {
+        /// Each piece that was read, with the days it covers (ascending, contiguous).
+        var parts: [(days: [Date], value: T)] = []
+        /// Single days that still failed with a splittable error.
+        var failedDays: [Date] = []
+    }
+
+    /// Runs `query` over `days`. When it throws an error `splittable` accepts, each half is
+    /// retried, down to single days. HealthKit can refuse a statistics collection over a range
+    /// with "Unable to invalidate interval: no data source available" (com.apple.healthkit 3),
+    /// a framework bug Apple has acknowledged without a fix (FB22221658), while a shorter range
+    /// with the same anchor succeeds. Without this, one bad day failed the whole 180-day chunk
+    /// on every pass and the Daily tab never got past it (support report, 2026-10-17).
+    /// Any other error is rethrown, so a locked device or a cancelled task still fails the pass.
+    /// A range refused on every day is NOT rethrown: a one-day retry of a day still refused is
+    /// exactly that case, and throwing there failed every pass again (review, 2026-10-20). Every
+    /// failed day is returned instead, and the caller reports and retries them.
+    static func run<T>(_ days: [Date], splittable: (Error) -> Bool,
+                       _ query: ([Date]) async throws -> T) async throws -> Outcome<T> {
+        var out = Outcome<T>()
+        try await split(days, splittable, query, &out)
+        return out
+    }
+
+    private static func split<T>(_ days: [Date], _ splittable: (Error) -> Bool, _ query: ([Date]) async throws -> T,
+                                 _ out: inout Outcome<T>) async throws {
+        guard !days.isEmpty else { return }
+        do {
+            out.parts.append((days, try await query(days)))
+        } catch let error where splittable(error) {
+            guard days.count > 1 else { out.failedDays.append(days[0]); return }
+            let mid = days.count / 2
+            try await split(Array(days[..<mid]), splittable, query, &out)
+            try await split(Array(days[mid...]), splittable, query, &out)
+        }
+    }
+}
 #endif

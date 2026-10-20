@@ -523,6 +523,7 @@ final class SyncEngine {
             var counts = [SheetsCountLines.days: result.daysWritten]
             if result.workoutsAdded > 0 { counts[SheetsCountLines.workouts] = result.workoutsAdded }
             if result.sleepStagesAdded > 0 { counts[SheetsCountLines.sleepRecords] = result.sleepStagesAdded }
+            if result.unreadDays > 0 { counts[SheetsCountLines.unreadDays] = result.unreadDays }
             SyncHistoryStore.shared.record(SyncHistoryEntry(trigger: trigger, counts: counts, success: true))
             return .succeeded
         } catch is CancellationError {

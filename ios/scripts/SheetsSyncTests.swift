@@ -49,6 +49,11 @@ final class FakeSheet: SheetsAPI {
             try hit("readSleepIds")
             return sleep.dropFirst(p.first - 2).map { $0.count > 6 ? $0[6] : "" }
         }
+        if p.tab == SheetTabs.daily {
+            try hit("readDailyColumn")
+            let c = Int(p.col.asciiValue! - 65)
+            return daily.dropFirst(p.first - 2).map { $0.count > c ? $0[c] : "" }
+        }
         try hit("readWorkoutIds")
         if range.contains("C2") { return workouts.map { $0.count > 2 ? $0[2] : "" } }
         return workouts.map { $0[7] }
@@ -63,6 +68,10 @@ final class FakeSheet: SheetsAPI {
             let p = parse(r.range)
             if let g = grid[p.tab], p.first + r.rows.count - 1 > g { throw SheetsError.http(status: 400, detail: "exceeds grid limits") }
             switch p.tab {
+            case SheetTabs.daily where p.col != "A" || !r.range.contains(":P"):   // a partial row: only those columns change
+                let offset = Int(p.col.asciiValue! - 65), i = p.first - 2
+                var existing = daily[i]; while existing.count < offset + r.rows[0].count { existing.append("") }
+                existing.replaceSubrange(offset..<offset + r.rows[0].count, with: r.rows[0]); daily[i] = existing
             case SheetTabs.daily: place(&daily, r.rows, at: p.first - 2)
             case SheetTabs.workouts: place(&workouts, r.rows, at: p.first - 2, col: p.col)
             case SheetTabs.sleepStages: if p.first == 1 { sleepHeader = r.rows[0] } else { place(&sleep, r.rows, at: p.first - 2) }
@@ -127,18 +136,25 @@ struct FakeSource: SheetsHistorySource {
     var sleepNights: [Date] = []        // nights (wake-up dates) with sleep recorded
     var recordsPerNight = 3
     var lateRecords: [Date] = []        // nights that gained one more record after a sync
+    var unreadStepDays: [Date] = []     // days HealthKit refused to read steps for (RangeSplit)
+    var duringDailyRead: (() -> Void)?  // the person edits the sheet while HealthKit is read
 
     func earliestDataDay(now: Date) async throws -> Date {
         counter.n += 1
         if failEarliest { throw Injected() }
         return earliest
     }
-    func dailyRows(from: Date, through: Date) async throws -> [[String]] {
+    func dailyRows(from: Date, through: Date) async throws -> DailyChunk {
+        duringDailyRead?()
         if let f = failDailyFrom, from >= f { throw Injected() }
         if let c = cancelDailyFrom, from >= c { throw CancellationError() }
-        return DayKey.days(from: from, through: through, calendar: calendar).map { day in
-            [DayKey.string(for: day, calendar: calendar), emptyBefore.map { $0 > day } == true ? "" : "100"] + Array(repeating: "", count: 14)
+        let days = DayKey.days(from: from, through: through, calendar: calendar)
+        let rows = days.map { day in
+            [DayKey.string(for: day, calendar: calendar),
+             emptyBefore.map { $0 > day } == true || unreadStepDays.contains(day) ? "" : "100"] + Array(repeating: "", count: 14)
         }
+        let unread = days.filter { unreadStepDays.contains($0) }.map { DayKey.string(for: $0, calendar: calendar) }
+        return DailyChunk(rows: rows, unread: unread.isEmpty ? [:] : ["Steps": unread])
     }
     func oldestSleepRecord() async throws -> Date? {
         sleepNights.min().map { calendar.date(byAdding: .hour, value: -2, to: $0)! }   // 22:00 the evening before
@@ -316,6 +332,80 @@ func runSyncTests(_ check: (Bool, String) -> Void, calendar cal: Calendar, at: (
                          progress: SheetsProgress(lastWrittenDay: nil, historyVersion: nil))
     check({ if case SheetsError.noHealthData(let checked)? = g2.error { return checked == "2016-09-30 through 2026-09-30 (3653 days)" }; return false }() && none.daily.isEmpty
           && !none.ops.contains("write") && g2.progress.lastWrittenDay == nil && saved.isEmpty, "fresh_sweep_with_no_data_fails_untouched")
+
+    // A day HealthKit refuses to read (support report 2026-10-17: Daily stuck at 2025-03-04 on
+    // every pass): the sweep goes on past it to today, and the pass says which cells are blank.
+    let stuck = FakeSheet()
+    let u1 = await drive(stuck, source { $0.unreadStepDays = [day("2025-03-05"), day("2025-03-06")] },
+                         progress: SheetsProgress(lastWrittenDay: nil, historyVersion: nil))
+    check(u1.error == nil && stuck.daily.last?.first == "2026-09-30" && u1.progress.lastWrittenDay == "2026-09-30"
+          && stuck.daily.contains { $0.first == "2025-03-05" && $0[1] == "" }, "unread_day_does_not_stop_sweep")
+    check(lastResult?.unreadCells == ["Steps": ["2025-03-05", "2025-03-06"]] && lastResult?.unreadDays == 2
+          && lastResult?.unreadSummary?.contains("Steps on 2 days (2025-03-05 to 2025-03-06)") == true, "unread_cells_reported")
+    let rebuiltGap = oldSheet()
+    _ = await drive(rebuiltGap, source { $0.unreadStepDays = [day("2020-02-02")] })
+    check(lastResult?.unreadCells == ["Steps": ["2020-02-02"]] && rebuiltGap.daily.count == 3653, "unread_cells_reported_by_rebuild")
+    // A rebuild refused on a day the sheet already holds keeps that value, matched by date
+    // even when the rebuild starts earlier and every row moves down.
+    let heldRebuild = oldSheet()
+    let heldBefore = heldRebuild.daily.first { $0.first == "2026-09-29" }?[1]
+    _ = await drive(heldRebuild, source { $0.unreadStepDays = [day("2026-09-29")]; $0.earliest = day("2016-09-01") })
+    let heldAfter = heldRebuild.daily.first { $0.first == "2026-09-29" }
+    check(heldBefore == "100" && heldAfter?[1] == "100" && heldRebuild.daily.first?.first == "2016-09-01"
+          && lastResult?.unreadPending == ["2026-09-29"], "rebuild_refused_keeps_held_value")
+    // A refused day the sheet never held stays blank in a rebuild.
+    let newGap = oldSheet()
+    _ = await drive(newGap, source { $0.unreadStepDays = [day("2016-09-30")] })
+    check(newGap.daily.first { $0.first == "2016-09-30" }?[1] == "", "rebuild_refused_unheld_stays_blank")
+    // A row the person inserts while HealthKit is read shifts every row down: the held value
+    // still comes from the same date, not from the row that now sits at its old position.
+    let edited = oldSheet()
+    edited.daily[edited.daily.firstIndex { $0.first == "2026-09-29" }!][1] = "777"
+    _ = await drive(edited, source {
+        $0.unreadStepDays = [day("2026-09-29")]
+        $0.duringDailyRead = { if edited.daily.first?.first != "note" { edited.daily.insert(["note", "5"] + Array(repeating: "", count: 14), at: 0) } }
+    })
+    check(edited.daily.first { $0.first == "2026-09-29" }?[1] == "777", "rebuild_held_value_survives_mid_pass_edit")
+    check(u1.progress.unreadDays == ["2025-03-05", "2025-03-06"], "unread_days_saved_for_retry")
+
+    // Next pass, HealthKit answers again: the blank rows are filled in place and the notice clears.
+    let u2 = await drive(stuck, source(), progress: u1.progress, at: now.addingTimeInterval(86_400))
+    let row0305 = stuck.daily.first { $0.first == "2025-03-05" }
+    check(u2.error == nil && row0305?[1] == "100" && stuck.daily.filter { $0.first == "2025-03-05" }.count == 1
+          && u2.progress.unreadDays.isEmpty && lastResult?.unreadSummary == nil, "unread_days_retried_and_filled")
+    // Still refused: kept, and the notice shows again on this pass.
+    let u3 = await drive(stuck, source { $0.unreadStepDays = [day("2025-03-05"), day("2025-03-06")] },
+                         progress: u1.progress, at: now.addingTimeInterval(86_400))
+    check(u3.progress.unreadDays == ["2025-03-05", "2025-03-06"] && lastResult?.unreadSummary?.contains("2 days have cells HealthKit would not read") == true,
+          "unread_days_kept_while_refused")
+    // A long backlog is retried a bounded slice per pass, oldest first; the rest stay pending.
+    var backlog = u1.progress
+    backlog.unreadDays = DayKey.days(from: day("2024-01-01"), through: day("2024-02-09"), calendar: cal).map { DayKey.string(for: $0, calendar: cal) }
+    let u4 = await drive(stuck, source(), progress: backlog, at: now.addingTimeInterval(86_400))
+    check(u4.progress.unreadDays.count == 40 - SheetsSyncCore.unreadRetriesPerPass && u4.progress.unreadDays.first == "2024-01-31",
+          "unread_backlog_retried_in_bounded_slices")
+
+    // A day that read fine before is refused on a re-read (the overlap): its value is kept,
+    // not blanked, and the day is queued for retry.
+    let kept = oldSheet()
+    let u7 = await drive(kept, source { $0.unreadStepDays = [day("2026-09-29")] }, allowRebuild: false)
+    check(u7.error == nil && kept.daily.first { $0.first == "2026-09-29" }?[1] == "100" && u7.progress.unreadDays == ["2026-09-29"],
+          "refused_reread_keeps_existing_value")
+
+    // A refused day is saved with the progress that moves past it, so a pass that fails in a
+    // later chunk still retries and reports it.
+    let cutShort = FakeSheet()
+    let u6 = await drive(cutShort, source { $0.unreadStepDays = [day("2017-01-10")]; $0.failDailyFrom = day("2019-01-01") },
+                         progress: SheetsProgress(lastWrittenDay: nil, historyVersion: nil))
+    check(u6.error != nil && (saved.last?.lastWrittenDay ?? "") >= "2017-01-10" && saved.last?.unreadDays == ["2017-01-10"],
+          "unread_saved_before_later_chunk_fails")
+
+    // First sweep: a chunk whose only data was refused is written and tracked, not skipped as empty.
+    let refusedOnly = FakeSheet()
+    let u5 = await drive(refusedOnly, source { $0.emptyBefore = day("2019-06-01"); $0.unreadStepDays = [day("2017-01-10")] },
+                         progress: SheetsProgress(lastWrittenDay: nil, historyVersion: nil))
+    check(u5.error == nil && refusedOnly.daily.contains { $0.first == "2017-01-10" } && u5.progress.unreadDays == ["2017-01-10"],
+          "refused_only_chunk_not_skipped")
 
     await runSaveChoiceTests(check, calendar: cal, at: at)
 }
