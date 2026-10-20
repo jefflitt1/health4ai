@@ -242,6 +242,8 @@ MIT licensed. PRs welcome.
 
 Good first areas: additional metric aggregations, multi-user support with JWT/RLS, Android, and more MCP client integration guides.
 
+**SQL changes need explicit grants.** Supabase no longer auto-grants `anon` / `authenticated` / `service_role` access on new `public` tables (existing projects from 2026-10-30), so a table is unreachable through the Data API until its SQL says who may use it. Start from [`scripts/migration-templates/public_table.sql`](scripts/migration-templates/public_table.sql); a table that customers install belongs in `supabase/bootstrap/` (then run `scripts/build_schema_sql.sh`). `scripts/lint-migration-grants.sh` checks `web/public/schema.sql` and the migration folders, and CI fails a table without a grant. Findings in the old numbered migrations are frozen in `scripts/migration-grants-baseline.txt`.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
