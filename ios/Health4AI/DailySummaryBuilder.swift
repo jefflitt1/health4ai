@@ -207,6 +207,7 @@ final class DailySummaryBuilder {
         for (label, stats) in [("Steps", s), ("Distance", di), ("Active energy", en), ("Exercise", ex),
                                ("Flights climbed", fl), ("Resting HR", rhr), ("Avg HR", hr), ("HRV", hv),
                                ("Weight", wt), ("VO2 max", vo)] where !stats.failedDays.isEmpty {
+            assert(DailyColumn.index[label] != nil, "\(label) missing from DailyColumn.index")
             unread[label] = stats.failedDays.map { DayKey.string(for: $0, calendar: calendar) }
         }
 

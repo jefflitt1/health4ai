@@ -114,7 +114,8 @@ mutate "workouts catch-up ignored"     'if latest.workouts && latest.workoutsCat
 mutate "workouts appended in one request" 'try await appendInPieces(id: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)' 'try await api.append(spreadsheetId: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)' sync
 mutate "range refusal not split"       '} catch let error where splittable(error) {' '} catch let error where false && splittable(error) {'
 mutate "split stops at whole range"    'guard days.count > 1 else { out.failedDays.append(days[0]); return }' 'out.failedDays += days; return'
-mutate "all-failed query reads blank"  'if out.parts.isEmpty, let firstError { throw firstError }' 'if false, let firstError { throw firstError }'
+mutate "single refused day thrown"     'guard days.count > 1 else { out.failedDays.append(days[0]); return }' 'guard days.count > 1 else { throw error }'
+mutate "unread not saved per chunk"    'progress.unreadDays = Set(progress.unreadDays).union(chunk.unread.values.joined()).sorted()' '' sync
 mutate "split swallows other errors"   'out.parts.append((days, try await query(days)))' 'if let v = try? await query(days) { out.parts.append((days, v)) } else { out.failedDays += days }'
 mutate "unread cells not reported"     'result.daysWritten += rows.count
             result.addUnread(chunk.unread)' 'result.daysWritten += rows.count' sync
@@ -126,5 +127,11 @@ mutate "retried rows not written"      'if !ranges.isEmpty { try await api.write
 mutate "unreached retries dropped"     '.union(earlier.dropFirst(tried.count))' '' sync
 mutate "retries unbounded"             'static let unreadRetriesPerPass = 30' 'static let unreadRetriesPerPass = 100000' sync
 mutate "refused-only chunk skipped"    'if pendingFirstWrite, !Self.hasData(rows), chunk.unread.isEmpty {' 'if pendingFirstWrite, !Self.hasData(rows) {' sync
+mutate "refused cells blank good data" 'guard !refused.isEmpty else { return' 'guard false else { return' sync
+mutate "rewrite ignores refused cols"  'refused: chunk.refusedColumns(on: $0.values[0]))
+            }
+            if !plan.appends.isEmpty' 'refused: [])
+            }
+            if !plan.appends.isEmpty' sync
 echo "survivors: $survivors"
 [ "$survivors" -eq 0 ]

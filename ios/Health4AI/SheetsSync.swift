@@ -50,6 +50,37 @@ struct DailyChunk {
     var rows: [[String]]
     /// Column label ("Steps") -> the day keys whose cell could not be read.
     var unread: [String: [String]] = [:]
+
+    /// Daily tab columns (0 = A) HealthKit refused for the day `key`.
+    func refusedColumns(on key: String) -> Set<Int> {
+        Set(unread.compactMap { $0.value.contains(key) ? DailyColumn.index[$0.key] : nil })
+    }
+}
+
+enum DailyColumn {
+    /// The Daily column (0 = A, the date) of each label a DailyChunk can report unread.
+    static let index: [String: Int] = [
+        "Steps": 1, "Distance": 2, "Active energy": 3, "Exercise": 4, "Flights climbed": 6,
+        "Resting HR": 7, "Avg HR": 8, "HRV": 9, "Weight": 14, "VO2 max": 15]
+
+    /// Ranges that rewrite an existing Daily row with `values`, leaving out the `refused`
+    /// columns: a refused read is not "no data", so the value already in the sheet is kept
+    /// rather than blanked (the same rule as never clearing Workouts on an empty read).
+    static func rewrite(row: Int, values: [String], refused: Set<Int>) -> [(range: String, rows: [[String]])] {
+        guard !refused.isEmpty else { return [("\(SheetTabs.daily)!A\(row):P\(row)", [values])] }
+        var out: [(range: String, rows: [[String]])] = []
+        var start: Int?
+        for i in 0...values.count {
+            if i < values.count, !refused.contains(i) { if start == nil { start = i }; continue }
+            if let s = start {
+                out.append(("\(SheetTabs.daily)!\(letter(s))\(row):\(letter(i - 1))\(row)", [Array(values[s..<i])]))
+                start = nil
+            }
+        }
+        return out
+    }
+
+    static func letter(_ i: Int) -> String { String(UnicodeScalar(UInt8(65 + i))) }
 }
 
 struct SheetsPassResult {
@@ -273,7 +304,9 @@ struct SheetsSyncCore {
                 workoutsDone = true
             }
             let plan = UpsertPlan.make(existingDates: existing, rows: rows)
-            var ranges = plan.updates.map { (range: "\(SheetTabs.daily)!A\($0.row):P\($0.row)", rows: [$0.values]) }
+            var ranges = plan.updates.flatMap {
+                DailyColumn.rewrite(row: $0.row, values: $0.values, refused: chunk.refusedColumns(on: $0.values[0]))
+            }
             if !plan.appends.isEmpty {
                 let firstRow = existing.count + 2
                 let lastRow = firstRow + plan.appends.count - 1
@@ -289,6 +322,9 @@ struct SheetsSyncCore {
             try await api.writeRanges(spreadsheetId: id, ranges)
             result.daysWritten += rows.count
             result.addUnread(chunk.unread)
+            // Saved with the lastWrittenDay that moves past them, so a pass cut short later
+            // cannot leave blank days that are neither retried nor reported.
+            progress.unreadDays = Set(progress.unreadDays).union(chunk.unread.values.joined()).sorted()
             progress.lastWrittenDay = DayKey.string(for: chunkEnd, calendar: calendar)
             if pendingFirstWrite { progress.historyVersion = HistoryVersion.current }
             pendingFirstWrite = false
@@ -323,8 +359,9 @@ struct SheetsSyncCore {
             let chunk = try await source.dailyRows(from: day, through: day)
             result.addUnread(chunk.unread)
             // Only rows the tab still holds are rewritten; a row the person removed is left out.
-            ranges += UpsertPlan.make(existingDates: existing, rows: chunk.rows).updates
-                .map { (range: "\(SheetTabs.daily)!A\($0.row):P\($0.row)", rows: [$0.values]) }
+            ranges += UpsertPlan.make(existingDates: existing, rows: chunk.rows).updates.flatMap {
+                DailyColumn.rewrite(row: $0.row, values: $0.values, refused: chunk.refusedColumns(on: $0.values[0]))
+            }
         }
         if !ranges.isEmpty { try await api.writeRanges(spreadsheetId: id, ranges) }
         result.unreadPending = Set(result.unreadCells.values.joined()).union(earlier.dropFirst(tried.count)).sorted()

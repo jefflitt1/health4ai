@@ -187,6 +187,7 @@ final class SheetsSink: @unchecked Sendable {
                                                                      historyVersion: progress.historyVersion)
         let backedOff = RebuildBackoff.isBlocked(notBefore: progress.rebuildNotBefore, now: now)
         let wasFirstSweep = progress.lastWrittenDay == nil
+        let hadUnread = !progress.unreadDays.isEmpty
         do {
             let result = try await core.run(spreadsheetId: state.spreadsheetId, progress: &progress,
                                       allowRebuild: allowRebuild, now: now) { saved in
@@ -219,6 +220,9 @@ final class SheetsSink: @unchecked Sendable {
             }
             if let unread = result.unreadSummary {
                 outcome = [outcome, unread].compactMap { $0 }.joined(separator: " ")
+            } else if hadUnread {
+                // Replace the earlier notice, or it would outlive the blanks it described.
+                outcome = [outcome, "HealthKit has now answered for the days it refused; they are filled in."].compactMap { $0 }.joined(separator: " ")
             }
             if let outcome { HistoryFound.recordOutcome(outcome) }
             return result

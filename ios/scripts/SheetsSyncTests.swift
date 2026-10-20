@@ -63,6 +63,10 @@ final class FakeSheet: SheetsAPI {
             let p = parse(r.range)
             if let g = grid[p.tab], p.first + r.rows.count - 1 > g { throw SheetsError.http(status: 400, detail: "exceeds grid limits") }
             switch p.tab {
+            case SheetTabs.daily where p.col != "A" || !r.range.contains(":P"):   // a partial row: only those columns change
+                let offset = Int(p.col.asciiValue! - 65), i = p.first - 2
+                var existing = daily[i]; while existing.count < offset + r.rows[0].count { existing.append("") }
+                existing.replaceSubrange(offset..<offset + r.rows[0].count, with: r.rows[0]); daily[i] = existing
             case SheetTabs.daily: place(&daily, r.rows, at: p.first - 2)
             case SheetTabs.workouts: place(&workouts, r.rows, at: p.first - 2, col: p.col)
             case SheetTabs.sleepStages: if p.first == 1 { sleepHeader = r.rows[0] } else { place(&sleep, r.rows, at: p.first - 2) }
@@ -352,6 +356,21 @@ func runSyncTests(_ check: (Bool, String) -> Void, calendar cal: Calendar, at: (
     let u4 = await drive(stuck, source(), progress: backlog, at: now.addingTimeInterval(86_400))
     check(u4.progress.unreadDays.count == 40 - SheetsSyncCore.unreadRetriesPerPass && u4.progress.unreadDays.first == "2024-01-31",
           "unread_backlog_retried_in_bounded_slices")
+
+    // A day that read fine before is refused on a re-read (the overlap): its value is kept,
+    // not blanked, and the day is queued for retry.
+    let kept = oldSheet()
+    let u7 = await drive(kept, source { $0.unreadStepDays = [day("2026-09-29")] }, allowRebuild: false)
+    check(u7.error == nil && kept.daily.first { $0.first == "2026-09-29" }?[1] == "100" && u7.progress.unreadDays == ["2026-09-29"],
+          "refused_reread_keeps_existing_value")
+
+    // A refused day is saved with the progress that moves past it, so a pass that fails in a
+    // later chunk still retries and reports it.
+    let cutShort = FakeSheet()
+    let u6 = await drive(cutShort, source { $0.unreadStepDays = [day("2017-01-10")]; $0.failDailyFrom = day("2019-01-01") },
+                         progress: SheetsProgress(lastWrittenDay: nil, historyVersion: nil))
+    check(u6.error != nil && (saved.last?.lastWrittenDay ?? "") >= "2017-01-10" && saved.last?.unreadDays == ["2017-01-10"],
+          "unread_saved_before_later_chunk_fails")
 
     // First sweep: a chunk whose only data was refused is written and tracked, not skipped as empty.
     let refusedOnly = FakeSheet()

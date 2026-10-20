@@ -175,9 +175,17 @@ check(otherThrown, "split_rethrows_other_errors")
 var cancelThrown = false
 do { _ = try await RangeSplit.run(splitDays, splittable: { $0 is Refused }) { _ -> Int in throw CancellationError() } } catch { cancelThrown = error is CancellationError }
 check(cancelThrown, "split_rethrows_cancellation")
-var allThrown = false
-do { _ = try await RangeSplit.run(splitDays, splittable: { $0 is Refused }) { _ -> Int in throw Refused() } } catch { allThrown = error is Refused }
-check(allThrown, "split_rethrows_when_no_day_reads")
+// Rewriting a row around refused columns: the refused cells are left out of the write.
+check(DailyColumn.rewrite(row: 7, values: (0..<16).map(String.init), refused: [1, 9]).map(\.range)
+      == ["Daily!A7:A7", "Daily!C7:I7", "Daily!K7:P7"], "rewrite_skips_refused_columns")
+check(DailyColumn.rewrite(row: 7, values: (0..<16).map(String.init), refused: []).map(\.range) == ["Daily!A7:P7"], "rewrite_whole_row_when_none_refused")
+check(DailyColumn.rewrite(row: 7, values: (0..<16).map(String.init), refused: [15]).map(\.rows) == [[(0..<15).map(String.init)]], "rewrite_values_match_columns")
+
+// A one-day retry of a day still refused: reported, never thrown (that failed every pass).
+let oneDay = try? await RangeSplit.run([badDay], splittable: { $0 is Refused }) { _ -> Int in throw Refused() }
+check(oneDay?.failedDays == [badDay] && oneDay?.parts.isEmpty == true, "split_single_refused_day_reported_not_thrown")
+let allRefused = try? await RangeSplit.run(splitDays, splittable: { $0 is Refused }) { _ -> Int in throw Refused() }
+check(allRefused?.failedDays == splitDays, "split_every_refused_day_reported")
 
 print(failures == 0 ? "ALL PASS" : "\(failures) FAILED")
 exit(failures == 0 ? 0 : 1)

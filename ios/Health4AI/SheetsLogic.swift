@@ -367,28 +367,26 @@ enum RangeSplit {
     /// with the same anchor succeeds. Without this, one bad day failed the whole 180-day chunk
     /// on every pass and the Daily tab never got past it (support report, 2026-10-17).
     /// Any other error is rethrown, so a locked device or a cancelled task still fails the pass.
-    /// If not one day could be read, the first error is rethrown: a query broken for every day
-    /// is a fault to surface, not a column of blanks.
+    /// A range refused on every day is NOT rethrown: a one-day retry of a day still refused is
+    /// exactly that case, and throwing there failed every pass again (review, 2026-10-20). Every
+    /// failed day is returned instead, and the caller reports and retries them.
     static func run<T>(_ days: [Date], splittable: (Error) -> Bool,
                        _ query: ([Date]) async throws -> T) async throws -> Outcome<T> {
         var out = Outcome<T>()
-        var firstError: Error?
-        try await split(days, splittable, query, &out, &firstError)
-        if out.parts.isEmpty, let firstError { throw firstError }
+        try await split(days, splittable, query, &out)
         return out
     }
 
     private static func split<T>(_ days: [Date], _ splittable: (Error) -> Bool, _ query: ([Date]) async throws -> T,
-                                 _ out: inout Outcome<T>, _ firstError: inout Error?) async throws {
+                                 _ out: inout Outcome<T>) async throws {
         guard !days.isEmpty else { return }
         do {
             out.parts.append((days, try await query(days)))
         } catch let error where splittable(error) {
-            if firstError == nil { firstError = error }
             guard days.count > 1 else { out.failedDays.append(days[0]); return }
             let mid = days.count / 2
-            try await split(Array(days[..<mid]), splittable, query, &out, &firstError)
-            try await split(Array(days[mid...]), splittable, query, &out, &firstError)
+            try await split(Array(days[..<mid]), splittable, query, &out)
+            try await split(Array(days[mid...]), splittable, query, &out)
         }
     }
 }
