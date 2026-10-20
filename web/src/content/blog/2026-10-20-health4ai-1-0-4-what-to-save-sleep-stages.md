@@ -45,9 +45,9 @@ The daily summary tells you how long you slept. The Sleep stages tab shows the n
 
 Turn it on and your past nights fill in too, going back as far as Apple Health has sleep records, up to ten years. The last 7 nights are re-read on every sync, so a ring or watch that reaches Apple Health a night late still gets added. Duplicates are skipped, and if you delete the tab, the next sync adds it back.
 
-Two honest limits. Sleep that reaches Apple Health more than 7 nights late is not added. And core, deep and REM stages only exist if your watch or ring records them.
+Two limits. Sleep that reaches Apple Health more than 7 nights late is not added. And core, deep and REM stages only exist if your watch or ring records them.
 
-What can you do with it? Chart deep and REM minutes by week, compare nights by device when you wear both a watch and a ring, or hand the tab to an AI assistant and ask how your sleep structure changed. For the stages themselves, see [sleep stage analysis with Apple Health data](/blog/sleep-stage-analysis-apple-health/).
+Chart deep and REM minutes by week, compare nights by device when you wear both a watch and a ring, or hand the tab to an AI assistant and ask how your sleep structure changed. For the stages themselves, see [sleep stage analysis with Apple Health data](/blog/sleep-stage-analysis-apple-health/).
 
 ## When Apple Health refuses to read a day
 
