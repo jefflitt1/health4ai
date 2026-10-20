@@ -1,9 +1,22 @@
 # GitHub → TestFlight releases
 
+> **Not the live release path (verified 2026-10-19).** TestFlight builds come
+> from **Xcode Cloud**, which archives and uploads on every push to `main` and
+> adds the build to the Internal Testers group. To ship a build, bump
+> `MARKETING_VERSION` if the current version is already approved, merge to
+> `main`, and wait for Xcode Cloud. Do not dispatch this workflow.
+>
+> The GitHub workflow below cannot build the app today. The `macos-15` runner
+> ships Xcode 16.4 (iOS 18.5 SDK), and the app calls the iOS 27 API
+> `HKHealthStore.earliestAuthorizedSampleDate`, so the archive fails at compile
+> time (run 39282845533). Keep this document for the workflow's controls until
+> the runner gets an Xcode with the iOS 27 SDK, or the workflow is removed.
+
 Health4AI releases are deliberately gated. The workflow in
 `.github/workflows/testflight.yml` runs only when manually dispatched in
 GitHub Actions or when an explicit `health4ai-v*` tag is pushed. Normal branch
-pushes, pull requests, and merges do not upload a binary.
+pushes, pull requests, and merges do not run this workflow (Xcode Cloud still
+uploads on every push to `main`, see above).
 
 ## One-time GitHub setup
 
@@ -64,7 +77,8 @@ App Review and should use their own Supabase project as described in
 ## Safety controls
 
 - One release job at a time; queued jobs are never cancelled mid-upload.
-- No TestFlight upload on ordinary pushes or pull requests.
+- This workflow does not upload on ordinary pushes or pull requests (Xcode
+  Cloud does upload on pushes to `main`).
 - Secrets are scoped to the `testflight` environment, which must require a
   reviewer and restrict deployments to `main` / `health4ai-v*` before secrets
   are released to a runner.
