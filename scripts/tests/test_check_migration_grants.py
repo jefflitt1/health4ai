@@ -120,8 +120,13 @@ class Rules(unittest.TestCase):
 
 
 class Cli(unittest.TestCase):
-    def run_cli(self, *args):
-        p = subprocess.run([sys.executable, "-I", str(SCRIPT), *args], capture_output=True, text=True)
+    def run_cli(self, *args, ci=False):
+        # The lint prints ::error annotations when GITHUB_ACTIONS is set and plain `file:line:` lines otherwise.
+        # Set it explicitly either way: the ambient value on the machine running the tests must not pick the format.
+        env = {k: v for k, v in os.environ.items() if k != "GITHUB_ACTIONS"}
+        if ci:
+            env["GITHUB_ACTIONS"] = "true"
+        p = subprocess.run([sys.executable, "-I", str(SCRIPT), *args], capture_output=True, text=True, env=env)
         return p.returncode, p.stdout + p.stderr
 
     def test_fixture_pair_fails_without_grant_and_passes_with_it(self):
@@ -131,6 +136,16 @@ class Cli(unittest.TestCase):
         rc, out = self.run_cli(str(FIX / "with_grant.sql"))
         self.assertEqual(rc, 0, out)
         self.assertIn("1 relation(s) in public, 0 finding(s)", out)
+
+    def test_output_format_follows_github_actions_not_the_machine_running_the_tests(self):
+        bad = str(FIX / "missing_grant.sql")
+        rc, out = self.run_cli(bad)
+        self.assertEqual(rc, 1, out)
+        self.assertRegex(out, r"missing_grant\.sql:\d+: G001 public\.example_widget")
+        self.assertNotIn("::error", out)
+        rc, out = self.run_cli(bad, ci=True)
+        self.assertEqual(rc, 1, out)
+        self.assertRegex(out, r"::error file=\S*missing_grant\.sql,line=\d+::G001 public\.example_widget")
 
     def test_exclude_skips_tests_fixtures_and_rollbacks(self):
         with tempfile.TemporaryDirectory() as d:
