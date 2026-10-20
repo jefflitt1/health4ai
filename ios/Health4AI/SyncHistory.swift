@@ -216,6 +216,8 @@ enum SheetsCountLines {
     static let days = "Days written to your sheet"
     static let workouts = "Workouts added"
     static let sleepRecords = "Sleep records added"
+    /// Days with a cell HealthKit refused to read (written blank); the Sheets card names them.
+    static let unreadDays = "Days with cells HealthKit could not read"
 
     /// One line per count, in a fixed order; nil for an entry that is not from a Sheets pass.
     static func lines(_ counts: [String: Int]) -> [String]? {
@@ -224,6 +226,9 @@ enum SheetsCountLines {
         var out = [line(days, "day written", "days written")]
         if let n = counts[workouts], n > 0 { out.append(line(n, "workout added", "workouts added")) }
         if let n = counts[sleepRecords], n > 0 { out.append(line(n, "sleep record added", "sleep records added")) }
+        if let n = counts[unreadDays], n > 0 {
+            out.append(line(n, "day with cells HealthKit could not read (left blank)", "days with cells HealthKit could not read (left blank)"))
+        }
         return out
     }
 }

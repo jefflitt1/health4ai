@@ -151,5 +151,33 @@ check(DateKeys.staleRuns(["2026-01-01", "2026-01-02"], keptRows: 3).isEmpty, "da
 let t0 = at("2026-09-30T12:00:00-04:00")
 check(RebuildBackoff.isBlocked(notBefore: t0.addingTimeInterval(60), now: t0) && !RebuildBackoff.isBlocked(notBefore: nil, now: t0) && !RebuildBackoff.isBlocked(notBefore: t0, now: t0), "backoff_window")
 
+// RangeSplit: a HealthKit range refusal splits down to the bad day; nothing else is split.
+struct Refused: Error {}
+struct Other: Error {}
+let splitDays = DayKey.days(from: at("2025-03-01T12:00:00-05:00"), through: at("2025-08-27T12:00:00-04:00"), calendar: ny)
+let badDay = splitDays[4]
+var splitCalls = 0
+let split = try? await RangeSplit.run(splitDays, splittable: { $0 is Refused }) { piece -> Int in
+    splitCalls += 1
+    if piece.contains(badDay) { throw Refused() }
+    return piece.count
+}
+check(split?.failedDays == [badDay] && split?.parts.map(\.value).reduce(0, +) == splitDays.count - 1, "split_isolates_bad_day")
+check(split.map { $0.parts.flatMap(\.days) + $0.failedDays }.map { Set($0) == Set(splitDays) } == true
+      && split?.parts.allSatisfy { !$0.days.contains(badDay) } == true, "split_covers_every_other_day_once")
+check(splitCalls < 25, "split_is_logarithmic")
+var clean = 0
+let whole = try? await RangeSplit.run(splitDays, splittable: { $0 is Refused }) { piece -> Int in clean += 1; return piece.count }
+check(clean == 1 && whole?.parts.count == 1 && whole?.failedDays.isEmpty == true, "split_not_used_when_query_succeeds")
+var otherThrown = false
+do { _ = try await RangeSplit.run(splitDays, splittable: { $0 is Refused }) { _ -> Int in throw Other() } } catch { otherThrown = error is Other }
+check(otherThrown, "split_rethrows_other_errors")
+var cancelThrown = false
+do { _ = try await RangeSplit.run(splitDays, splittable: { $0 is Refused }) { _ -> Int in throw CancellationError() } } catch { cancelThrown = error is CancellationError }
+check(cancelThrown, "split_rethrows_cancellation")
+var allThrown = false
+do { _ = try await RangeSplit.run(splitDays, splittable: { $0 is Refused }) { _ -> Int in throw Refused() } } catch { allThrown = error is Refused }
+check(allThrown, "split_rethrows_when_no_day_reads")
+
 print(failures == 0 ? "ALL PASS" : "\(failures) FAILED")
 exit(failures == 0 ? 0 : 1)

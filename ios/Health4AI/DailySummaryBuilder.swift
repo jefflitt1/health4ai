@@ -178,22 +178,23 @@ final class DailySummaryBuilder {
         return .init(label: label, oldest: oldest.map { DayKey.string(for: $0, calendar: calendar) }, failed: failed)
     }
 
-    /// One Daily row per day in [start, end], each beginning with its date key.
-    func dailyRows(from start: Date, through end: Date, units: SheetUnits) async throws -> [[String]] {
+    /// One Daily row per day in [start, end], each beginning with its date key, and the cells
+    /// HealthKit refused to read (see RangeSplit), which are left blank.
+    func dailyRows(from start: Date, through end: Date, units: SheetUnits) async throws -> DailyChunk {
         let days = DayKey.days(from: start, through: end, calendar: calendar)
-        guard let first = days.first, let last = days.last else { return [] }
+        guard let first = days.first, let last = days.last else { return DailyChunk(rows: []) }
         let rangeEnd = calendar.date(byAdding: .day, value: 1, to: last)!
 
-        async let steps = collection(.stepCount, .cumulativeSum, first, rangeEnd)
-        async let distance = collection(.distanceWalkingRunning, .cumulativeSum, first, rangeEnd)
-        async let energy = collection(.activeEnergyBurned, .cumulativeSum, first, rangeEnd)
-        async let exercise = collection(.appleExerciseTime, .cumulativeSum, first, rangeEnd)
-        async let flights = collection(.flightsClimbed, .cumulativeSum, first, rangeEnd)
-        async let resting = collection(.restingHeartRate, .discreteAverage, first, rangeEnd)
-        async let heart = collection(.heartRate, .discreteAverage, first, rangeEnd)
-        async let hrv = collection(.heartRateVariabilitySDNN, .discreteAverage, first, rangeEnd)
-        async let weight = collection(.bodyMass, .mostRecent, first, rangeEnd)
-        async let vo2 = collection(.vo2Max, .mostRecent, first, rangeEnd)
+        async let steps = collection(.stepCount, .cumulativeSum, days)
+        async let distance = collection(.distanceWalkingRunning, .cumulativeSum, days)
+        async let energy = collection(.activeEnergyBurned, .cumulativeSum, days)
+        async let exercise = collection(.appleExerciseTime, .cumulativeSum, days)
+        async let flights = collection(.flightsClimbed, .cumulativeSum, days)
+        async let resting = collection(.restingHeartRate, .discreteAverage, days)
+        async let heart = collection(.heartRate, .discreteAverage, days)
+        async let hrv = collection(.heartRateVariabilitySDNN, .discreteAverage, days)
+        async let weight = collection(.bodyMass, .mostRecent, days)
+        async let vo2 = collection(.vo2Max, .mostRecent, days)
         async let stand = standHours(first, rangeEnd)
         async let sleep = sleepByDay(days)
         async let workouts = workouts(from: first, to: rangeEnd)
@@ -201,6 +202,13 @@ final class DailySummaryBuilder {
         let (s, di, en, ex, fl, rhr, hr, hv, wt, vo) =
             try await (steps, distance, energy, exercise, flights, resting, heart, hrv, weight, vo2)
         let (st, sl, wk) = try await (stand, sleep, workouts)
+
+        var unread: [String: [String]] = [:]
+        for (label, stats) in [("Steps", s), ("Distance", di), ("Active energy", en), ("Exercise", ex),
+                               ("Flights climbed", fl), ("Resting HR", rhr), ("Avg HR", hr), ("HRV", hv),
+                               ("Weight", wt), ("VO2 max", vo)] where !stats.failedDays.isEmpty {
+            unread[label] = stats.failedDays.map { DayKey.string(for: $0, calendar: calendar) }
+        }
 
         let bpm = HKUnit.count().unitDivided(by: .minute())
         let vo2Unit = HKUnit.literUnit(with: .milli).unitDivided(by: HKUnit.gramUnit(with: .kilo).unitMultiplied(by: .minute()))
@@ -211,7 +219,7 @@ final class DailySummaryBuilder {
             workoutsByDay[key] = (prev.count + 1, prev.minutes + w.duration / 60)
         }
 
-        return days.map { day in
+        let rows = days.map { day in
             let key = DayKey.string(for: day, calendar: calendar)
             let workoutsToday = workoutsByDay[key]
             return [
@@ -233,6 +241,7 @@ final class DailySummaryBuilder {
                 SheetCell.number(vo.statistics(for: day)?.mostRecentQuantity()?.doubleValue(for: vo2Unit), decimals: 1),
             ]
         }
+        return DailyChunk(rows: rows, unread: unread)
     }
 
     /// Workouts tab rows for workouts that started in [start, end).
@@ -292,16 +301,35 @@ final class DailySummaryBuilder {
 
     // MARK: Queries
 
+    /// Daily statistics for `days`, split around days HealthKit refuses (RangeSplit). The
+    /// pieces share the same midnight anchor and day boundaries, so each day's value is the
+    /// same as an unsplit query's.
     private func collection(_ id: HKQuantityTypeIdentifier, _ options: HKStatisticsOptions,
-                            _ start: Date, _ end: Date) async throws -> HKStatisticsCollection {
+                            _ days: [Date]) async throws -> DayStatistics {
         assert(Self.readTypes.contains(HKQuantityType(id)), "\(id.rawValue) missing from readTypes")
-        let predicate = HKQuery.predicateForSamples(withStart: start, end: end)
-        let descriptor = HKStatisticsCollectionQueryDescriptor(
-            predicate: .quantitySample(type: HKQuantityType(id), predicate: predicate),
-            options: options,
-            anchorDate: calendar.startOfDay(for: start),
-            intervalComponents: DateComponents(day: 1))
-        return try await descriptor.result(for: store)
+        let outcome = try await RangeSplit.run(days, splittable: Self.isRangeRefusal) { piece in
+            let end = calendar.date(byAdding: .day, value: 1, to: piece.last!)!
+            let predicate = HKQuery.predicateForSamples(withStart: piece[0], end: end)
+            let descriptor = HKStatisticsCollectionQueryDescriptor(
+                predicate: .quantitySample(type: HKQuantityType(id), predicate: predicate),
+                options: options,
+                anchorDate: calendar.startOfDay(for: piece[0]),
+                intervalComponents: DateComponents(day: 1))
+            return try await descriptor.result(for: store)
+        }
+        for day in outcome.failedDays {
+            let key = DayKey.string(for: day, calendar: calendar)
+            Self.logger.error("statistics \(id.rawValue, privacy: .public) unreadable for \(key, privacy: .public): left blank")
+        }
+        return DayStatistics(parts: outcome.parts, failedDays: outcome.failedDays)
+    }
+
+    /// "Unable to invalidate interval: no data source available" is com.apple.healthkit 3
+    /// (errorInvalidArgument). Our own arguments are valid for every other day, so for a
+    /// statistics collection this code means HealthKit's lost data-source cache.
+    private static func isRangeRefusal(_ error: Error) -> Bool {
+        let e = error as NSError
+        return e.domain == HKErrorDomain && e.code == HKError.Code.errorInvalidArgument.rawValue
     }
 
     private func workouts(from start: Date, to end: Date) async throws -> [HKWorkout] {
@@ -347,6 +375,16 @@ final class DailySummaryBuilder {
             if a > 0 || b > 0 { out[DayKey.string(for: day, calendar: calendar)] = (a, b) }
         }
         return out
+    }
+}
+
+/// One type's daily statistics, possibly read in pieces, and the days no piece could read.
+private struct DayStatistics {
+    let parts: [(days: [Date], value: HKStatisticsCollection)]
+    let failedDays: [Date]
+
+    func statistics(for day: Date) -> HKStatistics? {
+        parts.first { $0.days[0] <= day && day <= $0.days[$0.days.count - 1] }?.value.statistics(for: day)
     }
 }
 #endif
