@@ -49,6 +49,11 @@ final class FakeSheet: SheetsAPI {
             try hit("readSleepIds")
             return sleep.dropFirst(p.first - 2).map { $0.count > 6 ? $0[6] : "" }
         }
+        if p.tab == SheetTabs.daily {
+            try hit("readDailyColumn")
+            let c = Int(p.col.asciiValue! - 65)
+            return daily.dropFirst(p.first - 2).map { $0.count > c ? $0[c] : "" }
+        }
         try hit("readWorkoutIds")
         if range.contains("C2") { return workouts.map { $0.count > 2 ? $0[2] : "" } }
         return workouts.map { $0[7] }
@@ -338,6 +343,18 @@ func runSyncTests(_ check: (Bool, String) -> Void, calendar cal: Calendar, at: (
     let rebuiltGap = oldSheet()
     _ = await drive(rebuiltGap, source { $0.unreadStepDays = [day("2020-02-02")] })
     check(lastResult?.unreadCells == ["Steps": ["2020-02-02"]] && rebuiltGap.daily.count == 3653, "unread_cells_reported_by_rebuild")
+    // A rebuild refused on a day the sheet already holds keeps that value, matched by date
+    // even when the rebuild starts earlier and every row moves down.
+    let heldRebuild = oldSheet()
+    let heldBefore = heldRebuild.daily.first { $0.first == "2026-09-29" }?[1]
+    _ = await drive(heldRebuild, source { $0.unreadStepDays = [day("2026-09-29")]; $0.earliest = day("2016-09-01") })
+    let heldAfter = heldRebuild.daily.first { $0.first == "2026-09-29" }
+    check(heldBefore == "100" && heldAfter?[1] == "100" && heldRebuild.daily.first?.first == "2016-09-01"
+          && lastResult?.unreadPending == ["2026-09-29"], "rebuild_refused_keeps_held_value")
+    // A refused day the sheet never held stays blank in a rebuild.
+    let newGap = oldSheet()
+    _ = await drive(newGap, source { $0.unreadStepDays = [day("2016-09-30")] })
+    check(newGap.daily.first { $0.first == "2016-09-30" }?[1] == "", "rebuild_refused_unheld_stays_blank")
     check(u1.progress.unreadDays == ["2025-03-05", "2025-03-06"], "unread_days_saved_for_retry")
 
     // Next pass, HealthKit answers again: the blank rows are filled in place and the notice clears.
@@ -348,7 +365,7 @@ func runSyncTests(_ check: (Bool, String) -> Void, calendar cal: Calendar, at: (
     // Still refused: kept, and the notice shows again on this pass.
     let u3 = await drive(stuck, source { $0.unreadStepDays = [day("2025-03-05"), day("2025-03-06")] },
                          progress: u1.progress, at: now.addingTimeInterval(86_400))
-    check(u3.progress.unreadDays == ["2025-03-05", "2025-03-06"] && lastResult?.unreadSummary?.contains("2 days have blank cells") == true,
+    check(u3.progress.unreadDays == ["2025-03-05", "2025-03-06"] && lastResult?.unreadSummary?.contains("2 days have cells HealthKit would not read") == true,
           "unread_days_kept_while_refused")
     // A long backlog is retried a bounded slice per pass, oldest first; the rest stay pending.
     var backlog = u1.progress

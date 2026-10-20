@@ -127,7 +127,10 @@ mutate "retried rows not written"      'if !ranges.isEmpty { try await api.write
 mutate "unreached retries dropped"     '.union(earlier.dropFirst(tried.count))' '' sync
 mutate "retries unbounded"             'static let unreadRetriesPerPass = 30' 'static let unreadRetriesPerPass = 100000' sync
 mutate "refused-only chunk skipped"    'if pendingFirstWrite, !Self.hasData(rows), chunk.unread.isEmpty {' 'if pendingFirstWrite, !Self.hasData(rows) {' sync
-mutate "refused cells blank good data" 'guard !refused.isEmpty else { return' 'guard false else { return' sync
+mutate "refused cells blank good data" 'guard !refused.isEmpty else { return [(' 'guard false else { return [(' sync
+mutate "rebuild blanks held values"    'try await keepHeldValues(id: id, existing: existing, refused: refused, in: &daily)' '' sync
+mutate "rebuild holds by position"     'for (i, key) in existing.enumerated() where i < values.count && !values[i].isEmpty { byDay[key] = values[i] }' 'for (i, key) in daily.map({ $0[0] }).enumerated() where i < values.count && !values[i].isEmpty { byDay[key] = values[i] }' sync
+mutate "rebuild fills unheld refused"  'if let value = held[col]?[daily[i][0]] { daily[i][col] = value }' 'daily[i][col] = held[col]?[daily[i][0]] ?? "100"' sync
 mutate "rewrite ignores refused cols"  'refused: chunk.refusedColumns(on: $0.values[0]))
             }
             if !plan.appends.isEmpty' 'refused: [])

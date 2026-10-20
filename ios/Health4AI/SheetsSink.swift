@@ -114,6 +114,7 @@ enum SheetsAttention: Equatable {
 
 final class SheetsSink: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.jglittell.health4ai", category: "SheetsSink")
+    private static let unreadFilled = "HealthKit has now answered for the days it refused; they are filled in."
     /// Days per write on a first sync. Bounds memory for decade-long histories and saves
     /// progress between chunks, so a pass iOS cuts short resumes where it stopped.
 
@@ -195,6 +196,9 @@ final class SheetsSink: @unchecked Sendable {
                 state.historyVersion = saved.historyVersion
                 state.rebuildNotBefore = saved.rebuildNotBefore
                 state.sleepStagesThrough = saved.sleepStagesThrough
+                // Replaced the moment the refused days are filled, not at the end of the pass:
+                // a later step (workouts, sleep stages) that throws would leave the old notice.
+                if state.unreadDays != nil && saved.unreadDays.isEmpty { HistoryFound.recordOutcome(Self.unreadFilled) }
                 state.unreadDays = saved.unreadDays.isEmpty ? nil : saved.unreadDays
                 state.save()
                 Self.logger.info("progress saved through \(saved.lastWrittenDay ?? "", privacy: .private)")
@@ -222,7 +226,7 @@ final class SheetsSink: @unchecked Sendable {
                 outcome = [outcome, unread].compactMap { $0 }.joined(separator: " ")
             } else if hadUnread {
                 // Replace the earlier notice, or it would outlive the blanks it described.
-                outcome = [outcome, "HealthKit has now answered for the days it refused; they are filled in."].compactMap { $0 }.joined(separator: " ")
+                outcome = [outcome, Self.unreadFilled].compactMap { $0 }.joined(separator: " ")
             }
             if let outcome { HistoryFound.recordOutcome(outcome) }
             return result

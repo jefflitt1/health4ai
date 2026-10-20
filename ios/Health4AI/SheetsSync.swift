@@ -114,7 +114,7 @@ struct SheetsPassResult {
         }
         let detail = parts.isEmpty ? "" : "HealthKit could not read \(parts.joined(separator: ", ")). "
         let n = unreadPending.count
-        return detail + "\(n) day\(n == 1 ? " has" : "s have") blank cells HealthKit would not read; health4ai asks again on each sync and fills them in when it can."
+        return detail + "\(n) day\(n == 1 ? " has" : "s have") cells HealthKit would not read. They stay blank, or keep the value the sheet already held; health4ai asks again on each sync and fills them in when it can."
     }
     /// Every workout was merged, so the person's "catch up" request is done.
     var workoutsCaughtUp = false
@@ -243,7 +243,7 @@ struct SheetsSyncCore {
                     progress.rebuildNotBefore = now.addingTimeInterval(RebuildBackoff.interval)
                     persist(progress)
                 } else {
-                    let rebuilt = try await rebuild(id: id, from: start, today: today)
+                    let rebuilt = try await rebuild(id: id, from: start, today: today, existing: existing)
                     progress.lastWrittenDay = DayKey.string(for: today, calendar: calendar)
                     progress.historyVersion = HistoryVersion.current
                     progress.rebuildNotBefore = nil
@@ -377,9 +377,10 @@ struct SheetsSyncCore {
     /// NEVER cleared or overwritten, because a denied or empty HealthKit read returns no
     /// workouts and would otherwise erase the person's history; they are merged by ID, and
     /// raw "HKWorkoutActivityType..." names from builds 54-55 are tidied in place.
-    private func rebuild(id: String, from start: Date, today: Date) async throws -> SheetsPassResult {
+    private func rebuild(id: String, from start: Date, today: Date, existing: [String]) async throws -> SheetsPassResult {
         var daily: [[String]] = []
         var unread = SheetsPassResult(daysWritten: 0, workoutsAdded: 0)
+        var refused: [String: Set<Int>] = [:]
         var chunkStart = start
         while chunkStart <= today {
             try Task.checkCancellation()
@@ -387,9 +388,14 @@ struct SheetsSyncCore {
             let chunk = try await source.dailyRows(from: chunkStart, through: chunkEnd)
             daily += chunk.rows
             unread.addUnread(chunk.unread)
+            for row in chunk.rows {
+                let cols = chunk.refusedColumns(on: row[0])
+                if !cols.isEmpty { refused[row[0]] = cols }
+            }
             chunkStart = calendar.date(byAdding: .day, value: 1, to: chunkEnd)!
         }
         guard Self.hasData(daily) else { throw SheetsError.noHealthData(checked: Self.checkedRange(start, today, calendar: calendar)) }
+        try await keepHeldValues(id: id, existing: existing, refused: refused, in: &daily)
         try Task.checkCancellation()
 
         _ = try await api.ensureRows(spreadsheetId: id, tab: SheetTabs.daily, needed: daily.count + 1, headroom: Self.gridHeadroom)
@@ -415,6 +421,28 @@ struct SheetsSyncCore {
         var out = SheetsPassResult(daysWritten: daily.count, workoutsAdded: added, unreadCells: unread.unreadCells)
         out.unreadPending = Set(unread.unreadCells.values.joined()).sorted()
         return out
+    }
+
+    /// A rebuild rewrites whole rows, and rows can move (an earlier start shifts them down), so
+    /// a cell HealthKit refused takes the value the sheet already holds for that date, matched
+    /// by date, not position. Read before the sheet is touched; one read per refused column.
+    private func keepHeldValues(id: String, existing: [String], refused: [String: Set<Int>],
+                                in daily: inout [[String]]) async throws {
+        guard !refused.isEmpty else { return }
+        var held: [Int: [String: String]] = [:]
+        for col in Set(refused.values.joined()).sorted() {
+            let letter = DailyColumn.letter(col)
+            let values = try await api.readColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!\(letter)2:\(letter)")
+            var byDay: [String: String] = [:]
+            for (i, key) in existing.enumerated() where i < values.count && !values[i].isEmpty { byDay[key] = values[i] }
+            held[col] = byDay
+        }
+        for i in daily.indices {
+            guard let cols = refused[daily[i][0]] else { continue }
+            for col in cols where col < daily[i].count {
+                if let value = held[col]?[daily[i][0]] { daily[i][col] = value }
+            }
+        }
     }
 
     /// Rewrites only the Type cell of rows still carrying a raw HealthKit identifier.
