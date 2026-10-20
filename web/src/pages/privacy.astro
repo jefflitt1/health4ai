@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-const lastUpdated = '2026-10-07';
+const lastUpdated = '2026-10-20';
 ---
 <style>
   /* Anyone linking directly to #testflight (historical TestFlight section)
@@ -58,7 +58,7 @@ const lastUpdated = '2026-10-07';
       </p>
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
         <li><strong class="text-neutral-200">What Google data the app accesses.</strong> When you choose this destination, the app asks you to sign in to Google on your device and requests a single permission (OAuth scope): <code class="break-all">https://www.googleapis.com/auth/drive.file</code>. This scope limits the app to files it creates itself. health4.ai cannot see, list, or open any other file in your Google Drive, and it does not request your name, email address, contacts, calendar, or Gmail.</li>
-        <li><strong class="text-neutral-200">How it is used.</strong> The app creates one spreadsheet in your Drive and writes daily health summaries and workout rows into it, directly from your iPhone to Google's Sheets API. That is the only purpose.</li>
+        <li><strong class="text-neutral-200">How it is used.</strong> The app creates one spreadsheet in your Drive and writes daily health summaries and workout rows into it, plus sleep stage rows if you turn them on (version 1.0.4 and later), directly from your iPhone to Google's Sheets API. That is the only purpose.</li>
         <li><strong class="text-neutral-200">How it is stored.</strong> The Google sign-in token (a refresh token) is stored in the iOS Keychain on your device. It never leaves your phone except to talk to Google. The health rows live in your Google Drive, under your Google account and Google's own security.</li>
         <li><strong class="text-neutral-200">How it is shared.</strong> It is not shared. No Google user data or health data is sent to health4.ai or to any server we operate. We do not sell it, use it for advertising, or transfer it to anyone else, and no human at health4.ai reads it, because we never receive it. The app talks to Google directly and to no one else on this path.</li>
         <li><strong class="text-neutral-200">Revoke access.</strong> In the app, disconnect Google Sheets; the app revokes its token with Google and forgets it. You can also remove access at any time in your Google Account under Security → Third-party connections, or at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener" class="text-green-400 hover:underline">myaccount.google.com/permissions</a>. Either way, sync stops.</li>

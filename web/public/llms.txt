@@ -69,6 +69,11 @@ Database option: iPhone (HKObserverQuery + BGProcessingTask) → your Supabase p
 
 Queries within the last 30 days read raw samples; longer windows read pre-aggregated daily summaries where they exist. Callers do not need to handle this.
 
+## Recent releases
+
+- health4ai 1.0.4 (in App Review as of 2026-10-20, not yet available): Google Sheets "What to save" choices, a Sleep stages tab, and Sheets sync that continues when Apple Health refuses to read a day. https://health4.ai/blog/health4ai-1-0-4-what-to-save-sleep-stages/
+- The HealthKit error "Unable to invalidate interval: no data source available" explained: https://health4.ai/blog/unable-to-invalidate-interval-no-data-source-available/
+
 ## Pages
 
 - Home: https://health4.ai/

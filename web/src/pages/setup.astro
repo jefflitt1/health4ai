@@ -37,7 +37,7 @@ import Layout from '../layouts/Layout.astro';
       <ol class="space-y-4 text-neutral-500 text-sm leading-relaxed list-decimal pl-5">
         <li><a href="https://apps.apple.com/app/health4ai/id6783074944" target="_blank" rel="noopener" class="text-green-400 hover:underline">Download health4.ai</a> and open it.</li>
         <li>Choose <strong class="text-neutral-400 font-medium">Save to Google Sheets</strong> and sign in with Google. The app creates one spreadsheet in your Drive with one row per day (steps, sleep, heart rate, HRV, workouts and more). It uses the <code class="text-amber-400 text-xs">drive.file</code> scope, so it only sees files it creates.</li>
-        <li>Allow Health access, then follow the in-app setup checklist. Sync History shows what was written and Your Sources lists every device and app writing to Health.</li>
+        <li>Allow Health access, then follow the in-app setup checklist. Sync History shows what was written and Your Sources lists every device and app writing to Health. Version 1.0.4 (in App Review) adds a <strong class="text-neutral-400 font-medium">What to save</strong> choice and an optional <a href="/blog/health4ai-1-0-4-what-to-save-sleep-stages/" class="text-green-400 hover:underline">Sleep stages tab</a>.</li>
         <li>Open the sheet in Google Drive. Share it with an AI assistant that has Google Drive access, or download it as CSV and give it to any AI assistant. Want your AI to query live data over MCP? Use the database option below.</li>
       </ol>
       <p class="text-neutral-500 text-xs mt-4">Background sync is best-effort: iOS decides when the app runs, so tap sync in the app if you need fresh data now. If iOS shares only recent Health data, the app warns you.</p>
