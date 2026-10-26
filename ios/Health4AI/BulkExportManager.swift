@@ -424,7 +424,9 @@ final class BulkExportManager {
                 // bounded horizon keeps this working; the older-window pass is skipped.
                 if sweepsToNow && Self.alwaysExpectedIdentifiers.contains(sampleType.identifier) {
                     var empties = emptyHighVolumeTypes
-                    if count == 0 {
+                    // Nothing posted because HealthKit refused every hour is not a switched-off
+                    // permission; the refused-hours notice names it instead (GitHub #28).
+                    if count == 0 && !RefusedHours.shared.hasPending(sampleType.identifier) {
                         empties.insert(sampleType.identifier)
                     } else {
                         empties.remove(sampleType.identifier)
@@ -457,9 +459,11 @@ final class BulkExportManager {
 
         let emptyNames = emptyHighVolumeTypes.map(Self.displayName(for:)).sorted()
         let failedNames = failedImportTypes.map(Self.displayName(for:)).sorted()
+        let refusedNames = RefusedHours.shared.pendingNames()
         await MainActor.run {
             syncState.emptyExpectedMetricNames = emptyNames
             syncState.importFailedMetricNames = failedNames
+            syncState.refusedHourMetricNames = refusedNames
         }
 
         // One summary row per run, not one per type: an import can touch ~120 types, and a
@@ -582,8 +586,11 @@ final class BulkExportManager {
                 }
                 let healthSamples: [HealthSample]
                 if usesMergedHours, let quantityType = sampleType as? HKQuantityType {
-                    healthSamples = try await hkManager.hourlyTotals(
+                    let totals = try await hkManager.hourlyTotals(
                         for: quantityType, touchedBy: samples, notBefore: floor)
+                    // Recorded before the checkpoint passes this window; live sync asks again.
+                    RefusedHours.shared.add(totals.refusedHours, for: sampleType.identifier)
+                    healthSamples = totals.samples
                 } else {
                     healthSamples = samples.compactMap { hkManager.convert(sample: $0) }
                 }

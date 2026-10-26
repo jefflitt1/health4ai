@@ -327,6 +327,11 @@ final class SyncEngine {
                             trigger: trigger, counts: [:], success: false,
                             errorText: error.localizedDescription))
                     }
+                    // This path both records refused hours (a page can record them, then fail
+                    // to post) and clears them on a retry, so the Home notice follows the ledger
+                    // here too, success or not, and not only once per full pass.
+                    let refusedNames = RefusedHours.shared.pendingNames()
+                    await MainActor.run { self.syncState.refusedHourMetricNames = refusedNames }
                     completionHandler()
                 }
             }
@@ -431,6 +436,7 @@ final class SyncEngine {
 
         do {
             let outcome = try await performFullSync()
+            let refusedNames = RefusedHours.shared.pendingNames()
             // The JSON encode + atomic file write inside SyncHistoryStore.record should not
             // happen on the main actor, so MainActor.run below only decides WHAT to log
             // (mutating syncState, which does belong there) and returns it; the actual
@@ -438,6 +444,7 @@ final class SyncEngine {
             let (result, logMessage): (FullPassOutcome, String?) = await MainActor.run {
                 Self.fullSyncInFlight = false
                 defer { self.scheduleBackgroundSync() }
+                self.syncState.refusedHourMetricNames = refusedNames
                 if outcome.failures.isEmpty {
                     self.syncState.recordSyncComplete(count: outcome.count)
                     return (.succeeded, nil)
@@ -644,7 +651,7 @@ final class SyncEngine {
         // the first 5,000 changes and leave the rest until the next observer fire, which
         // on a first run for a high-volume type means never catching up.
         var total = 0
-        while true {
+        pages: while true {
             let anchor = syncAnchors[sampleType.identifier]
             let (samples, newAnchor) = try await queryAnchoredSamples(
                 type: sampleType, anchor: anchor, floor: floor)
@@ -653,7 +660,7 @@ final class SyncEngine {
                 // Save the anchor even on an empty page: it is how HealthKit says
                 // "you are caught up", and discarding it re-asks the same question.
                 if let newAnchor { syncAnchors[sampleType.identifier] = newAnchor; saveAnchors() }
-                return total
+                break pages
             }
 
             // Raw samples, before any merged-hours conversion: this is the only place the
@@ -670,18 +677,17 @@ final class SyncEngine {
             }
             let healthSamples: [HealthSample]
             if usesMergedHours, let quantityType = sampleType as? HKQuantityType {
-                healthSamples = try await hkManager.hourlyTotals(
+                let totals = try await hkManager.hourlyTotals(
                     for: quantityType, touchedBy: samples, notBefore: floor)
+                // Recorded before the anchor moves past them: the ledger is now the only
+                // thing that will ask HealthKit for these hours again.
+                RefusedHours.shared.add(totals.refusedHours, for: sampleType.identifier)
+                healthSamples = totals.samples
             } else {
                 healthSamples = samples.compactMap { hkManager.convert(sample: $0) }
             }
             if !healthSamples.isEmpty {
-                let batches = stride(from: 0, to: healthSamples.count, by: Self.batchSize).map {
-                    Array(healthSamples[$0..<min($0 + Self.batchSize, healthSamples.count)])
-                }
-                for batch in batches {
-                    try await postSamples(batch, token: token, serverURL: serverURL)
-                }
+                try await post(healthSamples, token: token, serverURL: serverURL)
                 // HealthKit samples, not rows posted. An hourly total is re-posted every time
                 // the observer fires within that hour, so counting rows would grow the
                 // lifetime figure a dozen times over for one stored row.
@@ -690,12 +696,50 @@ final class SyncEngine {
 
             // Advance ONLY after the page's rows are posted, so a failure mid-page
             // re-fetches that page rather than skipping it.
-            guard let newAnchor else { return total }
+            guard let newAnchor else { break pages }
             syncAnchors[sampleType.identifier] = newAnchor
             saveAnchors()
 
-            if samples.count < Self.anchorPageSize { return total }
+            if samples.count < Self.anchorPageSize { break pages }
         }
+        // A failed retry does not fail the type: the pages above are posted and their anchors
+        // saved, and failing here would report them as a failed sync and drop them from the
+        // count (Codex review, 2026-10-26). The hours stay in the ledger, so the Home notice
+        // stays up and the next pass asks again. Cancellation still stops the pass.
+        do {
+            try await retryRefusedHours(sampleType, floor: floor, serverURL: serverURL, token: token)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            RefusedHours.shared.backOff(sampleType.identifier)
+            print("[SyncEngine] Refused-hours retry failed for \(sampleType.identifier), kept for a later pass: \(error)")
+        }
+        return total
+    }
+
+    private func post(_ samples: [HealthSample], token: String, serverURL: String) async throws {
+        for start in stride(from: 0, to: samples.count, by: Self.batchSize) {
+            let batch = Array(samples[start..<min(start + Self.batchSize, samples.count)])
+            try await postSamples(batch, token: token, serverURL: serverURL)
+        }
+    }
+
+    /// Asks HealthKit again for hours it refused to total on an earlier pass or import, and
+    /// posts the ones it now answers. Adds nothing to the synced count: the pass that recorded
+    /// these hours already counted their HealthKit samples, and the count is samples, not rows.
+    private func retryRefusedHours(_ sampleType: HKSampleType, floor: Date?,
+                                   serverURL: String, token: String) async throws {
+        guard HealthKitManager.syncsAsHourlyTotals(sampleType),
+              let quantityType = sampleType as? HKQuantityType else { return }
+        let due = RefusedHours.shared.due(for: sampleType.identifier, notBefore: floor)
+        guard !due.isEmpty,
+              try await mergedHoursAllowed(serverURL: serverURL, token: token) else { return }
+        let totals = try await hkManager.hourlyTotals(for: quantityType, retrying: Set(due))
+        if !totals.samples.isEmpty {
+            try await post(totals.samples, token: token, serverURL: serverURL)
+        }
+        RefusedHours.shared.resolve(asked: due, stillRefused: totals.refusedHours,
+                                    for: sampleType.identifier)
     }
 
     // MARK: - Anchored HKSample query
