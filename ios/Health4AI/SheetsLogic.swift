@@ -407,12 +407,19 @@ enum RangeSplit {
 /// for as long as a phone stays affected.
 struct RefusedHourLedger: Codable, Equatable {
     private(set) var runs: [String: [[Int]]] = [:]
-    /// Per type: no retry before this time (seconds since 1970), set when a retry got no
-    /// answer at all, so an affected phone does not re-ask on every background wake.
+    /// Per type: no retry before this time (seconds since 1970), so an affected phone does not
+    /// re-ask on every background wake. Set after every retry that leaves hours waiting.
     private(set) var retryAfter: [String: Double] = [:]
+    /// Per type: the hour the next retry window starts from. The window moves past each one it
+    /// asks, wrapping at the end, so hours HealthKit refuses for good cannot hold the same
+    /// window forever while newer ones are never asked (review, 2026-10-26).
+    private(set) var cursor: [String: Int] = [:]
 
     /// After a retry HealthKit refused entirely.
     static let backoff: TimeInterval = 6 * 3600
+    /// After a retry that got some answers. A partial answer used to clear the wait, which let
+    /// one answered hour buy a full re-split of the rest on every wake (review, 2026-10-26).
+    static let minInterval: TimeInterval = 3600
 
     static func hourIndex(_ date: Date) -> Int { Int((date.timeIntervalSince1970 / 3600).rounded(.down)) }
     static func date(_ hour: Int) -> Date { Date(timeIntervalSince1970: TimeInterval(hour) * 3600) }
@@ -431,6 +438,7 @@ struct RefusedHourLedger: Codable, Equatable {
         guard !hours.isEmpty else {
             runs[type] = nil
             retryAfter[type] = nil
+            cursor[type] = nil
             return
         }
         var out: [[Int]] = []
@@ -446,8 +454,11 @@ struct RefusedHourLedger: Codable, Equatable {
         set(hours(for: type).union(dates.map(Self.hourIndex)), for: type)
     }
 
-    /// The oldest `limit` hours to ask again, or none while backing off. Hours before `floor`
-    /// are dropped for good: the import setting no longer covers them.
+    func hasPending(_ type: String) -> Bool { runs[type] != nil }
+
+    /// Up to `limit` hours to ask again, oldest first from the cursor and wrapping, or none
+    /// while waiting. Hours before `floor` are dropped for good: the import setting no longer
+    /// covers them.
     mutating func due(for type: String, limit: Int, notBefore floor: Date?, now: Date) -> [Date] {
         var pending = hours(for: type)
         if let floor {
@@ -455,17 +466,21 @@ struct RefusedHourLedger: Codable, Equatable {
             if kept.count != pending.count { set(kept, for: type); pending = kept }
         }
         guard !pending.isEmpty, (retryAfter[type] ?? 0) <= now.timeIntervalSince1970 else { return [] }
-        return pending.sorted().prefix(limit).map(Self.date)
+        let sorted = pending.sorted()
+        let from = cursor[type] ?? Int.min
+        let window = sorted.filter { $0 >= from } + sorted.filter { $0 < from }
+        return window.prefix(limit).map(Self.date)
     }
 
-    /// After asking `asked` again: answered hours leave, `stillRefused` stay. A retry with no
-    /// answer at all backs the type off.
+    /// After asking `asked` again: answered hours leave, `stillRefused` stay, and the next
+    /// window starts after the last hour asked. Hours still waiting set the next wait.
     mutating func resolve(asked: [Date], stillRefused: [Date], for type: String, now: Date) {
         let refused = Set(stillRefused.map(Self.hourIndex))
-        let answered = Set(asked.map(Self.hourIndex)).subtracting(refused)
+        let askedHours = asked.map(Self.hourIndex)
+        let answered = Set(askedHours).subtracting(refused)
         set(hours(for: type).subtracting(answered), for: type)
-        if runs[type] != nil {
-            retryAfter[type] = answered.isEmpty ? now.timeIntervalSince1970 + Self.backoff : nil
-        }
+        guard runs[type] != nil else { return }
+        if let last = askedHours.max() { cursor[type] = last + 1 }
+        retryAfter[type] = now.timeIntervalSince1970 + (answered.isEmpty ? Self.backoff : Self.minInterval)
     }
 }

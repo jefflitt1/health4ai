@@ -424,7 +424,9 @@ final class BulkExportManager {
                 // bounded horizon keeps this working; the older-window pass is skipped.
                 if sweepsToNow && Self.alwaysExpectedIdentifiers.contains(sampleType.identifier) {
                     var empties = emptyHighVolumeTypes
-                    if count == 0 {
+                    // Nothing posted because HealthKit refused every hour is not a switched-off
+                    // permission; the refused-hours notice names it instead (GitHub #28).
+                    if count == 0 && !RefusedHours.shared.hasPending(sampleType.identifier) {
                         empties.insert(sampleType.identifier)
                     } else {
                         empties.remove(sampleType.identifier)

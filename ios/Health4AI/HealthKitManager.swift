@@ -1,5 +1,6 @@
 import Foundation
 import HealthKit
+import os
 
 // MARK: - HealthKitManager
 
@@ -824,7 +825,11 @@ extension HealthKitManager {
         guard let unit = Self.unitMap[type.identifier]?.unitString else {
             throw HourlyTotalsError.noStatistics
         }
-        return try await hourlyTotals(for: type, hours: hours, unit: unit)
+        // No zero rows on a retry. The first pass knew each hour held samples; a retry does not,
+        // and an empty answer here (read access revoked since, say) would post a zero that
+        // deletes the hour's per-device rows (Codex review, 2026-10-26). An empty hour counts as
+        // answered and leaves the ledger, with whatever the database already holds untouched.
+        return try await hourlyTotals(for: type, hours: hours, unit: unit, postsEmptyHours: false)
     }
 
     /// The hours that were totalled, and the hours HealthKit refused.
@@ -837,8 +842,8 @@ extension HealthKitManager {
         var refusedHours: [Date] = []
     }
 
-    private func hourlyTotals(for type: HKQuantityType, hours: Set<Date>,
-                              unit unitString: String) async throws -> HourlyTotals {
+    private func hourlyTotals(for type: HKQuantityType, hours: Set<Date>, unit unitString: String,
+                              postsEmptyHours: Bool = true) async throws -> HourlyTotals {
         let calendar = Self.utcCalendar
         // Query in spans of at most 31 days. A first-sync page can touch hours years apart,
         // and one collection query across all of them would build every empty hour between.
@@ -873,6 +878,8 @@ extension HealthKitManager {
                     var unit = unitString
                     if let sum = collection.statistics(for: hour)?.sumQuantity() {
                         (value, unit) = bestUnit(for: type, quantity: sum)
+                    } else if !postsEmptyHours {
+                        continue
                     }
                     results.samples.append(HealthSample(
                         metricType: type.identifier,
@@ -937,18 +944,27 @@ final class RefusedHours {
     /// about twice this in statistics queries per pass (RangeSplit down to single hours).
     static let retryLimit = 168
     private let lock = NSLock()
+    private static let logger = Logger(subsystem: "com.jglittell.health4ai", category: "RefusedHours")
 
     private func load() -> RefusedHourLedger {
-        guard let data = UserDefaults.standard.data(forKey: Self.key),
-              let ledger = try? JSONDecoder().decode(RefusedHourLedger.self, from: data) else {
+        guard let data = UserDefaults.standard.data(forKey: Self.key) else { return RefusedHourLedger() }
+        do {
+            return try JSONDecoder().decode(RefusedHourLedger.self, from: data)
+        } catch {
+            // Set aside, never overwritten by the next save: the anchors have already passed these
+            // hours, so this blob is the only record of them.
+            Self.logger.error("ledger unreadable, kept under \(Self.key, privacy: .public).unreadable: \(error.localizedDescription, privacy: .public)")
+            UserDefaults.standard.set(data, forKey: Self.key + ".unreadable")
             return RefusedHourLedger()
         }
-        return ledger
     }
 
     private func save(_ ledger: RefusedHourLedger) {
-        guard let data = try? JSONEncoder().encode(ledger) else { return }
-        UserDefaults.standard.set(data, forKey: Self.key)
+        do {
+            UserDefaults.standard.set(try JSONEncoder().encode(ledger), forKey: Self.key)
+        } catch {
+            Self.logger.error("ledger not saved: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func update<T>(_ body: (inout RefusedHourLedger) -> T) -> T {
@@ -970,6 +986,11 @@ final class RefusedHours {
 
     func resolve(asked: [Date], stillRefused: [Date], for type: String) {
         update { $0.resolve(asked: asked, stillRefused: stillRefused, for: type, now: Date()) }
+    }
+
+    func hasPending(_ type: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return load().hasPending(type)
     }
 
     /// Health-app names of the types with hours still waiting, for the Home notice.

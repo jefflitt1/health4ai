@@ -312,8 +312,12 @@ final class SyncEngine {
                     #endif
                     do {
                         let count = try await self.syncType(sampleType)
-                        if count > 0 {
-                            await MainActor.run {
+                        // This path both records refused hours and clears them on a retry,
+                        // so the Home notice follows the ledger here too, not only per pass.
+                        let refusedNames = RefusedHours.shared.pendingNames()
+                        await MainActor.run {
+                            self.syncState.refusedHourMetricNames = refusedNames
+                            if count > 0 {
                                 self.syncState.recordSyncComplete(count: count)
                             }
                         }
@@ -697,8 +701,18 @@ final class SyncEngine {
 
             if samples.count < Self.anchorPageSize { break pages }
         }
-        return total + (try await retryRefusedHours(sampleType, floor: floor,
-                                                      serverURL: serverURL, token: token))
+        // A failed retry does not fail the type: the pages above are posted and their anchors
+        // saved, and failing here would report them as a failed sync and drop them from the
+        // count (Codex review, 2026-10-26). The hours stay in the ledger, so the Home notice
+        // stays up and the next pass asks again. Cancellation still stops the pass.
+        do {
+            try await retryRefusedHours(sampleType, floor: floor, serverURL: serverURL, token: token)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            print("[SyncEngine] Refused-hours retry failed for \(sampleType.identifier), kept for next pass: \(error)")
+        }
+        return total
     }
 
     private func post(_ samples: [HealthSample], token: String, serverURL: String) async throws {
@@ -709,22 +723,21 @@ final class SyncEngine {
     }
 
     /// Asks HealthKit again for hours it refused to total on an earlier pass or import, and
-    /// posts the ones it now answers. Returns the hours posted: no samples are involved here,
-    /// and each one fills an hour the database has had no merged total for.
+    /// posts the ones it now answers. Adds nothing to the synced count: the pass that recorded
+    /// these hours already counted their HealthKit samples, and the count is samples, not rows.
     private func retryRefusedHours(_ sampleType: HKSampleType, floor: Date?,
-                                   serverURL: String, token: String) async throws -> Int {
+                                   serverURL: String, token: String) async throws {
         guard HealthKitManager.syncsAsHourlyTotals(sampleType),
-              let quantityType = sampleType as? HKQuantityType else { return 0 }
+              let quantityType = sampleType as? HKQuantityType else { return }
         let due = RefusedHours.shared.due(for: sampleType.identifier, notBefore: floor)
         guard !due.isEmpty,
-              try await mergedHoursAllowed(serverURL: serverURL, token: token) else { return 0 }
+              try await mergedHoursAllowed(serverURL: serverURL, token: token) else { return }
         let totals = try await hkManager.hourlyTotals(for: quantityType, retrying: Set(due))
         if !totals.samples.isEmpty {
             try await post(totals.samples, token: token, serverURL: serverURL)
         }
         RefusedHours.shared.resolve(asked: due, stillRefused: totals.refusedHours,
                                     for: sampleType.identifier)
-        return totals.samples.count
     }
 
     // MARK: - Anchored HKSample query

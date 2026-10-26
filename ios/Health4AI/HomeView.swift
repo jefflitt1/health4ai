@@ -875,10 +875,9 @@ struct HomeView: View {
                     .tint(.red)
                 }
             } else if syncState.backfillCompleted {
-                if !syncState.emptyExpectedMetricNames.isEmpty {
-                    emptyMetricsWarning
-                } else if !syncState.refusedHourMetricNames.isEmpty {
-                    refusedHoursNotice
+                if !syncState.emptyExpectedMetricNames.isEmpty || !syncState.refusedHourMetricNames.isEmpty {
+                    if !syncState.emptyExpectedMetricNames.isEmpty { emptyMetricsWarning }
+                    if !syncState.refusedHourMetricNames.isEmpty { refusedHoursNotice }
                 } else {
                     Label("Complete", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
