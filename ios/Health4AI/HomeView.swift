@@ -156,7 +156,8 @@ struct HomeView: View {
                 // cannot scroll. Paired with the launch arguments in SyncState.init.
                 .onAppear {
                     let args = ProcessInfo.processInfo.arguments
-                    if args.contains("-h4aiScreenshotImportFailed") || args.contains("-h4aiScreenshotImportFailedMany") {
+                    if args.contains("-h4aiScreenshotImportFailed") || args.contains("-h4aiScreenshotImportFailedMany")
+                        || args.contains("-h4aiScreenshotRefusedHours") {
                         proxy.scrollTo(Self.backfillCardID, anchor: .top)
                     }
                     if args.contains("-h4aiScrollToSheets") { proxy.scrollTo(Self.sheetsCardID, anchor: .top) }
@@ -954,18 +955,19 @@ struct HomeView: View {
         let names = syncState.refusedHourMetricNames
         let shown = names.count > 5 ? Array(names.prefix(4)) + ["\(names.count - 4) more"] : names
         return VStack(alignment: .leading, spacing: 10) {
-            // Orange on the symbol only, as in emptyMetricsWarning (orange text is 2.31:1).
+            // Neutral symbol, not orange: nothing to do and the app retries, so the status
+            // headline stays green and the two must agree (design.md, Status colour).
             Label {
                 Text("Imported, but HealthKit held back some hours")
                     .foregroundStyle(.primary)
             } icon: {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                Image(systemName: "hourglass")
+                    .foregroundStyle(.secondary)
             }
             .font(.subheadline.weight(.medium))
             Text(shown.formatted(.list(type: .and)))
                 .font(.caption.weight(.medium))
-            Text("This is a known HealthKit issue. Those hours are asked for again as the app syncs, and filled in once HealthKit shares them.")
+            Text("This is a known HealthKit issue. health4ai asks for those hours again as it syncs, and fills them in once HealthKit shares them.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

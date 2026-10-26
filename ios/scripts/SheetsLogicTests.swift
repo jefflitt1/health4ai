@@ -218,6 +218,13 @@ stuck.resolve(asked: third, stillRefused: third, for: basal, now: hr(30))
 check(first == [hr(0), hr(1)] && second == [hr(2), hr(3)] && third == [hr(4), hr(5)]
       && stuck.due(for: basal, limit: 2, notBefore: nil, now: hr(40)) == [hr(0), hr(1)], "ledger_window_rotates_and_wraps")
 check(stuck.hasPending(basal) && !stuck.hasPending("HKQuantityTypeIdentifierStepCount"), "ledger_has_pending")
+stuck.backOff(basal, now: hr(40))
+check(stuck.due(for: basal, limit: 2, notBefore: nil, now: hr(45)).isEmpty
+      && stuck.due(for: basal, limit: 2, notBefore: nil, now: hr(46)).count == 2, "ledger_failed_retry_backs_off")
+// A ledger saved before `cursor` and `retryAfter` existed still decodes, hours intact.
+let older = #"{"runs":{"\#(basal)":[[\#(RefusedHourLedger.hourIndex(hr(0))),3]]}}"#
+let olderLedger = try? JSONDecoder().decode(RefusedHourLedger.self, from: Data(older.utf8))
+check(olderLedger?.hours(for: basal).count == 3 && olderLedger?.cursor.isEmpty == true, "ledger_decodes_without_newer_fields")
 check(Set(ledger.due(for: basal, limit: 10, notBefore: hr(2), now: hr(17))) == Set([hr(2), hr(5)])
       && ledger.hours(for: basal).count == 2, "ledger_drops_hours_before_floor")
 ledger.resolve(asked: [hr(2), hr(5)], stillRefused: [], for: basal, now: hr(17))

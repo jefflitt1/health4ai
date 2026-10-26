@@ -63,6 +63,10 @@ failure.
 exists to prevent: the headline said green "Active" while the card below it named four
 metrics that had returned nothing.
 
+A self-healing notice (the app retries and the person has nothing to do, such as HealthKit
+refused hours, GitHub #28) uses a neutral `.secondary` symbol, never orange, and does not feed
+`statusColor`. Orange means attention the person or the connection owes.
+
 ## Honest numbers
 
 The app reports on data it does not own, so a number on screen is a claim.

@@ -369,6 +369,9 @@ final class SyncState: ObservableObject {
         }
         // The refused-hours notice on a completed import card (GitHub #28).
         if ProcessInfo.processInfo.arguments.contains("-h4aiScreenshotRefusedHours") {
+            // The import card shows only in Supabase mode. didSet does not run in init, so
+            // nothing is saved.
+            self.connectionType = .supabase
             self.isAuthenticated = true
             self.lifetimeSyncedRecords = max(self.lifetimeSyncedRecords, 1)
             self.lastSyncDate = Date()

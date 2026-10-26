@@ -421,6 +421,25 @@ struct RefusedHourLedger: Codable, Equatable {
     /// one answered hour buy a full re-split of the rest on every wake (review, 2026-10-26).
     static let minInterval: TimeInterval = 3600
 
+    init() {}
+
+    /// Every field optional on decode, so a ledger saved before a field existed still reads.
+    /// A strict decode fails, and a failed decode is a ledger the app can no longer act on
+    /// (Codex review, 2026-10-26).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        runs = try c.decodeIfPresent([String: [[Int]]].self, forKey: .runs) ?? [:]
+        retryAfter = try c.decodeIfPresent([String: Double].self, forKey: .retryAfter) ?? [:]
+        cursor = try c.decodeIfPresent([String: Int].self, forKey: .cursor) ?? [:]
+    }
+
+    /// After a retry that failed outright (not a refusal): wait the full backoff, so an error
+    /// that repeats does not re-run the retry on every wake.
+    mutating func backOff(_ type: String, now: Date) {
+        guard runs[type] != nil else { return }
+        retryAfter[type] = now.timeIntervalSince1970 + Self.backoff
+    }
+
     static func hourIndex(_ date: Date) -> Int { Int((date.timeIntervalSince1970 / 3600).rounded(.down)) }
     static func date(_ hour: Int) -> Date { Date(timeIntervalSince1970: TimeInterval(hour) * 3600) }
 

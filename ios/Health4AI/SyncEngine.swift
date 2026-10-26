@@ -312,12 +312,8 @@ final class SyncEngine {
                     #endif
                     do {
                         let count = try await self.syncType(sampleType)
-                        // This path both records refused hours and clears them on a retry,
-                        // so the Home notice follows the ledger here too, not only per pass.
-                        let refusedNames = RefusedHours.shared.pendingNames()
-                        await MainActor.run {
-                            self.syncState.refusedHourMetricNames = refusedNames
-                            if count > 0 {
+                        if count > 0 {
+                            await MainActor.run {
                                 self.syncState.recordSyncComplete(count: count)
                             }
                         }
@@ -331,6 +327,11 @@ final class SyncEngine {
                             trigger: trigger, counts: [:], success: false,
                             errorText: error.localizedDescription))
                     }
+                    // This path both records refused hours (a page can record them, then fail
+                    // to post) and clears them on a retry, so the Home notice follows the ledger
+                    // here too, success or not, and not only once per full pass.
+                    let refusedNames = RefusedHours.shared.pendingNames()
+                    await MainActor.run { self.syncState.refusedHourMetricNames = refusedNames }
                     completionHandler()
                 }
             }
@@ -710,7 +711,8 @@ final class SyncEngine {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            print("[SyncEngine] Refused-hours retry failed for \(sampleType.identifier), kept for next pass: \(error)")
+            RefusedHours.shared.backOff(sampleType.identifier)
+            print("[SyncEngine] Refused-hours retry failed for \(sampleType.identifier), kept for a later pass: \(error)")
         }
         return total
     }

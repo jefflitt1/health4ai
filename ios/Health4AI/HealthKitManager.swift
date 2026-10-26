@@ -988,6 +988,10 @@ final class RefusedHours {
         update { $0.resolve(asked: asked, stillRefused: stillRefused, for: type, now: Date()) }
     }
 
+    func backOff(_ type: String) {
+        update { $0.backOff(type, now: Date()) }
+    }
+
     func hasPending(_ type: String) -> Bool {
         lock.lock(); defer { lock.unlock() }
         return load().hasPending(type)
