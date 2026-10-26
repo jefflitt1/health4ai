@@ -308,7 +308,7 @@ final class DailySummaryBuilder {
     private func collection(_ id: HKQuantityTypeIdentifier, _ options: HKStatisticsOptions,
                             _ days: [Date]) async throws -> DayStatistics {
         assert(Self.readTypes.contains(HKQuantityType(id)), "\(id.rawValue) missing from readTypes")
-        let outcome = try await RangeSplit.run(days, splittable: Self.isRangeRefusal) { piece in
+        let outcome = try await RangeSplit.run(days, splittable: HealthKitManager.isRangeRefusal) { piece in
             let end = calendar.date(byAdding: .day, value: 1, to: piece.last!)!
             let predicate = HKQuery.predicateForSamples(withStart: piece[0], end: end)
             let descriptor = HKStatisticsCollectionQueryDescriptor(
@@ -323,14 +323,6 @@ final class DailySummaryBuilder {
             Self.logger.error("statistics \(id.rawValue, privacy: .public) unreadable for \(key, privacy: .public): left blank")
         }
         return DayStatistics(parts: outcome.parts, failedDays: outcome.failedDays)
-    }
-
-    /// "Unable to invalidate interval: no data source available" is com.apple.healthkit 3
-    /// (errorInvalidArgument). Our own arguments are valid for every other day, so for a
-    /// statistics collection this code means HealthKit's lost data-source cache.
-    private static func isRangeRefusal(_ error: Error) -> Bool {
-        let e = error as NSError
-        return e.domain == HKErrorDomain && e.code == HKError.Code.errorInvalidArgument.rawValue
     }
 
     private func workouts(from start: Date, to end: Date) async throws -> [HKWorkout] {

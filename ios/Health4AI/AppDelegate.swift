@@ -127,6 +127,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             await BulkExportManager.shared.applyMergedHoursResendIfNeeded(syncState: syncState)
             await BulkExportManager.shared.publishEmptyExpectedTypes(syncState: syncState)
             await BulkExportManager.shared.publishFailedImportTypes(syncState: syncState)
+            syncState.refusedHourMetricNames = RefusedHours.shared.pendingNames()
             _ = await BulkExportManager.shared.rearmIfHistoryAccessWidened(syncState: syncState)
             if BulkExportManager.shared.backfillNeeded {
                 BulkExportManager.shared.startBackfill(syncState: syncState)

@@ -187,5 +187,28 @@ check(oneDay?.failedDays == [badDay] && oneDay?.parts.isEmpty == true, "split_si
 let allRefused = try? await RangeSplit.run(splitDays, splittable: { $0 is Refused }) { _ -> Int in throw Refused() }
 check(allRefused?.failedDays == splitDays, "split_every_refused_day_reported")
 
+// RefusedHourLedger: hours HealthKit refused to total, retried oldest first (GitHub #28).
+let basal = "HKQuantityTypeIdentifierBasalEnergyBurned"
+let h0 = at("2026-10-20T00:00:00Z")
+func hr(_ n: Int) -> Date { h0.addingTimeInterval(TimeInterval(n) * 3600) }
+var ledger = RefusedHourLedger()
+ledger.add([hr(0), hr(1), hr(2), hr(5), hr(1)], for: basal)
+check(ledger.runs[basal] == [[RefusedHourLedger.hourIndex(hr(0)), 3], [RefusedHourLedger.hourIndex(hr(5)), 1]], "ledger_stores_runs")
+check(ledger.hours(for: basal).count == 4 && ledger.pendingTypes == [basal], "ledger_counts_hours_once")
+let decoded = try? JSONDecoder().decode(RefusedHourLedger.self, from: JSONEncoder().encode(ledger))
+check(decoded == ledger, "ledger_round_trips")
+let due = ledger.due(for: basal, limit: 2, notBefore: nil, now: hr(10))
+check(due == [hr(0), hr(1)], "ledger_due_oldest_first_capped")
+ledger.resolve(asked: due, stillRefused: [hr(1)], for: basal, now: hr(10))
+check(ledger.hours(for: basal) == Set([hr(1), hr(2), hr(5)].map(RefusedHourLedger.hourIndex)), "ledger_answered_hours_leave")
+check(ledger.due(for: basal, limit: 10, notBefore: nil, now: hr(10)).count == 3, "ledger_partial_answer_no_backoff")
+ledger.resolve(asked: [hr(1)], stillRefused: [hr(1)], for: basal, now: hr(10))
+check(ledger.due(for: basal, limit: 10, notBefore: nil, now: hr(11)).isEmpty, "ledger_no_answer_backs_off")
+check(ledger.due(for: basal, limit: 10, notBefore: nil, now: hr(16)).count == 3, "ledger_backoff_expires")
+check(ledger.due(for: basal, limit: 10, notBefore: hr(2), now: hr(16)) == [hr(2), hr(5)]
+      && ledger.hours(for: basal).count == 2, "ledger_drops_hours_before_floor")
+ledger.resolve(asked: [hr(2), hr(5)], stillRefused: [], for: basal, now: hr(16))
+check(ledger.runs[basal] == nil && ledger.pendingTypes.isEmpty && ledger.retryAfter[basal] == nil, "ledger_empty_when_all_answered")
+
 print(failures == 0 ? "ALL PASS" : "\(failures) FAILED")
 exit(failures == 0 ? 0 : 1)

@@ -350,7 +350,13 @@ enum RebuildBackoff {
     static func isBlocked(notBefore: Date?, now: Date) -> Bool { (notBefore ?? .distantPast) > now }
 }
 
+#endif
+
 // MARK: - Splitting a query around days HealthKit refuses
+
+// Outside H4A_SHEETS: live sync and the history import split refused hourly totals with it too,
+// passing hours where the Sheets path passes days (HealthKitManager.hourlyTotals, GitHub #28).
+import Foundation
 
 enum RangeSplit {
     struct Outcome<T> {
@@ -390,4 +396,76 @@ enum RangeSplit {
         }
     }
 }
-#endif
+
+// MARK: - Hours HealthKit refused to total
+
+/// Hourly totals HealthKit refused (RangeSplit), per type, waiting to be asked again. Persisted
+/// by RefusedHours; pure here so the off-device harness tests it.
+///
+/// Stored as runs of consecutive hours, [first hour, count], hours counted from 1970 in UTC.
+/// A refusal covers whole stretches, so a plain list would grow by 24 entries a day per type
+/// for as long as a phone stays affected.
+struct RefusedHourLedger: Codable, Equatable {
+    private(set) var runs: [String: [[Int]]] = [:]
+    /// Per type: no retry before this time (seconds since 1970), set when a retry got no
+    /// answer at all, so an affected phone does not re-ask on every background wake.
+    private(set) var retryAfter: [String: Double] = [:]
+
+    /// After a retry HealthKit refused entirely.
+    static let backoff: TimeInterval = 6 * 3600
+
+    static func hourIndex(_ date: Date) -> Int { Int((date.timeIntervalSince1970 / 3600).rounded(.down)) }
+    static func date(_ hour: Int) -> Date { Date(timeIntervalSince1970: TimeInterval(hour) * 3600) }
+
+    var pendingTypes: [String] { runs.keys.sorted() }
+
+    func hours(for type: String) -> Set<Int> {
+        var out = Set<Int>()
+        for run in runs[type] ?? [] where run.count == 2 && run[1] > 0 {
+            out.formUnion(run[0]..<(run[0] + run[1]))
+        }
+        return out
+    }
+
+    private mutating func set(_ hours: Set<Int>, for type: String) {
+        guard !hours.isEmpty else {
+            runs[type] = nil
+            retryAfter[type] = nil
+            return
+        }
+        var out: [[Int]] = []
+        for h in hours.sorted() {
+            if let last = out.last, last[0] + last[1] == h { out[out.count - 1][1] += 1 }
+            else { out.append([h, 1]) }
+        }
+        runs[type] = out
+    }
+
+    mutating func add(_ dates: [Date], for type: String) {
+        guard !dates.isEmpty else { return }
+        set(hours(for: type).union(dates.map(Self.hourIndex)), for: type)
+    }
+
+    /// The oldest `limit` hours to ask again, or none while backing off. Hours before `floor`
+    /// are dropped for good: the import setting no longer covers them.
+    mutating func due(for type: String, limit: Int, notBefore floor: Date?, now: Date) -> [Date] {
+        var pending = hours(for: type)
+        if let floor {
+            let kept = pending.filter { $0 >= Self.hourIndex(floor) }
+            if kept.count != pending.count { set(kept, for: type); pending = kept }
+        }
+        guard !pending.isEmpty, (retryAfter[type] ?? 0) <= now.timeIntervalSince1970 else { return [] }
+        return pending.sorted().prefix(limit).map(Self.date)
+    }
+
+    /// After asking `asked` again: answered hours leave, `stillRefused` stay. A retry with no
+    /// answer at all backs the type off.
+    mutating func resolve(asked: [Date], stillRefused: [Date], for type: String, now: Date) {
+        let refused = Set(stillRefused.map(Self.hourIndex))
+        let answered = Set(asked.map(Self.hourIndex)).subtracting(refused)
+        set(hours(for: type).subtracting(answered), for: type)
+        if runs[type] != nil {
+            retryAfter[type] = answered.isEmpty ? now.timeIntervalSince1970 + Self.backoff : nil
+        }
+    }
+}

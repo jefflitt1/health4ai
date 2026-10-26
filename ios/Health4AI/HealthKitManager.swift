@@ -779,7 +779,7 @@ extension HealthKitManager {
     /// it. Hours starting before the floor's own hour are dropped, so the collection query
     /// never reaches earlier than the floor on either path. nil means unbounded.
     func hourlyTotals(for type: HKQuantityType, touchedBy samples: [HKSample],
-                      notBefore floor: Date?) async throws -> [HealthSample] {
+                      notBefore floor: Date?) async throws -> HourlyTotals {
         let calendar = Self.utcCalendar
         var hours = Set<Date>()
         var unitString: String?
@@ -813,12 +813,37 @@ extension HealthKitManager {
                 hour = next
             } while hour < sample.endDate
         }
-        guard let unitString, !hours.isEmpty else { return [] }
+        guard let unitString, !hours.isEmpty else { return HourlyTotals() }
+        return try await hourlyTotals(for: type, hours: hours, unit: unitString)
+    }
 
+    /// Merged totals for hours HealthKit refused on an earlier pass (RefusedHours). No samples
+    /// to take a unit from, so the type's mapped unit stands in; it only labels a zero hour,
+    /// since an hour with a sum takes its unit from the sum, as above.
+    func hourlyTotals(for type: HKQuantityType, retrying hours: Set<Date>) async throws -> HourlyTotals {
+        guard let unit = Self.unitMap[type.identifier]?.unitString else {
+            throw HourlyTotalsError.noStatistics
+        }
+        return try await hourlyTotals(for: type, hours: hours, unit: unit)
+    }
+
+    /// The hours that were totalled, and the hours HealthKit refused.
+    struct HourlyTotals {
+        var samples: [HealthSample] = []
+        /// Hours HealthKit would not total ("Unable to invalidate interval: no data source
+        /// available"; see RangeSplit). Nothing is sent for them: a merged row REPLACES that
+        /// hour's per-device rows, so a zero sent for a refused hour would delete real data.
+        /// The caller records them in RefusedHours, and a later pass retries them.
+        var refusedHours: [Date] = []
+    }
+
+    private func hourlyTotals(for type: HKQuantityType, hours: Set<Date>,
+                              unit unitString: String) async throws -> HourlyTotals {
+        let calendar = Self.utcCalendar
         // Query in spans of at most 31 days. A first-sync page can touch hours years apart,
         // and one collection query across all of them would build every empty hour between.
         let sorted = hours.sorted()
-        var results: [HealthSample] = []
+        var results = HourlyTotals()
         var chunkStart = 0
         while chunkStart < sorted.count {
             guard let limit = calendar.date(byAdding: .day, value: 31, to: sorted[chunkStart]) else {
@@ -827,34 +852,51 @@ extension HealthKitManager {
             var chunkEnd = chunkStart
             while chunkEnd + 1 < sorted.count, sorted[chunkEnd + 1] < limit { chunkEnd += 1 }
 
-            let first = sorted[chunkStart]
-            guard let end = calendar.date(byAdding: .hour, value: 1, to: sorted[chunkEnd]) else {
-                throw HourlyTotalsError.calendarArithmetic
-            }
-            let collection = try await hourlyStatistics(for: type, from: first, to: end)
-
-            for hour in sorted[chunkStart...chunkEnd] {
-                guard let hourEnd = calendar.date(byAdding: .hour, value: 1, to: hour) else {
+            // HealthKit can refuse a statistics collection over a range while a shorter one
+            // succeeds (FB22221658). Before this, one refusal failed the whole type on every
+            // live pass and every import, so Basal Energy and Walking + Running Distance never
+            // reached the database on an affected phone (GitHub #28). Split down to the hours
+            // HealthKit refuses; any other error still fails the type.
+            let outcome = try await RangeSplit.run(Array(sorted[chunkStart...chunkEnd]),
+                                                   splittable: Self.isRangeRefusal) { piece in
+                guard let end = calendar.date(byAdding: .hour, value: 1, to: piece[piece.count - 1]) else {
                     throw HourlyTotalsError.calendarArithmetic
                 }
-                var value = 0.0
-                var unit = unitString
-                if let sum = collection.statistics(for: hour)?.sumQuantity() {
-                    (value, unit) = bestUnit(for: type, quantity: sum)
-                }
-                results.append(HealthSample(
-                    metricType: type.identifier,
-                    value: value,
-                    unit: unit,
-                    sourceDevice: Self.allSourcesLabel,
-                    startedAt: hour,
-                    endedAt: hourEnd,
-                    metadata: ["h4ai_aggregation": .string("hkstatistics_cumulative_sum_hourly")]
-                ))
+                return try await hourlyStatistics(for: type, from: piece[0], to: end)
             }
+            for (pieceHours, collection) in outcome.parts {
+                for hour in pieceHours {
+                    guard let hourEnd = calendar.date(byAdding: .hour, value: 1, to: hour) else {
+                        throw HourlyTotalsError.calendarArithmetic
+                    }
+                    var value = 0.0
+                    var unit = unitString
+                    if let sum = collection.statistics(for: hour)?.sumQuantity() {
+                        (value, unit) = bestUnit(for: type, quantity: sum)
+                    }
+                    results.samples.append(HealthSample(
+                        metricType: type.identifier,
+                        value: value,
+                        unit: unit,
+                        sourceDevice: Self.allSourcesLabel,
+                        startedAt: hour,
+                        endedAt: hourEnd,
+                        metadata: ["h4ai_aggregation": .string("hkstatistics_cumulative_sum_hourly")]
+                    ))
+                }
+            }
+            results.refusedHours += outcome.failedDays
             chunkStart = chunkEnd + 1
         }
         return results
+    }
+
+    /// "Unable to invalidate interval: no data source available" is com.apple.healthkit 3
+    /// (errorInvalidArgument). Our own arguments are valid for every other range, so for a
+    /// statistics collection this code means HealthKit's lost data-source cache.
+    static func isRangeRefusal(_ error: Error) -> Bool {
+        let e = error as NSError
+        return e.domain == HKErrorDomain && e.code == HKError.Code.errorInvalidArgument.rawValue
     }
 
     private func hourlyStatistics(
@@ -881,5 +923,58 @@ extension HealthKitManager {
             }
             store.execute(query)
         }
+    }
+}
+
+// MARK: - Refused hours, persisted
+
+/// The RefusedHourLedger in UserDefaults. Lock-guarded like SyncHistoryStore: live sync and the
+/// history import both record into it, from different tasks.
+final class RefusedHours {
+    static let shared = RefusedHours()
+    private static let key = "hkb.refusedHours.v1"
+    /// Hours asked again per type per pass: a week. A phone HealthKit refuses entirely costs
+    /// about twice this in statistics queries per pass (RangeSplit down to single hours).
+    static let retryLimit = 168
+    private let lock = NSLock()
+
+    private func load() -> RefusedHourLedger {
+        guard let data = UserDefaults.standard.data(forKey: Self.key),
+              let ledger = try? JSONDecoder().decode(RefusedHourLedger.self, from: data) else {
+            return RefusedHourLedger()
+        }
+        return ledger
+    }
+
+    private func save(_ ledger: RefusedHourLedger) {
+        guard let data = try? JSONEncoder().encode(ledger) else { return }
+        UserDefaults.standard.set(data, forKey: Self.key)
+    }
+
+    private func update<T>(_ body: (inout RefusedHourLedger) -> T) -> T {
+        lock.lock(); defer { lock.unlock() }
+        var ledger = load()
+        let result = body(&ledger)
+        save(ledger)
+        return result
+    }
+
+    func add(_ hours: [Date], for type: String) {
+        guard !hours.isEmpty else { return }
+        update { $0.add(hours, for: type) }
+    }
+
+    func due(for type: String, notBefore floor: Date?) -> [Date] {
+        update { $0.due(for: type, limit: Self.retryLimit, notBefore: floor, now: Date()) }
+    }
+
+    func resolve(asked: [Date], stillRefused: [Date], for type: String) {
+        update { $0.resolve(asked: asked, stillRefused: stillRefused, for: type, now: Date()) }
+    }
+
+    /// Health-app names of the types with hours still waiting, for the Home notice.
+    func pendingNames() -> [String] {
+        lock.lock(); defer { lock.unlock() }
+        return load().pendingTypes.map(BulkExportManager.displayName(for:)).sorted()
     }
 }

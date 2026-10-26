@@ -232,6 +232,7 @@ struct HomeView: View {
               syncState.syncError == nil,
               !sheetsNeedsAttention,
               syncState.importFailedMetricNames.isEmpty,
+              syncState.refusedHourMetricNames.isEmpty,
               SyncHistoryStore.shared.showsSustainedSuccess() else { return }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         let defaults = UserDefaults.standard
@@ -874,12 +875,14 @@ struct HomeView: View {
                     .tint(.red)
                 }
             } else if syncState.backfillCompleted {
-                if syncState.emptyExpectedMetricNames.isEmpty {
+                if !syncState.emptyExpectedMetricNames.isEmpty {
+                    emptyMetricsWarning
+                } else if !syncState.refusedHourMetricNames.isEmpty {
+                    refusedHoursNotice
+                } else {
                     Label("Complete", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                         .font(.subheadline)
-                } else {
-                    emptyMetricsWarning
                 }
             } else {
                 if !syncState.importFailedMetricNames.isEmpty {
@@ -939,6 +942,31 @@ struct HomeView: View {
             Text(syncState.isAuthenticated
                  ? "The import retries the next time you open the app, or tap Run Import now. Data already imported is kept."
                  : "The import retries after you sign in. Data already imported is kept.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// HealthKit refused to total some hours of these metrics (a known Apple issue, GitHub #28).
+    /// Everything else was imported, and those hours are asked for again on later syncs, so this
+    /// is a notice, not an action: there is nothing the person can do that the app is not doing.
+    private var refusedHoursNotice: some View {
+        let names = syncState.refusedHourMetricNames
+        let shown = names.count > 5 ? Array(names.prefix(4)) + ["\(names.count - 4) more"] : names
+        return VStack(alignment: .leading, spacing: 10) {
+            // Orange on the symbol only, as in emptyMetricsWarning (orange text is 2.31:1).
+            Label {
+                Text("Imported, but HealthKit held back some hours")
+                    .foregroundStyle(.primary)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+            }
+            .font(.subheadline.weight(.medium))
+            Text(shown.formatted(.list(type: .and)))
+                .font(.caption.weight(.medium))
+            Text("This is a known HealthKit issue. Those hours are asked for again as the app syncs, and filled in once HealthKit shares them.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

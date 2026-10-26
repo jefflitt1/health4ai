@@ -172,6 +172,9 @@ final class SyncState: ObservableObject {
     /// Human-readable names of metrics whose last import stopped on an error. They retry on
     /// the next run. See `BulkExportManager.failedImportTypes`.
     @Published var importFailedMetricNames: [String] = []
+    /// Health-app names of metrics with hours HealthKit refused to total, waiting for a later
+    /// sync to ask again. See `RefusedHours`.
+    @Published var refusedHourMetricNames: [String] = []
 
     /// The server answered without `merged_hours_v1`, so step, distance and energy totals are
     /// still sent per device and summed twice wherever an iPhone and a Watch both counted.
@@ -364,6 +367,16 @@ final class SyncState: ObservableObject {
                    "VO2 Max", "Walking + Running Distance", "Workouts"]
                 : ["Walking + Running Distance"]
         }
+        // The refused-hours notice on a completed import card (GitHub #28).
+        if ProcessInfo.processInfo.arguments.contains("-h4aiScreenshotRefusedHours") {
+            self.isAuthenticated = true
+            self.lifetimeSyncedRecords = max(self.lifetimeSyncedRecords, 1)
+            self.lastSyncDate = Date()
+            self.isBackfilling = false
+            self.backfillCompleted = true
+            self.emptyExpectedMetricNames = []
+            self.refusedHourMetricNames = ["Basal Energy Burned", "Walking + Running Distance"]
+        }
         // Setup Checklist screenshot: three of four steps done (URL, key, signed in); the
         // fourth (ingest reachable) is deliberately left `.unknown` until the user actually
         // taps Test Connection, so this is the checklist's honest untested-fourth-step state,
@@ -390,6 +403,7 @@ final class SyncState: ObservableObject {
             self.backgroundDeliveryFailedTypes = []
             self.emptyExpectedMetricNames = []
             self.importFailedMetricNames = []
+            self.refusedHourMetricNames = []
         }
         #endif
     }
