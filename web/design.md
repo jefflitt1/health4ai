@@ -22,7 +22,7 @@ classes, clipping and alternate text.
 
 ## Motion and critical content
 
-- Homepage heading, explanation, metric pills and App Store CTA are visible
+- Homepage heading, explanation, trust checklist and App Store CTA are visible
   immediately. Do not reintroduce staggered fade-in entrance classes.
 - Decorative ECG, floating cards, ring, peak and CTA effects retain their current
   appearance for visitors who have not requested reduced motion.
@@ -31,6 +31,17 @@ classes, clipping and alternate text.
   visible; disabling the animation must not erase the diagram.
 - Shared homepage styles remain on the homepage because HomeHero and HomeDetails
   are static component extractions, not new hydrated islands.
+
+## Hero trust checklist (2026-10-26)
+
+The hero carries a bold `text-sm` four-item checklist with accent check marks,
+directly above the App Store CTA, replacing the sample-value metric pills.
+Every item must stay backed by README or FAQ text (free iOS app; Google Sheet or
+Supabase project you own; health4.ai never stores or has access to your health
+data; open source on GitHub). The hero paragraph was intentionally cut to its
+first sentence, the step chip row was removed, and the decorative glow blobs
+were removed on purpose and must not return. Sample values in the ECG cards
+carry an "Example" label; never present sample numbers as live data.
 
 ## Preserve behavior and meaning
 
