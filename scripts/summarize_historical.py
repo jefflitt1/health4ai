@@ -156,11 +156,11 @@ def main():
         skipped_days = result["skipped_days"]
         total_raw += raw
         total_days += days
-        tail = "raw kept" if mode == "recompute" else "raw deleted"
+        raw_outcome = "raw retained" if mode == "recompute" else f"{raw:,} raw rows deleted"
         extra = f", {skipped_days} days skipped (per-device rows still present)" if skipped_days else ""
-        print(f"  {mt}: {mode}: {raw:,} raw rows processed -> {days} daily summaries written ({tail}{extra})")
+        print(f"  {mt}: {mode}: {days} daily summaries written ({raw_outcome}{extra})")
 
-    print(f"\nTotal raw rows {'eligible in dry run' if not args.execute else 'processed'}: {total_raw:,}")
+    print(f"\nTotal raw rows {'eligible in dry run' if not args.execute else 'deleted'}: {total_raw:,}")
     if args.execute:
         print(f"Total daily summary rows written: {total_days:,}")
     else:
