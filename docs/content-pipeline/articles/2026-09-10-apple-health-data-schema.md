@@ -15,10 +15,10 @@ Understanding the health4ai database schema lets you write custom SQL queries, b
 
 health4ai uses a two-tier storage architecture:
 
-- `healthkit_metrics` — raw HealthKit samples, retained for 30 days
-- `healthkit_daily_summaries` — pre-aggregated daily data for all historical data
+- `healthkit_metrics` — raw HealthKit samples, including recent and selected older samples
+- `healthkit_daily_summaries` — daily aggregates for older quantity samples where summarization has run
 
-Beyond 30 days, raw samples are no longer individually stored — the daily summary captures the aggregate. This keeps the database size manageable while preserving the analytical signal.
+The summarizer can aggregate older quantity samples into daily rows. Some older samples remain raw: category and workout records retain detail, merged activity types retain raw rows for safe recomputation, and other quantity types remain raw until their history can be compacted without double counting. Historical queries use a daily summary where available and aggregate remaining raw rows in Postgres.
 
 ## healthkit_metrics
 

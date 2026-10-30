@@ -9,8 +9,9 @@ other quantity type it COMPACTS in one statement that merges into an existing da
 than replacing it. The previous function, summarize_healthkit_metric, replaced a day's
 summary with whatever raw existed at run time and then deleted that raw, which lost every
 hour that had arrived before a late remainder (measured 2026-09-14: it ran mid re-import).
-Invoked via the Supabase Management API SQL endpoint rather than PostgREST RPC, whose 8 s
-statement timeout aborts multi-million-row types.
+Invoked over the project's existing Postgres connection rather than PostgREST RPC,
+whose 8 s statement timeout aborts multi-million-row types. No separate Supabase
+Management API token is needed.
 
 DEFAULT IS --merged-only. COMPACT mode for the non-merged types is withheld until the
 re-sent-history residual has a guard: after a fresh install the app re-sends a type's full
@@ -33,28 +34,23 @@ Only run after the backfill is confirmed complete.
 
 import argparse
 import os
+import re
+from contextlib import closing
 from datetime import date, timedelta
 
-import httpx
+import psycopg2
+import psycopg2.extras
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../mcp-server/.env"))
 
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-SUPABASE_PAT = os.environ["SUPABASE_PAT"]
+DATABASE_URL = os.environ["DATABASE_URL"]
 USER_ID = os.environ["HEALTHKIT_USER_ID"]
-PROJECT_REF = SUPABASE_URL.replace("https://", "").replace(".supabase.co", "")
-MGMT_URL = f"https://api.supabase.com/v1/projects/{PROJECT_REF}/database/query"
-MGMT_HEADERS = {"Authorization": f"Bearer {SUPABASE_PAT}", "Content-Type": "application/json"}
 CUTOFF_MONTHS = 1
 
-HEADERS = {
-    "apikey": SERVICE_ROLE_KEY,
-    "Authorization": f"Bearer {SERVICE_ROLE_KEY}",
-    "Content-Type": "application/json",
-}
-API = f"{SUPABASE_URL}/rest/v1"
+
+def connect():
+    return psycopg2.connect(DATABASE_URL, connect_timeout=10)
 
 
 def cutoff_date() -> str:
@@ -71,52 +67,25 @@ def is_summarizable(metric_type: str) -> bool:
 
 
 def types_before(cutoff: str) -> list[str]:
-    # PostgREST enforces a max-rows cap (~5000) regardless of limit=. Paging rows
-    # to discover distinct types is non-deterministic. Use a server-side RPC instead.
-    PAT = os.environ.get("SUPABASE_PAT", "")
-    if not PAT:
-        raise RuntimeError(
-            "SUPABASE_PAT not set. Required for exact distinct-type query via Management API.\n"
-            "Add SUPABASE_PAT=sbp_... to .env"
-        )
-    project_ref = SUPABASE_URL.replace("https://", "").replace(".supabase.co", "")
-    resp = httpx.post(
-        f"https://api.supabase.com/v1/projects/{project_ref}/database/query",
-        headers={"Authorization": f"Bearer {PAT}", "Content-Type": "application/json"},
-        json={"query": (
+    with closing(connect()) as conn, conn, conn.cursor() as cur:
+        cur.execute("SET LOCAL statement_timeout = '120s'")
+        cur.execute(
             "SELECT DISTINCT metric_type FROM public.healthkit_metrics "
-            f"WHERE user_id = $user${USER_ID}$user$ "
-            f"AND started_at < $cutoff${cutoff}T00:00:00+00:00$cutoff$::timestamptz"
-        )},
-        timeout=120,
-    )
-    resp.raise_for_status()
-    rows = resp.json()
-    if not isinstance(rows, list):
-        raise RuntimeError(f"Unexpected response from Management API: {rows}")
-    return sorted(r["metric_type"] for r in rows)
+            "WHERE user_id = %s AND started_at < %s::date ORDER BY metric_type",
+            (USER_ID, cutoff),
+        )
+        return [row[0] for row in cur.fetchall()]
 
 
 def count_raw(metric_type: str, cutoff: str) -> int:
-    # count=estimated uses planner stats for large tables (instant); exact counts
-    # over millions of rows hit the PostgREST statement timeout (error 57014).
-    resp = httpx.get(
-        f"{API}/healthkit_metrics",
-        headers={**HEADERS, "Prefer": "count=estimated"},
-        params={
-            "user_id": f"eq.{USER_ID}",
-            "metric_type": f"eq.{metric_type}",
-            "started_at": f"lt.{cutoff}T00:00:00+00:00",
-            "select": "id",
-            "limit": 1,
-        },
-        timeout=60,
-    )
-    resp.raise_for_status()
-    # Content-Range header: "0-0/12345" (estimate)
-    cr = resp.headers.get("content-range", "*/0")
-    tail = cr.split("/")[-1]
-    return int(tail) if tail.isdigit() else 0
+    with closing(connect()) as conn, conn, conn.cursor() as cur:
+        cur.execute("SET LOCAL statement_timeout = '60s'")
+        cur.execute(
+            "SELECT count(*) FROM public.healthkit_metrics "
+            "WHERE user_id = %s AND metric_type = %s AND started_at < %s::date",
+            (USER_ID, metric_type, cutoff),
+        )
+        return cur.fetchone()[0]
 
 
 MERGED_TYPES = frozenset({
@@ -131,14 +100,20 @@ MERGED_TYPES = frozenset({
 
 
 def summarize(metric_type: str, cutoff: str) -> dict:
-    """Run compaction via Management API to bypass PostgREST statement timeout."""
-    import re
+    """Run one metric's transaction over the direct database connection."""
     if not re.match(r'^HK[A-Za-z0-9]+TypeIdentifier[A-Za-z0-9]+$', metric_type):
         raise ValueError(f"Unexpected metric_type value: {metric_type!r}")
-    sql = f"SELECT * FROM public.health4ai_compact_metric_v2($u${USER_ID}$u$, $m${metric_type}$m$, $c${cutoff}$c$)"
-    resp = httpx.post(MGMT_URL, headers=MGMT_HEADERS, json={"query": sql}, timeout=600)
-    resp.raise_for_status()
-    return resp.json()
+    with closing(connect()) as conn, conn, conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SET LOCAL statement_timeout = '10min'")
+        cur.execute(
+            "SELECT * FROM public.health4ai_compact_metric_v2(%s, %s, %s::date)",
+            (USER_ID, metric_type, cutoff),
+        )
+        rows = [dict(row) for row in cur.fetchall()]
+        expected = "recompute" if metric_type in MERGED_TYPES else "compact"
+        if len(rows) != 1 or rows[0].get("mode") != expected:
+            raise RuntimeError(f"Compaction returned an invalid result for {metric_type}")
+        return rows
 
 
 def main():
@@ -174,19 +149,18 @@ def main():
             print(f"  [dry-run] {mt}: {n:,} raw rows would be {verb}")
             continue
 
-        result = summarize(mt, cutoff)
-        if result:
-            mode = result[0].get("mode", "?")
-            raw = result[0].get("raw_rows", 0)
-            days = result[0].get("summary_rows", 0)
-            skipped_days = result[0].get("skipped_days", 0)
-            total_raw += raw
-            total_days += days
-            tail = "raw kept" if mode == "recompute" else "raw deleted"
-            extra = f", {skipped_days} days skipped (per-device rows still present)" if skipped_days else ""
-            print(f"  {mt}: {mode}: {raw:,} raw rows -> {days} daily summaries written ({tail}{extra})")
+        result = summarize(mt, cutoff)[0]
+        mode = result["mode"]
+        raw = result["raw_rows"]
+        days = result["summary_rows"]
+        skipped_days = result["skipped_days"]
+        total_raw += raw
+        total_days += days
+        tail = "raw kept" if mode == "recompute" else "raw deleted"
+        extra = f", {skipped_days} days skipped (per-device rows still present)" if skipped_days else ""
+        print(f"  {mt}: {mode}: {raw:,} raw rows processed -> {days} daily summaries written ({tail}{extra})")
 
-    print(f"\nTotal raw rows {'would be' if not args.execute else ''} processed: {total_raw:,}")
+    print(f"\nTotal raw rows {'eligible in dry run' if not args.execute else 'processed'}: {total_raw:,}")
     if args.execute:
         print(f"Total daily summary rows written: {total_days:,}")
     else:
