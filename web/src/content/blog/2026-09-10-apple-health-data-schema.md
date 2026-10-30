@@ -1,62 +1,38 @@
 ---
 title: "Apple Health Data Schema: What's in Your Database"
-description: "The complete health4ai database schema — healthkit_metrics and healthkit_daily_summaries tables, HealthKit type identifiers, and how to query them directly."
+description: "A guide to health4ai raw samples, historical summaries, HealthKit type identifiers, and direct SQL queries."
 pubDate: 2026-09-10
 slug: "apple-health-data-schema"
 tags: ["schema", "postgres", "healthkit", "apple-health", "sql", "database", "reference"]
 draft: false
 ---
 
-Understanding the health4ai database schema lets you write custom SQL queries, build dashboards directly on the database, and debug sync issues. Here's a complete reference.
+Understanding the health4ai database schema lets you write custom SQL queries, build dashboards directly on the database, and debug sync issues. The [published schema](/schema.sql) is the authoritative definition for a new Supabase project.
 
 ## Two Tables
 
 health4ai uses a two-tier storage architecture:
 
-- `healthkit_metrics` — raw HealthKit samples, retained for 30 days
-- `healthkit_daily_summaries` — pre-aggregated daily data for all historical data
+- `healthkit_metrics` — raw HealthKit samples, including recent and selected older samples
+- `healthkit_daily_summaries` — daily aggregates for older quantity samples where summarization has run
 
-Beyond 30 days, raw samples are no longer individually stored — the daily summary captures the aggregate. This keeps the database size manageable while preserving the analytical signal.
+The summarizer can aggregate older quantity samples into daily rows. Some older samples remain raw: category and workout records retain detail, merged activity types retain raw rows for safe recomputation, and other quantity types remain raw until their history can be compacted without double counting. Historical queries use a daily summary where available and aggregate remaining raw rows in Postgres.
 
 ## healthkit_metrics
 
-```sql
-CREATE TABLE healthkit_metrics (
-    id            BIGSERIAL PRIMARY KEY,
-    user_id       TEXT NOT NULL,
-    metric_type   TEXT NOT NULL,
-    value         DOUBLE PRECISION,
-    unit          TEXT,
-    started_at    TIMESTAMPTZ NOT NULL,
-    ended_at      TIMESTAMPTZ,
-    source_name   TEXT,
-    source_device TEXT,
-    metadata      JSONB,
-    created_at    TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Primary query index
-CREATE INDEX idx_healthkit_metrics_user_type_time 
-  ON healthkit_metrics (user_id, metric_type, started_at DESC);
-
--- Source filtering (used for sleep deduplication)
-CREATE INDEX idx_healthkit_metrics_source 
-  ON healthkit_metrics (user_id, metric_type, source_device);
-```
+The raw table stores a UUID `user_id` linked to Supabase Auth. Its unique sample key is `(user_id, metric_type, source_device, started_at)`, so an upload of the same sample does not create another row. `synced_at` records when the row reached the database. See the [published schema](/schema.sql) for the current columns, constraints, and indexes.
 
 **Columns:**
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `user_id` | TEXT | User identifier (matches HEALTHKIT_USER_ID env var) |
-| `metric_type` | TEXT | HealthKit quantity/category type identifier |
-| `value` | DOUBLE PRECISION | Numeric value (null for some workout records) |
-| `unit` | TEXT | HealthKit unit string (count/min, ms, %, etc.) |
-| `started_at` | TIMESTAMPTZ | Sample start time (UTC) |
-| `ended_at` | TIMESTAMPTZ | Sample end time (null for instantaneous samples) |
-| `source_name` | TEXT | App that wrote the sample (e.g., "Health", "Oura") |
-| `source_device` | TEXT | Device model string (e.g., "Apple Watch Series 9") |
-| `metadata` | JSONB | Additional data — workout type, duration, distance, etc. |
+| Column | Description |
+|--------|-------------|
+| `user_id` | Supabase Auth user UUID |
+| `metric_type` | HealthKit quantity/category type identifier |
+| `value`, `unit` | Numeric value and its unit |
+| `started_at`, `ended_at` | Sample time range |
+| `source_device` | Source name or merged HealthKit activity source |
+| `metadata` | Additional type-specific details |
+| `synced_at` | Time the row was uploaded |
 
 **Workout records** store their detail in the `metadata` JSONB column:
 
@@ -78,34 +54,7 @@ CREATE INDEX idx_healthkit_metrics_source
 
 ## healthkit_daily_summaries
 
-```sql
-CREATE TABLE healthkit_daily_summaries (
-    id            BIGSERIAL PRIMARY KEY,
-    user_id       TEXT NOT NULL,
-    metric_type   TEXT NOT NULL,
-    date          DATE NOT NULL,
-    avg_value     DOUBLE PRECISION,
-    min_value     DOUBLE PRECISION,
-    max_value     DOUBLE PRECISION,
-    sum_value     DOUBLE PRECISION,
-    sample_count  INTEGER,
-    UNIQUE (user_id, metric_type, date)
-);
-
-CREATE INDEX idx_healthkit_daily_summaries_user_type_date
-  ON healthkit_daily_summaries (user_id, metric_type, date DESC);
-```
-
-**Columns:**
-
-| Column | Description |
-|--------|-------------|
-| `date` | Calendar date (America/New_York timezone) |
-| `avg_value` | Mean of all samples that day |
-| `min_value` | Minimum sample value that day |
-| `max_value` | Maximum sample value that day |
-| `sum_value` | Sum of all samples (used for cumulative metrics: steps, energy) |
-| `sample_count` | Number of raw samples that contributed |
+The daily table holds averages, minimums, maximums, sums, and sample counts by user, metric type, calendar date, and unit. The [new-project schema](/schema.sql) calls the date column `summary_date`; a legacy deployment may use `date`. Day boundaries follow the project's configured time zone. A fresh self-hosted project does not run the optional historical summarizer, so this table can be empty while historical queries still work from raw samples.
 
 ## Common HealthKit Type Identifiers
 
@@ -154,21 +103,22 @@ SELECT metric_type, COUNT(*) as rows,
        MIN(started_at)::date as earliest,
        MAX(started_at)::date as latest
 FROM healthkit_metrics
-WHERE user_id = 'your_user_id'
+WHERE user_id = 'your_user_uuid'
 GROUP BY metric_type
 ORDER BY rows DESC;
 ```
 
-**Monthly HRV averages (from daily summaries):**
+**Monthly HRV averages (works on a fresh install with raw history):**
 ```sql
-SELECT DATE_TRUNC('month', date) as month,
-       ROUND(AVG(avg_value)::numeric, 1) as avg_hrv_ms,
-       COUNT(*) as days_with_data
-FROM healthkit_daily_summaries
-WHERE user_id = 'your_user_id'
+-- Replace UTC with your HEALTH4AI_TZ setting if you changed it.
+SELECT DATE_TRUNC('month', started_at AT TIME ZONE 'UTC') AS month,
+       ROUND(AVG(value)::numeric, 1) AS avg_hrv_ms,
+       COUNT(*) AS samples
+FROM healthkit_metrics
+WHERE user_id = 'your_user_uuid'
   AND metric_type = 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN'
-GROUP BY month
-ORDER BY month DESC;
+GROUP BY 1
+ORDER BY 1 DESC;
 ```
 
 **Recent sleep stage records:**
@@ -182,7 +132,7 @@ SELECT started_at, ended_at, value,
          WHEN 2 THEN 'Awake'
        END as stage
 FROM healthkit_metrics
-WHERE user_id = 'your_user_id'
+WHERE user_id = 'your_user_uuid'
   AND metric_type = 'HKCategoryTypeIdentifierSleepAnalysis'
   AND value IN (2, 3, 4, 5)
   AND started_at >= NOW() - INTERVAL '7 days'
@@ -197,7 +147,7 @@ SELECT started_at::date as date,
        ROUND((metadata->>'total_distance_meters')::numeric / 1000, 2) as distance_km,
        ROUND((metadata->>'total_energy_burned_cal')::numeric) as calories
 FROM healthkit_metrics
-WHERE user_id = 'your_user_id'
+WHERE user_id = 'your_user_uuid'
   AND metric_type = 'HKWorkoutTypeIdentifier'
   AND started_at >= NOW() - INTERVAL '30 days'
 ORDER BY started_at DESC;
@@ -205,5 +155,4 @@ ORDER BY started_at DESC;
 
 ---
 
-health4ai: free on the App Store.  
-[Download on the App Store →](https://apps.apple.com/app/health4ai/id6783074944)
+[Get health4ai on the App Store →](https://apps.apple.com/app/health4ai/id6783074944)
