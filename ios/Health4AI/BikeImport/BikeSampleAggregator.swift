@@ -29,9 +29,9 @@ enum BikeSampleAggregator {
         let duration = max(elapsed, 1)
         let lastIndex = (duration - 1) / bucketSeconds
         var groups: [Int: [BikeRideSample]] = [:]
-        for s in samples where s.t >= 0 {
+        for s in samples where s.t.isFinite && s.t >= 0 && s.t <= Double(duration + 1) {   // bounded before Int(): no trap
             // A sample at exactly `duration` has no interval of its own; fold it into the final bucket.
-            groups[min(s.t / bucketSeconds, lastIndex), default: []].append(s)
+            groups[min(Int(s.t) / bucketSeconds, lastIndex), default: []].append(s)
         }
         return groups.keys.sorted().map { index in
             let g = groups[index]!

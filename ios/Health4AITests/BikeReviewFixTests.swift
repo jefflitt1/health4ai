@@ -8,11 +8,15 @@ final class BikeReviewFixTests: XCTestCase {
         Data("{\"summary\": {\"id\": \"20261102T172230Z\", \"elapsed\": 10, \"output_kj\": 1, \"calories\": 1, \"distance_mi\": 0.1}, \"samples\": [[\(t), 1, 1, null, 1, 0]]}".utf8)
     }
 
-    func testHugeSampleTimeThrowsInsteadOfTrapping() {
+    /// Decoding keeps the number as sent (no Int(Double) trap); the validator then rejects THAT ride.
+    func testHugeSampleTimeDecodesAndIsRejectedByTheValidatorNotTheDecoder() throws {
         for t in ["1e30", "-5", "1e12", "1e308"] {
-            XCTAssertThrowsError(try JSONDecoder().decode(BikeRide.self, from: sampleJSON(t)), t)
+            let decoded = try JSONDecoder().decode(BikeRide.self, from: sampleJSON(t))
+            XCTAssertThrowsError(try BikeWorkoutPlan.make(from: decoded, now: Date()), t) { error in
+                guard case BikeImportError.invalidRide = error else { return XCTFail("\(t): \(error)") }
+            }
         }
-        XCTAssertNoThrow(try JSONDecoder().decode(BikeRide.self, from: sampleJSON("3")))
+        XCTAssertNoThrow(try BikeWorkoutPlan.make(from: JSONDecoder().decode(BikeRide.self, from: sampleJSON("3")), now: plan0Now))
     }
 
     func testValidatorBounds() throws {
@@ -96,18 +100,49 @@ final class BikeReviewFixTests: XCTestCase {
         let client = BikeHTTPClient(baseURL: URL(string: "http://peloton-pi.local:8080")!, protocolClasses: [StubProtocol.self])
         let rides = try await client.listRides()
         XCTAssertTrue(rides.isEmpty)
-        StubProtocol.handler = { _ in (302, ["Location": "http://example.com/"], Data()) }
-        do { _ = try await client.listRides(); XCTFail("followed") } catch { XCTAssertEqual(error as? BikeClientError, .redirectRefused) }
+    }
+
+    /// A real redirect: the stub asks the URL loading system to redirect, so the session delegate is
+    /// consulted. With RedirectRefuser removed the session follows it to example.com and this fails.
+    func testRedirectIsNotFollowed() async {
+        StubProtocol.requests = []
+        StubProtocol.handler = { req in
+            req.url?.host == "example.com"
+                ? (200, [:], Data("{\"rides\": []}".utf8))
+                : (302, ["Location": "http://example.com/api/rides"], Data())
+        }
+        let client = BikeHTTPClient(baseURL: URL(string: "http://peloton-pi.local:8080")!, protocolClasses: [StubProtocol.self])
+        do { _ = try await client.listRides(); XCTFail("followed the redirect") } catch { XCTAssertEqual(error as? BikeClientError, .redirectRefused) }
+        XCTAssertEqual(StubProtocol.requests.compactMap(\.host), ["peloton-pi.local"], "no follow-up request may be made")
+    }
+
+    /// Several MB must stream in well inside the request timeout (a byte-at-a-time append did not).
+    func testMultiMegabyteBodyCompletesQuickly() async throws {
+        let pad = String(repeating: " ", count: 12 * 1024 * 1024)
+        StubProtocol.handler = { _ in (200, [:], Data("{\"rides\": [], \"pad\": \"\(pad)\"}".utf8)) }
+        let client = BikeHTTPClient(baseURL: URL(string: "http://peloton-pi.local:8080")!, protocolClasses: [StubProtocol.self])
+        let began = Date()
+        let rides = try await client.listRides()
+        let took = Date().timeIntervalSince(began)
+        XCTAssertTrue(rides.isEmpty)
+        XCTAssertLessThan(took, 2.0, "12 MB took \(took) s")
     }
 }
 
 final class StubProtocol: URLProtocol {
     nonisolated(unsafe) static var handler: ((URLRequest) -> (Int, [String: String], Data))?
+    nonisolated(unsafe) static var requests: [URL] = []
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
+        if let url = request.url { Self.requests.append(url) }
         let (status, headers, body) = Self.handler!(request)
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!
+        if (300..<400).contains(status), let location = headers["Location"], let target = URL(string: location) {
+            // Like a real HTTP loader: offer the redirect, then deliver the 3xx as the response in case the
+            // session's delegate declines to follow it.
+            client?.urlProtocol(self, wasRedirectedTo: URLRequest(url: target), redirectResponse: response)
+        }
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)

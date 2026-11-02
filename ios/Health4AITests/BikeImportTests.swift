@@ -15,7 +15,7 @@ private func detailJSON(id: String = "20261102T172230Z", elapsed: Int = 12, samp
     """
 }
 
-private func ride(id: String = "20261102T172230Z", seconds: Int = 12, hr: Double = 0) -> BikeRide {
+func ride(id: String = "20261102T172230Z", seconds: Int = 12, hr: Double = 0) -> BikeRide {
     let samples = (0...seconds).map { BikeRideSample(t: $0, cadence: 60, power: 100, resistance: 58, speedMph: 15, hr: hr) }
     return BikeRide(summary: BikeRideSummary(id: id, elapsed: seconds, outputKJ: 1.2, calories: 10, distanceMi: 0.25), samples: samples)
 }
@@ -172,19 +172,21 @@ final class BikeAggregationTests: XCTestCase {
 
 // MARK: - Importer with fakes
 
-private final class FakeAPI: BikeRideAPI {
+final class FakeAPI: BikeRideAPI {
     var list: Result<[BikeRideSummary], Error> = .success([])
     var rides: [String: BikeRide] = [:]
+    var rideError: Error?
     var detailCalls: [String] = []
     func listRides() async throws -> [BikeRideSummary] { try list.get() }
     func ride(id: String) async throws -> BikeRide {
         detailCalls.append(id)
+        if let rideError { throw rideError }
         guard let r = rides[id] else { throw BikeClientError.http(status: 404, path: "/api/rides/\(id)") }
         return r
     }
 }
 
-private final class FakeStore: BikeWorkoutStore {
+final class FakeStore: BikeWorkoutStore {
     var coreAccess = BikeCoreAccess()
     var unconfirmedIDs: Set<String> = []     // save "succeeds" in Health only for others; these throw saveUnconfirmed
     var heartRateWriteStatus: BikeWriteStatus = .notDetermined

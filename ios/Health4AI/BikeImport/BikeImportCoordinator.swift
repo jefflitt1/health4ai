@@ -117,7 +117,7 @@ final class BikeImportCoordinator: ObservableObject {
             testMessage = "Connected. The bike has \(rides.count) ride\(rides.count == 1 ? "" : "s")."
         } catch {
             testFailed = true
-            testMessage = BikeImporter.reason(for: error, doing: "read the bike")
+            testMessage = BikeImporter.reason(for: error, doing: "read the bike", kind: .bike)
             Self.logger.error("test connection failed: \(String(describing: error), privacy: .public)")
         }
     }

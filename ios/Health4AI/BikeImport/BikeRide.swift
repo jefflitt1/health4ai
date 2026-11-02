@@ -22,29 +22,27 @@ struct BikeRideSummary: Decodable, Equatable {
 
 /// One ~1 Hz reading: [elapsed_s, cadence_rpm, power_w, resistance_pct|null, speed_mph, hr_bpm].
 struct BikeRideSample: Decodable, Equatable {
-    let t: Int
+    /// Kept as the Double the Pi sent. It is NEVER converted with `Int(Double)` until BikeRideValidator has
+    /// bounded it (that conversion traps on 1e30). An out-of-range time rejects the one ride, not the decode.
+    let t: Double
     let cadence: Double
     let power: Double
     let resistance: Double?
     let speedMph: Double
     let hr: Double
 
-    /// Decode-time ceiling for the time field (about 31 years); the real bound is applied by BikeRideValidator.
-    static let maxT = 1_000_000_000
-
-    init(t: Int, cadence: Double, power: Double, resistance: Double? = nil, speedMph: Double, hr: Double) {
+    init(t: Double, cadence: Double, power: Double, resistance: Double? = nil, speedMph: Double, hr: Double) {
         self.t = t; self.cadence = cadence; self.power = power
         self.resistance = resistance; self.speedMph = speedMph; self.hr = hr
     }
 
+    init(t: Int, cadence: Double, power: Double, resistance: Double? = nil, speedMph: Double, hr: Double) {
+        self.init(t: Double(t), cadence: cadence, power: power, resistance: resistance, speedMph: speedMph, hr: hr)
+    }
+
     init(from decoder: Decoder) throws {
         var c = try decoder.unkeyedContainer()
-        // `Int(Double)` traps on 1e30; a host-supplied number must never crash the app.
-        let rawT = try c.decode(Double.self)
-        guard rawT.isFinite, rawT >= 0, rawT <= Double(Self.maxT) else {
-            throw DecodingError.dataCorruptedError(in: c, debugDescription: "sample time \(rawT) is out of range")
-        }
-        t = Int(rawT)
+        t = try c.decode(Double.self)
         cadence = try c.decode(Double.self)
         power = try c.decode(Double.self)
         resistance = try c.decodeNil() ? nil : try c.decode(Double.self)

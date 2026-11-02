@@ -89,14 +89,14 @@ enum BikeImportError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noSamples: return "the bike recorded no samples for this ride"
-        case .badRideID(let id): return "ride id \"\(id)\" is not a timestamp"
+        case .badRideID: return "the bike gave this ride an id health4ai cannot read"
         case .invalidRide(let why): return "rejected, \(why)"
         case .coreAccessMissing(let names):
             return "Health write access is off for: \(names.joined(separator: ", ")). "
                 + "Turn them on in the Health app (your profile picture, then Apps, then health4ai)."
         case .permissionNotRequested: return "Health write access has not been granted yet. Turn Import on to be asked."
         case .healthUnavailable: return "Apple Health is not available on this device."
-        case .saveUnconfirmed(let id):
+        case .saveUnconfirmed:
             return "Health did not confirm saving this ride (the phone may be locked); it will be checked again next import"
         }
     }
@@ -129,12 +129,21 @@ struct BikeImportResult: Codable, Equatable {
 struct BikeImporter {
     private static let logger = Logger(subsystem: "com.jglittell.health4ai", category: "BikeImport")
 
+    enum Operation { case bike, health }
+
     /// Text safe to show: our own errors speak for themselves; anything else (HealthKit, Foundation)
-    /// is logged in full and shown as a plain sentence, never as a domain or code.
-    static func reason(for error: Error, doing what: String) -> String {
+    /// is logged in full and shown as a plain sentence, never as a domain or code. The fallback names the
+    /// right culprit: a bike read must not tell the person to unlock Health.
+    static func reason(for error: Error, doing what: String, kind: Operation) -> String {
         if error is BikeImportError || error is BikeClientError { return error.localizedDescription }
         logger.error("\(what, privacy: .public) failed: \(String(describing: error), privacy: .public)")
-        return "Health could not \(what). Check that Health is unlocked and try again."
+        if error is CancellationError || (error as? URLError)?.code == .cancelled {
+            return "The import was interrupted before it finished. It will run again next time."
+        }
+        switch kind {
+        case .bike: return "Could not \(what). Check that the bike is on and on the same Wi-Fi, then try again."
+        case .health: return "Health could not \(what). Check that Health is unlocked and try again."
+        }
     }
 
     let api: BikeRideAPI
@@ -151,7 +160,7 @@ struct BikeImporter {
 
         let rides: [BikeRideSummary]
         do { rides = try await api.listRides() } catch {
-            result.error = Self.reason(for: error, doing: "read the bike")
+            result.error = Self.reason(for: error, doing: "read the bike", kind: .bike)
             return result
         }
 
@@ -159,16 +168,20 @@ struct BikeImporter {
         do {
             known = try await store.existingSyncIdentifiers(among: rides.map { BikeRideID.syncIdentifier(for: $0.id) })
         } catch {
-            result.error = Self.reason(for: error, doing: "check which rides are already imported")
+            result.error = Self.reason(for: error, doing: "check which rides are already imported", kind: .health)
             return result
         }
 
         var pending: [BikeRideSummary] = []
-        for summary in rides.sorted(by: { $0.id < $1.id }) {
+        // Newest first. Rides that are skipped on purpose (bad values, no samples) are never recorded as
+        // handled, so they come back every import; taking the OLDEST first let 200 permanently bad old rides
+        // starve every newer one. Newest first puts the rides a person most wants at the front, and the
+        // older backlog follows on later imports.
+        for summary in rides.sorted(by: { $0.id > $1.id }) {
             if known.contains(BikeRideID.syncIdentifier(for: summary.id)) { result.alreadyImported += 1 } else { pending.append(summary) }
         }
         if pending.count > maxRides {
-            result.notes.append(BikeIssue(rideID: nil, reason: "\(pending.count - maxRides) newer rides were left for the next import (limit \(maxRides) per import)"))
+            result.notes.append(BikeIssue(rideID: nil, reason: "\(pending.count - maxRides) older rides were left for the next import (limit \(maxRides) per import)"))
             pending = Array(pending.prefix(maxRides))
         }
         for summary in pending { await importOne(summary, into: &result) }
@@ -178,15 +191,20 @@ struct BikeImporter {
     private func importOne(_ summary: BikeRideSummary, into result: inout BikeImportResult) async {
         let id = summary.id
         guard BikeRideID.startDate(from: id) != nil else {
+            Self.logger.error("skipped a ride whose id is not a timestamp: \(id, privacy: .public)")
             result.skipped.append(BikeIssue(rideID: id, reason: BikeImportError.badRideID(id).localizedDescription))
             return
         }
+        let ride: BikeRide
+        do { ride = try await api.ride(id: id) } catch {
+            result.failed.append(BikeIssue(rideID: id, reason: Self.reason(for: error, doing: "read this ride from the bike", kind: .bike)))
+            return
+        }
+        guard ride.summary.id == id else {
+            result.failed.append(BikeIssue(rideID: id, reason: "the bike returned a different ride than the one asked for"))
+            return
+        }
         do {
-            let ride = try await api.ride(id: id)
-            guard ride.summary.id == id else {
-                result.failed.append(BikeIssue(rideID: id, reason: "the bike returned a different ride than the one asked for"))
-                return
-            }
             var plan: BikeWorkoutPlan
             do { plan = try BikeWorkoutPlan.make(from: ride, now: now()) } catch let error as BikeImportError {
                 switch error {
@@ -202,7 +220,7 @@ struct BikeImporter {
         } catch BikeImportError.saveUnconfirmed(let rideID) {
             result.unconfirmed.append(BikeIssue(rideID: rideID, reason: BikeImportError.saveUnconfirmed(rideID).localizedDescription))
         } catch {
-            result.failed.append(BikeIssue(rideID: id, reason: Self.reason(for: error, doing: "save this ride")))
+            result.failed.append(BikeIssue(rideID: id, reason: Self.reason(for: error, doing: "save the workout data", kind: .health)))
         }
     }
 

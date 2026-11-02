@@ -72,7 +72,7 @@ final class HealthKitBikeStore: BikeWorkoutStore {
         let builder = HKWorkoutBuilder(healthStore: store, configuration: config, device: device)
         let withHR = plan.writeHeartRate && status(heartRate) == .authorized
 
-        do {
+        try await BikeSaveConfirmation.run(plan: plan, collect: {
             try await builder.beginCollection(at: plan.start)
             try await builder.addMetadata([
                 HKMetadataKeyIndoorWorkout: true,
@@ -95,16 +95,12 @@ final class HealthKitBikeStore: BikeWorkoutStore {
             }
             try await builder.addSamples(samples)
             try await builder.endCollection(at: plan.end)
-        } catch {
+        }, finish: {
+            try await builder.finishWorkout() != nil
+        }, discard: {
             builder.discardWorkout()
-            throw error
-        }
-
-        // finishWorkout() can return nil without an error (for example while the device is locked) even
-        // though the workout was written. Ask Health rather than guess in either direction.
-        if try await builder.finishWorkout() == nil {
-            let found = try await existingSyncIdentifiers(among: [plan.syncIdentifier])
-            guard found.contains(plan.syncIdentifier) else { throw BikeImportError.saveUnconfirmed(plan.rideID) }
-        }
+        }, lookup: { ids in
+            try await self.existingSyncIdentifiers(among: ids)
+        })
     }
 }

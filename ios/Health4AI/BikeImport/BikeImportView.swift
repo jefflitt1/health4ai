@@ -13,7 +13,7 @@ struct BikeImportView: View {
     var body: some View {
         List {
             Section {
-                Text("For rides recorded on a Peloton Pi head unit, or another bike server that speaks the same ride API, on your own Wi-Fi.")
+                Text("For a Peloton Pi or compatible bike on your Wi-Fi.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -45,6 +45,8 @@ struct BikeImportView: View {
 
     // MARK: Address
 
+    private var testDisabled: Bool { testing || model.urlText.trimmingCharacters(in: .whitespaces).isEmpty }
+
     private var addressSection: some View {
         Section {
             if model.isEnabled {
@@ -71,9 +73,11 @@ struct BikeImportView: View {
                 testing = true
                 Task { await model.testConnection(); testing = false }
             } label: {
-                Label("Test connection", systemImage: "network")
+                Label { Text("Test connection") } icon: {
+                    Image(systemName: "network").foregroundStyle(testDisabled ? Color.secondary : Color.accentColor)
+                }
             }
-            .disabled(testing || model.urlText.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(testDisabled)
             if let message = model.testMessage {
                 Label { Text(message) } icon: {
                     Image(systemName: model.testFailed ? "xmark.octagon.fill" : "checkmark.circle.fill")
@@ -105,7 +109,7 @@ struct BikeImportView: View {
             if !model.coreAccess.denied.isEmpty {
                 // One message naming what is missing; the setup error would only repeat it.
                 Label {
-                    Text("Health access is off for: \(model.coreAccess.denied.joined(separator: ", ")). Open the Health app, tap your profile picture, then Apps, then health4ai, and turn them on. Then switch import on again.")
+                    Text(BikeCopy.deniedMessage(missing: model.coreAccess.denied, isEnabled: model.isEnabled))
                 } icon: {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 }
@@ -139,13 +143,16 @@ struct BikeImportView: View {
 
     // MARK: Results
 
-    private static func rideDate(_ d: Date) -> String { d.formatted(date: .abbreviated, time: .shortened) }
+    private static func rideDate(_ d: Date) -> String { BikeCopy.rideDate(d) }
 
     @ViewBuilder private var resultRows: some View {
         if let r = model.lastResult {
-            if let error = r.error {
-                Label { Text(error) } icon: { Image(systemName: "xmark.octagon.fill").foregroundStyle(.red) }
-                    .font(.subheadline)
+            if r.error != nil {
+                // Hidden while the permission message above is showing, so the same words appear once.
+                if let error = BikeCopy.visibleError(r, denied: model.coreAccess.denied) {
+                    Label { Text(error) } icon: { Image(systemName: "xmark.octagon.fill").foregroundStyle(.red) }
+                        .font(.subheadline)
+                }
             } else {
                 Label {
                     Text(r.imported == 0 ? "No new rides." : "Imported \(r.imported) ride\(r.imported == 1 ? "" : "s").")
@@ -162,7 +169,7 @@ struct BikeImportView: View {
             issueRow("Not imported", r.skipped, symbol: "minus.circle.fill", tint: .secondary)
             issueRow("Not confirmed", r.unconfirmed, symbol: "questionmark.circle.fill", tint: .orange)
             issueRow("Note", r.notes, symbol: "info.circle.fill", tint: .secondary)
-            Text(r.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+            Text(BikeCopy.rideDate(r.date)).font(.caption).foregroundStyle(.secondary)
         } else {
             Text("No import yet.").font(.caption).foregroundStyle(.secondary)
         }
@@ -178,16 +185,22 @@ struct BikeImportView: View {
                 }
                 .font(.subheadline)
                 Text(s.reason).font(.caption)
-                if s.otherReasons > 0 {
-                    Text("and \(s.otherReasons) other reason\(s.otherReasons == 1 ? "" : "s")").font(.caption).foregroundStyle(.secondary)
-                }
                 if !s.rides.isEmpty {
-                    Text(s.rides.joined(separator: ", ") + (s.more > 0 ? ", and \(s.more) more" : ""))
+                    // The dates are the rides with the reason above, not every ride in the row.
+                    let named = s.rides.joined(separator: ", ") + (s.more > 0 ? ", and \(s.more) more" : "")
+                    Text(s.otherReasons > 0 ? "For this reason: \(named)" : named)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                if s.otherReasons > 0 {
+                    Text("and \(s.otherReasons) other reason\(s.otherReasons == 1 ? "" : "s")").font(.caption).foregroundStyle(.secondary)
+                }
             }
             .accessibilityElement(children: .combine)
+        }
+        // Run-level lines are not about a ride: plain captions, no "N rides".
+        ForEach(BikeIssueSummary.runLevel(issues), id: \.self) { line in
+            Text(line).font(.caption).foregroundStyle(.secondary)
         }
     }
 }

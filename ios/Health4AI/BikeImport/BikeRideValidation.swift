@@ -36,7 +36,7 @@ enum BikeRideValidator {
             throw bad("\(ride.samples.count) samples is more than the \(BikeLimits.maxSamplesPerRide) allowed")
         }
         for x in ride.samples {
-            guard x.t >= 0, x.t <= s.elapsed + 1 else { throw bad("a sample at \(x.t) s is past the ride length") }
+            guard x.t.isFinite, x.t >= 0, x.t <= Double(s.elapsed + 1) else { throw bad("a sample time is outside the ride length") }
             guard x.power.isFinite, BikeLimits.power.contains(x.power) else { throw bad("power \(x.power) W is outside 0-3000") }
             guard x.cadence.isFinite, BikeLimits.cadence.contains(x.cadence) else { throw bad("cadence \(x.cadence) is outside 0-250") }
             guard x.speedMph.isFinite, BikeLimits.speed.contains(x.speedMph) else { throw bad("speed \(x.speedMph) mph is outside 0-80") }

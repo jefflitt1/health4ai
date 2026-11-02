@@ -39,6 +39,7 @@ private final class RedirectRefuser: NSObject, URLSessionTaskDelegate {
 final class BikeHTTPClient: BikeRideAPI {
     private static let logger = Logger(subsystem: "com.jglittell.health4ai", category: "BikeImport")
 
+    private static let blockSize = 64 * 1024
     private let baseURL: URL
     private let maxBytes: Int
     private let session: URLSession
@@ -65,7 +66,10 @@ final class BikeHTTPClient: BikeRideAPI {
     }
 
     func ride(id: String) async throws -> BikeRide {
-        guard BikeRideID.startDate(from: id) != nil else { throw BikeClientError.badResponse("ride id \(id)") }
+        guard BikeRideID.startDate(from: id) != nil else {
+            Self.logger.error("refused a ride id that is not a timestamp: \(id, privacy: .public)")
+            throw BikeClientError.badResponse("a ride id it cannot read")
+        }
         return try decode(BikeRide.self, from: try await get("api/rides/\(id)", shownAs: "/api/rides/(this ride)"))
     }
 
@@ -82,11 +86,18 @@ final class BikeHTTPClient: BikeRideAPI {
             // Refuse on the declared length before reading anything, then enforce the cap while streaming
             // (a server can lie or omit the length).
             guard response.expectedContentLength <= Int64(maxBytes) else { throw BikeClientError.tooLarge }
+            // Appending to Data one byte at a time is slow enough on a multi-MB ride to hit the timeout,
+            // so bytes collect in a block and are appended 64 KB at a time. The cap is checked per byte.
             var data = Data()
+            if response.expectedContentLength > 0 { data.reserveCapacity(Int(min(response.expectedContentLength, Int64(maxBytes)))) }
+            var block = [UInt8]()
+            block.reserveCapacity(Self.blockSize)
             for try await byte in bytes {
-                data.append(byte)
-                if data.count > maxBytes { throw BikeClientError.tooLarge }
+                block.append(byte)
+                if data.count + block.count > maxBytes { throw BikeClientError.tooLarge }
+                if block.count == Self.blockSize { data.append(contentsOf: block); block.removeAll(keepingCapacity: true) }
             }
+            data.append(contentsOf: block)
             return data
         } catch let error as BikeClientError {
             Self.logger.error("GET /\(path, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")

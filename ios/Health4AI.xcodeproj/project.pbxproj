@@ -43,7 +43,10 @@
 		B0000067 /* BikeImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000067 /* BikeImportView.swift */; };
 		B0000068 /* BikeRideValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000068 /* BikeRideValidation.swift */; };
 		B0000069 /* BikeIssueSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000069 /* BikeIssueSummary.swift */; };
+		B0000073 /* BikeSaveConfirmation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000073 /* BikeSaveConfirmation.swift */; };
+		B0000074 /* BikeCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000074 /* BikeCopy.swift */; };
 		B0000072 /* BikeReviewFixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000072 /* BikeReviewFixTests.swift */; };
+		B0000075 /* BikeRound2Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000075 /* BikeRound2Tests.swift */; };
 		B0000071 /* BikeImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000071 /* BikeImportTests.swift */; };
 		B000000A /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A000000A /* HealthKit.framework */; };
 		B000000B /* BackgroundTasks.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A000000B /* BackgroundTasks.framework */; };
@@ -89,7 +92,10 @@
 		A0000070 /* Health4AITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Health4AITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A0000068 /* BikeRideValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeRideValidation.swift; sourceTree = "<group>"; };
 		A0000069 /* BikeIssueSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeIssueSummary.swift; sourceTree = "<group>"; };
+		A0000073 /* BikeSaveConfirmation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeSaveConfirmation.swift; sourceTree = "<group>"; };
+		A0000074 /* BikeCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeCopy.swift; sourceTree = "<group>"; };
 		A0000072 /* BikeReviewFixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeReviewFixTests.swift; sourceTree = "<group>"; };
+		A0000075 /* BikeRound2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeRound2Tests.swift; sourceTree = "<group>"; };
 		A0000071 /* BikeImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeImportTests.swift; sourceTree = "<group>"; };
 		A000000A /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
 		A000000B /* BackgroundTasks.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = BackgroundTasks.framework; path = System/Library/Frameworks/BackgroundTasks.framework; sourceTree = SDKROOT; };
@@ -199,6 +205,8 @@
 				A0000067 /* BikeImportView.swift */,
 				A0000068 /* BikeRideValidation.swift */,
 				A0000069 /* BikeIssueSummary.swift */,
+				A0000073 /* BikeSaveConfirmation.swift */,
+				A0000074 /* BikeCopy.swift */,
 			);
 			path = BikeImport;
 			sourceTree = "<group>";
@@ -208,6 +216,7 @@
 			children = (
 				A0000071 /* BikeImportTests.swift */,
 				A0000072 /* BikeReviewFixTests.swift */,
+				A0000075 /* BikeRound2Tests.swift */,
 			);
 			path = Health4AITests;
 			sourceTree = "<group>";
@@ -358,6 +367,8 @@
 				B0000067 /* BikeImportView.swift in Sources */,
 				B0000068 /* BikeRideValidation.swift in Sources */,
 				B0000069 /* BikeIssueSummary.swift in Sources */,
+				B0000073 /* BikeSaveConfirmation.swift in Sources */,
+				B0000074 /* BikeCopy.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -367,6 +378,7 @@
 			files = (
 				B0000071 /* BikeImportTests.swift in Sources */,
 				B0000072 /* BikeReviewFixTests.swift in Sources */,
+				B0000075 /* BikeRound2Tests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
