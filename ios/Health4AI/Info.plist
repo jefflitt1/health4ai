@@ -6,7 +6,9 @@
 	<key>NSHealthShareUsageDescription</key>
 	<string>health4ai reads only the Health data types you select to sync them to the backend you configure for analysis and archival.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>health4ai does not write health data.</string>
+	<string>health4ai saves indoor cycling rides to Apple Health only if you turn on "Bike on your network" and import rides from your own bike: the workout, calories, distance, power, cadence and heart rate. It writes nothing otherwise.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>health4ai connects to the bike address you enter, on your own Wi-Fi, to import your rides into Apple Health. Nothing leaves your network.</string>
 
 	<!-- Background modes. 'fetch' backs the BGAppRefreshTask sync safety net, 'processing' the
 	     charger-only BGProcessingTask history backfill. Removed 2026-06 for an iOS 27 Beta 1
@@ -85,11 +87,15 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 
-	<!-- App Transport Security: allow HTTPS only (Supabase is always HTTPS) -->
+	<!-- App Transport Security: HTTPS only (Supabase is always HTTPS), except plain HTTP to local-network
+	     hosts (.local names and IP literals) for "Bike on your network". The URL is also validated in
+	     code (BikeURLValidator) to private/link-local/.local hosts only. -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<false/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
 	</dict>
 </dict>
 </plist>
