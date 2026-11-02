@@ -55,14 +55,31 @@ final class BikeSaveConfirmationTests: XCTestCase {
         try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { true }, discard: {}, lookup: { _ in XCTFail("queried"); return [] })
     }
 
-    func testThrowingFinishDiscardsAndRethrows() async throws {
+    /// A finish that throws may still have written the workout, so Health is asked; discard is not called after a finish.
+    func testThrowingFinishThatWasWrittenIsSaved() async throws {
+        let p = try plan()
+        var discarded = false
+        try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { throw Boom() }, discard: { discarded = true },
+                                           lookup: { _ in [p.syncIdentifier] })
+        XCTAssertFalse(discarded)
+    }
+
+    func testThrowingFinishNotFoundRethrowsTheOriginalErrorWithoutDiscarding() async throws {
         let p = try plan()
         var discarded = false
         do {
             try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { throw Boom() }, discard: { discarded = true }, lookup: { _ in [] })
             XCTFail("returned")
         } catch { XCTAssertTrue(error is Boom) }
-        XCTAssertTrue(discarded)
+        XCTAssertFalse(discarded)
+    }
+
+    func testThrowingFinishWithFailingLookupIsUnconfirmed() async throws {
+        let p = try plan()
+        do {
+            try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { throw Boom() }, discard: {}, lookup: { _ in throw Boom() })
+            XCTFail("returned")
+        } catch { XCTAssertEqual(error as? BikeImportError, .saveUnconfirmed(p.rideID)) }
     }
 
     func testThrowingCollectionDiscardsAndRethrows() async throws {
@@ -201,8 +218,22 @@ final class BikeScreenTextTests: XCTestCase {
 
     func testRunErrorIsHiddenWhileAccessIsDenied() {
         var r = BikeImportResult(date: Date()); r.error = "Health write access is off for: Workouts."
+        r.errorKind = .coreAccessMissing
         XCTAssertNil(BikeCopy.visibleError(r, denied: ["Workouts"]))
         XCTAssertEqual(BikeCopy.visibleError(r, denied: []), r.error)
+        // A different error still shows, even while access is denied.
+        var unreachable = BikeImportResult(date: Date()); unreachable.error = "Could not read the bike."
+        XCTAssertEqual(BikeCopy.visibleError(unreachable, denied: ["Workouts"]), "Could not read the bike.")
+    }
+
+    func testImporterTagsOnlyTheMissingAccessErrorAsSuch() async {
+        let denied = FakeStore(); denied.coreAccess = BikeCoreAccess(denied: ["Workouts"])
+        let r = await BikeImporter(api: api([ride()]), store: denied).run()
+        XCTAssertEqual(r.errorKind, .coreAccessMissing)
+        let a = FakeAPI(); a.list = .failure(BikeClientError.timedOut(host: "x"))
+        let r2 = await BikeImporter(api: a, store: FakeStore()).run()
+        XCTAssertNotNil(r2.error)
+        XCTAssertNil(r2.errorKind)
     }
 
     func testDatesInTheCurrentYearDropTheYear() {

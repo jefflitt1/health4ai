@@ -108,6 +108,11 @@ struct BikeIssue: Codable, Equatable {
     var reason: String
 }
 
+enum BikeRunErrorKind: String, Codable, Equatable {
+    /// Health write access is off for some types (the permission message on screen already says so).
+    case coreAccessMissing
+}
+
 struct BikeImportResult: Codable, Equatable {
     var date: Date
     var imported = 0
@@ -122,6 +127,8 @@ struct BikeImportResult: Codable, Equatable {
     var notes: [BikeIssue] = []
     /// Set when the run could not proceed at all (Pi unreachable, permission off). Never a success.
     var error: String?
+    /// Which kind of run error, so the screen can decide what to hide without comparing strings.
+    var errorKind: BikeRunErrorKind?
 
     var isSuccess: Bool { error == nil && failed.isEmpty && unconfirmed.isEmpty }
 }
@@ -150,12 +157,18 @@ struct BikeImporter {
     let store: BikeWorkoutStore
     var now: () -> Date = Date.init
     var maxRides = BikeLimits.maxRidesPerImport
+    /// Rides rejected for good. In memory unless the app passes the UserDefaults-backed one.
+    var rejectedStore: BikeRejectedStore = MemoryRejectedStore()
 
     func run() async -> BikeImportResult {
         var result = BikeImportResult(date: now())
         let access = store.coreAccess
         if access.unavailable { result.error = BikeImportError.healthUnavailable.localizedDescription; return result }
-        if !access.denied.isEmpty { result.error = BikeImportError.coreAccessMissing(access.missing).localizedDescription; return result }
+        if !access.denied.isEmpty {
+            result.error = BikeImportError.coreAccessMissing(access.missing).localizedDescription
+            result.errorKind = .coreAccessMissing
+            return result
+        }
         if !access.notDetermined.isEmpty { result.error = BikeImportError.permissionNotRequested.localizedDescription; return result }
 
         let rides: [BikeRideSummary]
@@ -166,35 +179,49 @@ struct BikeImporter {
 
         let known: Set<String>
         do {
-            known = try await store.existingSyncIdentifiers(among: rides.map { BikeRideID.syncIdentifier(for: $0.id) })
+            known = try await store.existingSyncIdentifiers(among: rides.filter { BikeRideID.startDate(from: $0.id) != nil }.map { BikeRideID.syncIdentifier(for: $0.id) })
         } catch {
             result.error = Self.reason(for: error, doing: "check which rides are already imported", kind: .health)
             return result
         }
 
-        var pending: [BikeRideSummary] = []
-        // Newest first. Rides that are skipped on purpose (bad values, no samples) are never recorded as
-        // handled, so they come back every import; taking the OLDEST first let 200 permanently bad old rides
-        // starve every newer one. Newest first puts the rides a person most wants at the front, and the
-        // older backlog follows on later imports.
-        for summary in rides.sorted(by: { $0.id > $1.id }) {
-            if known.contains(BikeRideID.syncIdentifier(for: summary.id)) { result.alreadyImported += 1 } else { pending.append(summary) }
+        // Sort out everything that needs no network call BEFORE the cap, so none of it can use a slot:
+        // ids that are not timestamps, dates outside the allowed range, rides already in Health, and rides
+        // rejected for good on an earlier import (remembered, so they are not fetched again).
+        var rejected = rejectedStore.load()
+        var candidates: [(summary: BikeRideSummary, start: Date)] = []
+        for summary in rides {
+            guard let start = BikeRideID.startDate(from: summary.id) else {
+                Self.logger.error("skipped a ride whose id is not a timestamp: \(summary.id, privacy: .public)")
+                result.skipped.append(BikeIssue(rideID: summary.id, reason: BikeImportError.badRideID(summary.id).localizedDescription))
+                continue
+            }
+            if known.contains(BikeRideID.syncIdentifier(for: summary.id)) { result.alreadyImported += 1; continue }
+            if let problem = BikeRideValidator.dateProblem(start: start, now: now()) {
+                result.skipped.append(BikeIssue(rideID: summary.id, reason: BikeImportError.invalidRide(problem).localizedDescription))
+                continue
+            }
+            if rejected.contains(summary.id) {
+                Self.logger.info("not retrying ride \(summary.id, privacy: .public): rejected on an earlier import")
+                continue
+            }
+            candidates.append((summary, start))
         }
-        if pending.count > maxRides {
-            result.notes.append(BikeIssue(rideID: nil, reason: "\(pending.count - maxRides) older rides were left for the next import (limit \(maxRides) per import)"))
-            pending = Array(pending.prefix(maxRides))
+        // Newest first by the parsed start time (never by string). The cap counts rides actually FETCHED,
+        // so rides skipped without a fetch cost nothing; the older backlog follows on later imports.
+        candidates.sort { $0.start != $1.start ? $0.start > $1.start : $0.summary.id > $1.summary.id }
+        if candidates.count > maxRides {
+            result.notes.append(BikeIssue(rideID: nil, reason: "\(candidates.count - maxRides) older rides were left for the next import (limit \(maxRides) per import)"))
+            candidates = Array(candidates.prefix(maxRides))
         }
-        for summary in pending { await importOne(summary, into: &result) }
+        for c in candidates { await importOne(c.summary, into: &result, rejected: &rejected) }
+        // Forget ids the bike no longer lists, so the set cannot grow without bound.
+        rejectedStore.save(rejected.intersection(Set(rides.map(\.id))))
         return result
     }
 
-    private func importOne(_ summary: BikeRideSummary, into result: inout BikeImportResult) async {
+    private func importOne(_ summary: BikeRideSummary, into result: inout BikeImportResult, rejected: inout Set<String>) async {
         let id = summary.id
-        guard BikeRideID.startDate(from: id) != nil else {
-            Self.logger.error("skipped a ride whose id is not a timestamp: \(id, privacy: .public)")
-            result.skipped.append(BikeIssue(rideID: id, reason: BikeImportError.badRideID(id).localizedDescription))
-            return
-        }
         let ride: BikeRide
         do { ride = try await api.ride(id: id) } catch {
             result.failed.append(BikeIssue(rideID: id, reason: Self.reason(for: error, doing: "read this ride from the bike", kind: .bike)))
@@ -210,6 +237,7 @@ struct BikeImporter {
                 switch error {
                 case .noSamples, .invalidRide:
                     result.skipped.append(BikeIssue(rideID: id, reason: error.localizedDescription))
+                    rejected.insert(id)   // decided by the ride's own content: do not fetch it again
                     return
                 default: throw error
                 }

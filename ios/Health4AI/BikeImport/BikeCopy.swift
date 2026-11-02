@@ -10,9 +10,11 @@ enum BikeCopy {
         return head + (isEnabled ? "Then come back here; the next import picks them up." : "Then switch import on again.")
     }
 
-    /// The run-level error is hidden while the permission message is showing, so it appears once.
+    /// The run-level error is hidden only when it IS the missing-access error and the permission message is
+    /// showing, so those words appear once. Any other error (bike unreachable) always shows.
     static func visibleError(_ result: BikeImportResult, denied: [String]) -> String? {
-        denied.isEmpty ? result.error : nil
+        if !denied.isEmpty, result.errorKind == .coreAccessMissing { return nil }
+        return result.error
     }
 
     /// Dates in the current year drop the year.

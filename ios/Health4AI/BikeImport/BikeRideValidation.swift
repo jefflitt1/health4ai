@@ -4,6 +4,8 @@ import Foundation
 // fails any bound is rejected whole, with a reason shown to the person, before anything is written.
 
 enum BikeLimits {
+    /// Bump when any rule below changes: rides rejected under an older version are then looked at again.
+    static let rulesVersion = 1
     static let maxRidesPerImport = 200
     static let maxSamplesPerRide = 100_000
     static let maxBytes = 16 * 1024 * 1024
@@ -21,6 +23,12 @@ enum BikeLimits {
 }
 
 enum BikeRideValidator {
+    /// The date rule on its own, so it can be applied from the ride id before any network call.
+    /// Not remembered as a permanent rejection: a clock that was wrong can be right next time.
+    static func dateProblem(start: Date, now: Date) -> String? {
+        start >= BikeLimits.earliestRide && start <= now.addingTimeInterval(86_400) ? nil : "ride date is outside 2015 to tomorrow"
+    }
+
     /// Throws `BikeImportError.invalidRide` naming the first value out of range.
     static func validate(_ ride: BikeRide, start: Date, now: Date) throws {
         func bad(_ what: String) -> BikeImportError { .invalidRide(what) }
@@ -29,9 +37,7 @@ enum BikeRideValidator {
         guard s.calories.isFinite, BikeLimits.calories.contains(s.calories) else { throw bad("calories \(s.calories) are outside 0-5000") }
         guard s.distanceMi.isFinite, BikeLimits.distance.contains(s.distanceMi) else { throw bad("distance \(s.distanceMi) mi is outside 0-200") }
         guard s.outputKJ.isFinite else { throw bad("output is not a number") }
-        guard start >= BikeLimits.earliestRide, start <= now.addingTimeInterval(86_400) else {
-            throw bad("ride date is outside 2015 to tomorrow")
-        }
+        if let problem = dateProblem(start: start, now: now) { throw bad(problem) }
         guard ride.samples.count <= BikeLimits.maxSamplesPerRide else {
             throw bad("\(ride.samples.count) samples is more than the \(BikeLimits.maxSamplesPerRide) allowed")
         }

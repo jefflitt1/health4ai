@@ -45,8 +45,10 @@
 		B0000069 /* BikeIssueSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000069 /* BikeIssueSummary.swift */; };
 		B0000073 /* BikeSaveConfirmation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000073 /* BikeSaveConfirmation.swift */; };
 		B0000074 /* BikeCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000074 /* BikeCopy.swift */; };
+		B0000076 /* BikeRejectedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000076 /* BikeRejectedStore.swift */; };
 		B0000072 /* BikeReviewFixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000072 /* BikeReviewFixTests.swift */; };
 		B0000075 /* BikeRound2Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000075 /* BikeRound2Tests.swift */; };
+		B0000077 /* BikeRound3Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000077 /* BikeRound3Tests.swift */; };
 		B0000071 /* BikeImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000071 /* BikeImportTests.swift */; };
 		B000000A /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A000000A /* HealthKit.framework */; };
 		B000000B /* BackgroundTasks.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A000000B /* BackgroundTasks.framework */; };
@@ -94,8 +96,10 @@
 		A0000069 /* BikeIssueSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeIssueSummary.swift; sourceTree = "<group>"; };
 		A0000073 /* BikeSaveConfirmation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeSaveConfirmation.swift; sourceTree = "<group>"; };
 		A0000074 /* BikeCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeCopy.swift; sourceTree = "<group>"; };
+		A0000076 /* BikeRejectedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeRejectedStore.swift; sourceTree = "<group>"; };
 		A0000072 /* BikeReviewFixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeReviewFixTests.swift; sourceTree = "<group>"; };
 		A0000075 /* BikeRound2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeRound2Tests.swift; sourceTree = "<group>"; };
+		A0000077 /* BikeRound3Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeRound3Tests.swift; sourceTree = "<group>"; };
 		A0000071 /* BikeImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeImportTests.swift; sourceTree = "<group>"; };
 		A000000A /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
 		A000000B /* BackgroundTasks.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = BackgroundTasks.framework; path = System/Library/Frameworks/BackgroundTasks.framework; sourceTree = SDKROOT; };
@@ -207,6 +211,7 @@
 				A0000069 /* BikeIssueSummary.swift */,
 				A0000073 /* BikeSaveConfirmation.swift */,
 				A0000074 /* BikeCopy.swift */,
+				A0000076 /* BikeRejectedStore.swift */,
 			);
 			path = BikeImport;
 			sourceTree = "<group>";
@@ -217,6 +222,7 @@
 				A0000071 /* BikeImportTests.swift */,
 				A0000072 /* BikeReviewFixTests.swift */,
 				A0000075 /* BikeRound2Tests.swift */,
+				A0000077 /* BikeRound3Tests.swift */,
 			);
 			path = Health4AITests;
 			sourceTree = "<group>";
@@ -369,6 +375,7 @@
 				B0000069 /* BikeIssueSummary.swift in Sources */,
 				B0000073 /* BikeSaveConfirmation.swift in Sources */,
 				B0000074 /* BikeCopy.swift in Sources */,
+				B0000076 /* BikeRejectedStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -379,6 +386,7 @@
 				B0000071 /* BikeImportTests.swift in Sources */,
 				B0000072 /* BikeReviewFixTests.swift in Sources */,
 				B0000075 /* BikeRound2Tests.swift in Sources */,
+				B0000077 /* BikeRound3Tests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

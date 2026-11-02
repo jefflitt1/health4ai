@@ -133,7 +133,9 @@ final class BikeImportCoordinator: ObservableObject {
         defer { isRunning = false }
         let result: BikeImportResult
         if case .success(let url) = urlValidation {
-            result = await BikeImporter(api: makeAPI(url), store: store).run()
+            var importer = BikeImporter(api: makeAPI(url), store: store)
+            importer.rejectedStore = DefaultsRejectedStore(defaults: defaults)
+            result = await importer.run()
         } else {
             var r = BikeImportResult(date: Date())
             r.error = urlError ?? BikeURLError.empty.localizedDescription

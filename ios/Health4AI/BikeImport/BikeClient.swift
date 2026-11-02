@@ -86,8 +86,9 @@ final class BikeHTTPClient: BikeRideAPI {
             // Refuse on the declared length before reading anything, then enforce the cap while streaming
             // (a server can lie or omit the length).
             guard response.expectedContentLength <= Int64(maxBytes) else { throw BikeClientError.tooLarge }
-            // Appending to Data one byte at a time is slow enough on a multi-MB ride to hit the timeout,
-            // so bytes collect in a block and are appended 64 KB at a time. The cap is checked per byte.
+            // The read still iterates byte by byte; only the APPEND is batched. Appending to Data one byte
+            // at a time was the slow part on a multi-MB ride, so bytes collect in a block that is appended
+            // 64 KB at a time. The cap is checked per byte.
             var data = Data()
             if response.expectedContentLength > 0 { data.reserveCapacity(Int(min(response.expectedContentLength, Int64(maxBytes)))) }
             var block = [UInt8]()
