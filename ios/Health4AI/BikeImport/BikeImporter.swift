@@ -91,16 +91,16 @@ enum BikeImportError: Error, Equatable, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .noSamples: return "the bike recorded no samples for this ride"
-        case .badRideID: return "the bike gave this ride an id health4ai cannot read"
-        case .invalidRide(let why), .invalidDate(let why): return "rejected, \(why)"
+        case .noSamples: return "The bike recorded no samples"
+        case .badRideID: return "The bike gave an id health4ai cannot read"
+        case .invalidRide(let why), .invalidDate(let why): return "Rejected, \(why)"
         case .coreAccessMissing(let names):
             return "Health write access is off for: \(names.joined(separator: ", ")). "
                 + "Turn them on in the Health app (your profile picture, then Apps, then health4ai)."
         case .permissionNotRequested: return "Health write access has not been granted yet. Turn Import on to be asked."
         case .healthUnavailable: return "Apple Health is not available on this device."
         case .saveUnconfirmed:
-            return "Health did not confirm saving this ride (the phone may be locked); it will be checked again next import"
+            return "Health did not confirm the save (the phone may be locked); it will be checked again next import"
         }
     }
 }
@@ -237,7 +237,7 @@ struct BikeImporter {
             return
         }
         guard ride.summary.id == id else {
-            result.failed.append(BikeIssue(rideID: id, reason: "the bike returned a different ride than the one asked for"))
+            result.failed.append(BikeIssue(rideID: id, reason: "The bike returned a different ride than the one asked for"))
             return
         }
         do {
@@ -272,16 +272,16 @@ struct BikeImporter {
     /// It is optional by design, and a ride saved without it can never get it later (its sync identifier
     /// is taken), so the note says so.
     private func heartRateAllowed(id: String, into result: inout BikeImportResult) async -> Bool {
-        let tail = "this ride was imported without heart rate and will not get it later"
+        let tail = "imported without it, and it cannot be added later"
         if store.heartRateWriteStatus == .notDetermined {
             do { try await store.requestHeartRateAuthorization() } catch {
                 Self.logger.error("heart rate authorization failed: \(String(describing: error), privacy: .public)")
-                result.notes.append(BikeIssue(rideID: id, reason: "heart rate could not be requested; \(tail)"))
+                result.notes.append(BikeIssue(rideID: id, reason: "Heart rate could not be requested; \(tail)"))
                 return false
             }
         }
         if store.heartRateWriteStatus == .authorized { return true }
-        result.notes.append(BikeIssue(rideID: id, reason: "heart rate access is off; \(tail)"))
+        result.notes.append(BikeIssue(rideID: id, reason: "Heart rate access is off; \(tail)"))
         return false
     }
 }

@@ -56,14 +56,21 @@ struct BikeImportView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                TextField("Bike address", text: $model.urlText, prompt: Text("peloton-pi.local:8080"))
+                TextField("Bike address", text: $model.urlText, prompt: Text("peloton-pi.local:8080"), axis: .vertical)
                     .keyboardType(.URL)
                     .textContentType(.URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .submitLabel(.done)
                     .onSubmit { model.validateAddress() }
-                    .onChange(of: model.urlText) { _, _ in model.addressProblem = nil }
+                    .onChange(of: model.urlText) { _, text in
+                        model.addressProblem = nil
+                        // A vertical-axis field wraps; Return must still mean "done", never a line break in the address.
+                        if text.contains("\n") {
+                            model.urlText = text.replacingOccurrences(of: "\n", with: "")
+                            model.validateAddress()
+                        }
+                    }
             }
             if let problem = model.addressProblem {
                 Label { Text(problem) } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
@@ -73,9 +80,7 @@ struct BikeImportView: View {
                 testing = true
                 Task { await model.testConnection(); testing = false }
             } label: {
-                Label { Text("Test connection") } icon: {
-                    Image(systemName: "network").foregroundStyle(testDisabled ? Color.secondary : Color.accentColor)
-                }
+                Label("Test connection", systemImage: "network")
             }
             .disabled(testDisabled)
             if let message = model.testMessage {
@@ -149,10 +154,11 @@ struct BikeImportView: View {
         if let r = model.lastResult {
             if r.error != nil {
                 // Hidden while the permission message above is showing, so the same words appear once.
-                if let error = BikeCopy.visibleError(r, denied: model.coreAccess.denied) {
-                    Label { Text(error) } icon: { Image(systemName: "xmark.octagon.fill").foregroundStyle(.red) }
-                        .font(.subheadline)
+                // The row never goes silent: when the words are hidden, one short line stands in for them.
+                Label { Text(BikeCopy.errorLine(r, denied: model.coreAccess.denied)) } icon: {
+                    Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
                 }
+                .font(.subheadline)
             } else {
                 Label {
                     Text(r.imported == 0 ? "No new rides." : "Imported \(r.imported) ride\(r.imported == 1 ? "" : "s").")
@@ -170,7 +176,7 @@ struct BikeImportView: View {
             issueRow("Not confirmed", r.unconfirmed, symbol: "questionmark.circle.fill", tint: .orange)
             issueRow("Note", r.notes, symbol: "info.circle.fill", tint: .secondary)
             Text(BikeCopy.rideDate(r.date)).font(.caption).foregroundStyle(.secondary)
-        } else {
+        } else if !model.isRunning {
             Text("No import yet.").font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -185,10 +191,9 @@ struct BikeImportView: View {
                 }
                 .font(.subheadline)
                 Text(s.reason).font(.caption)
-                if !s.rides.isEmpty {
+                if let detail = s.detail {
                     // The dates are the rides with the reason above, not every ride in the row.
-                    let named = s.rides.joined(separator: ", ") + (s.more > 0 ? ", and \(s.more) more" : "")
-                    Text(s.otherReasons > 0 ? "For this reason: \(named)" : named)
+                    Text(detail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

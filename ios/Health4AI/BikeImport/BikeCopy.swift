@@ -17,6 +17,15 @@ enum BikeCopy {
         return result.error
     }
 
+    /// Stands in for the run-level error in "Last import" while the permission message above says the real thing.
+    static let deniedLastImport = "No rides imported. Health access is off (see above)."
+
+    /// What the red line in "Last import" says for a result that has an error: the error itself, or the
+    /// short stand-in when `visibleError` hides it.
+    static func errorLine(_ result: BikeImportResult, denied: [String]) -> String {
+        visibleError(result, denied: denied) ?? deniedLastImport
+    }
+
     /// Dates in the current year drop the year.
     static func rideDate(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
         if calendar.component(.year, from: date) == calendar.component(.year, from: now) {

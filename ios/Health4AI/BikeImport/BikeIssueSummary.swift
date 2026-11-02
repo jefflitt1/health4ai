@@ -30,9 +30,31 @@ struct BikeIssueSummary: Equatable {
         // Readable dates in time order first; a ride with an unreadable id goes last.
         let known = dates.compactMap { $0 }.sorted()
         let unreadable = dates.count - known.count
-        let names = known.map(format) + Array(repeating: "a ride with an unreadable date", count: unreadable)
+        let names = known.map(format)
         rides = Array(names.prefix(Self.maxNamed))
         more = max(names.count - Self.maxNamed, 0)
+        self.unreadable = unreadable
+        allUnreadable = unreadable == rideIssues.count
+    }
+
+    /// Rides with the headline reason whose id has no readable date: counted once, never listed one by one.
+    let unreadable: Int
+    /// Every ride in the row is unreadable: the headline reason already says so, so there is no detail line.
+    let allUnreadable: Bool
+
+    var unreadablePhrase: String? {
+        unreadable == 0 ? nil : unreadable == 1 ? "1 ride with an unreadable date" : "\(unreadable) rides with unreadable dates"
+    }
+
+    /// The caption under the reason: named dated rides, "and N more", then the unreadable count last.
+    /// Prefixed "For this reason:" only when the row also has other reasons. Nil when there is nothing to name.
+    var detail: String? {
+        if allUnreadable { return nil }
+        var text = rides.joined(separator: ", ")
+        if more > 0 { text += ", and \(more) more" }
+        if let phrase = unreadablePhrase { text += (text.isEmpty ? "" : ", plus ") + phrase }
+        if text.isEmpty { return nil }
+        return otherReasons > 0 ? "For this reason: \(text)" : text
     }
 
     /// Issues with no ride attached, shown as plain lines.

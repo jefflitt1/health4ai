@@ -33,7 +33,7 @@ final class BikeOrderingAndCapTests: XCTestCase {
         XCTAssertEqual(r.imported, 1)
         XCTAssertEqual(api.detailCalls, ["20261001T100000Z"], "garbage ids cost no network call")
         XCTAssertEqual(r.skipped.count, 250)
-        XCTAssertTrue(r.skipped.allSatisfy { $0.reason == "the bike gave this ride an id health4ai cannot read" })
+        XCTAssertTrue(r.skipped.allSatisfy { $0.reason == "The bike gave an id health4ai cannot read" })
         XCTAssertTrue(r.notes.isEmpty, "no 'older rides were left' note: nothing was left")
     }
 

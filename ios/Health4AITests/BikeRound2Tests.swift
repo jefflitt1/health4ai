@@ -164,7 +164,7 @@ final class BikeImporterRound2Tests: XCTestCase {
         let a = FakeAPI(); a.list = .success([summary])
         let r = await BikeImporter(api: a, store: FakeStore()).run()
         XCTAssertEqual(r.skipped.count, 1)
-        XCTAssertEqual(r.skipped[0].reason, "the bike gave this ride an id health4ai cannot read")
+        XCTAssertEqual(r.skipped[0].reason, "The bike gave an id health4ai cannot read")
         XCTAssertFalse(r.skipped[0].reason.contains("not-a-timestamp"))
         XCTAssertEqual(BikeImportError.badRideID(weird).localizedDescription, r.skipped[0].reason)
         XCTAssertFalse(BikeClientError.badResponse("a ride id it cannot read").localizedDescription.contains(weird))
@@ -203,8 +203,8 @@ final class BikeScreenTextTests: XCTestCase {
     func testUnreadableDateIsListedLast() {
         let issues = [BikeIssue(rideID: "garbage", reason: "r"), BikeIssue(rideID: "20261101T100000Z", reason: "r")]
         let s = BikeIssueSummary(issues, format: stamp)!
-        XCTAssertEqual(s.rides.last, "a ride with an unreadable date")
-        XCTAssertEqual(s.rides.first, stamp(date("20261101T100000Z")))
+        XCTAssertEqual(s.rides, [stamp(date("20261101T100000Z"))])
+        XCTAssertEqual(s.detail, "\(stamp(date("20261101T100000Z"))), plus 1 ride with an unreadable date")
     }
 
     func testDeniedMessageDependsOnWhetherImportIsOn() {
