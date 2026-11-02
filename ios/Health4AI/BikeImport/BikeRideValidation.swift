@@ -4,8 +4,6 @@ import Foundation
 // fails any bound is rejected whole, with a reason shown to the person, before anything is written.
 
 enum BikeLimits {
-    /// Bump when any rule below changes: rides rejected under an older version are then looked at again.
-    static let rulesVersion = 1
     static let maxRidesPerImport = 200
     static let maxSamplesPerRide = 100_000
     static let maxBytes = 16 * 1024 * 1024
@@ -20,6 +18,27 @@ enum BikeLimits {
         var c = DateComponents(); c.year = 2015; c.month = 1; c.day = 1; c.timeZone = TimeZone(identifier: "UTC")
         return Calendar(identifier: .gregorian).date(from: c)!
     }()
+
+    // The remembered-rejection set is keyed by a hash of EVERY value above, so loosening or tightening any
+    // limit starts a fresh set and re-checks the rides. Add a line here when a limit is added. Nothing is
+    // bumped by hand. `schema` is for a change of the rules' shape that no value above captures.
+    static let schema = 1
+    static var entries: [(name: String, value: String)] {
+        [("maxRidesPerImport", "\(maxRidesPerImport)"), ("maxSamplesPerRide", "\(maxSamplesPerRide)"), ("maxBytes", "\(maxBytes)"),
+         ("power", "\(power)"), ("cadence", "\(cadence)"), ("heartRate", "\(heartRate)"), ("speed", "\(speed)"),
+         ("elapsed", "\(elapsed)"), ("calories", "\(calories)"), ("distance", "\(distance)"),
+         ("earliestRide", "\(earliestRide.timeIntervalSince1970)")]
+    }
+    static var rulesKey: String { key(for: entries) }
+
+    static func key(for entries: [(name: String, value: String)]) -> String {
+        // FNV-1a 64: stable across launches, unlike Swift's randomly seeded hashValue.
+        var h: UInt64 = 0xcbf29ce484222325
+        for byte in entries.map({ "\($0.name)=\($0.value)" }).joined(separator: ";").utf8 {
+            h = (h ^ UInt64(byte)) &* 0x100000001b3
+        }
+        return "s\(schema)-" + String(h, radix: 16)
+    }
 }
 
 enum BikeRideValidator {
@@ -37,7 +56,7 @@ enum BikeRideValidator {
         guard s.calories.isFinite, BikeLimits.calories.contains(s.calories) else { throw bad("calories \(s.calories) are outside 0-5000") }
         guard s.distanceMi.isFinite, BikeLimits.distance.contains(s.distanceMi) else { throw bad("distance \(s.distanceMi) mi is outside 0-200") }
         guard s.outputKJ.isFinite else { throw bad("output is not a number") }
-        if let problem = dateProblem(start: start, now: now) { throw bad(problem) }
+        if let problem = dateProblem(start: start, now: now) { throw BikeImportError.invalidDate(problem) }
         guard ride.samples.count <= BikeLimits.maxSamplesPerRide else {
             throw bad("\(ride.samples.count) samples is more than the \(BikeLimits.maxSamplesPerRide) allowed")
         }

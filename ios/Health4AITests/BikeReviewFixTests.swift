@@ -39,7 +39,11 @@ final class BikeReviewFixTests: XCTestCase {
         ]
         for (name, ride) in bad {
             XCTAssertThrowsError(try BikeWorkoutPlan.make(from: ride, now: now), name) { error in
-                guard case BikeImportError.invalidRide = error else { return XCTFail("\(name): \(error)") }
+                if name.hasSuffix("date") {   // a date failure is typed apart from content failures
+                    guard case BikeImportError.invalidDate = error else { return XCTFail("\(name): \(error)") }
+                } else {
+                    guard case BikeImportError.invalidRide = error else { return XCTFail("\(name): \(error)") }
+                }
             }
         }
         let tooMany = BikeRide(summary: BikeRideSummary(id: "20261102T172230Z", elapsed: 10, outputKJ: 1, calories: 1, distanceMi: 0.1),

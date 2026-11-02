@@ -176,10 +176,13 @@ final class FakeAPI: BikeRideAPI {
     var list: Result<[BikeRideSummary], Error> = .success([])
     var rides: [String: BikeRide] = [:]
     var rideError: Error?
+    /// Runs when a ride detail is requested, to model things that change mid-import (the clock, the file).
+    var onRide: (() -> Void)?
     var detailCalls: [String] = []
     func listRides() async throws -> [BikeRideSummary] { try list.get() }
     func ride(id: String) async throws -> BikeRide {
         detailCalls.append(id)
+        onRide?()
         if let rideError { throw rideError }
         guard let r = rides[id] else { throw BikeClientError.http(status: 404, path: "/api/rides/\(id)") }
         return r

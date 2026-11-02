@@ -80,7 +80,10 @@ protocol BikeRideAPI {
 enum BikeImportError: Error, Equatable, LocalizedError {
     case noSamples
     case badRideID(String)
+    /// A rule about the ride's CONTENT failed. May be remembered as a permanent rejection.
     case invalidRide(String)
+    /// The ride's date failed the date rule. Depends on the clock, so it is NEVER remembered.
+    case invalidDate(String)
     case coreAccessMissing([String])
     case permissionNotRequested
     case healthUnavailable
@@ -90,7 +93,7 @@ enum BikeImportError: Error, Equatable, LocalizedError {
         switch self {
         case .noSamples: return "the bike recorded no samples for this ride"
         case .badRideID: return "the bike gave this ride an id health4ai cannot read"
-        case .invalidRide(let why): return "rejected, \(why)"
+        case .invalidRide(let why), .invalidDate(let why): return "rejected, \(why)"
         case .coreAccessMissing(let names):
             return "Health write access is off for: \(names.joined(separator: ", ")). "
                 + "Turn them on in the Health app (your profile picture, then Apps, then health4ai)."
@@ -198,11 +201,12 @@ struct BikeImporter {
             }
             if known.contains(BikeRideID.syncIdentifier(for: summary.id)) { result.alreadyImported += 1; continue }
             if let problem = BikeRideValidator.dateProblem(start: start, now: now()) {
-                result.skipped.append(BikeIssue(rideID: summary.id, reason: BikeImportError.invalidRide(problem).localizedDescription))
+                result.skipped.append(BikeIssue(rideID: summary.id, reason: BikeImportError.invalidDate(problem).localizedDescription))
                 continue
             }
-            if rejected.contains(summary.id) {
-                Self.logger.info("not retrying ride \(summary.id, privacy: .public): rejected on an earlier import")
+            // Skipped without a fetch only while the listing still looks exactly as it did when it was rejected.
+            if rejected[summary.id] == BikeFingerprint.of(summary) {
+                Self.logger.info("not retrying ride \(summary.id, privacy: .public): rejected on an earlier import and unchanged")
                 continue
             }
             candidates.append((summary, start))
@@ -216,12 +220,17 @@ struct BikeImporter {
         }
         for c in candidates { await importOne(c.summary, into: &result, rejected: &rejected) }
         // Forget ids the bike no longer lists, so the set cannot grow without bound.
-        rejectedStore.save(rejected.intersection(Set(rides.map(\.id))))
+        let listed = Set(rides.map(\.id))
+        rejectedStore.save(rejected.filter { listed.contains($0.key) })
         return result
     }
 
-    private func importOne(_ summary: BikeRideSummary, into result: inout BikeImportResult, rejected: inout Set<String>) async {
+    /// A ride that ended this recently may still be being written, so a content rejection is not trusted yet.
+    static let liveWindow: TimeInterval = 600
+
+    private func importOne(_ summary: BikeRideSummary, into result: inout BikeImportResult, rejected: inout [String: String]) async {
         let id = summary.id
+        rejected[id] = nil   // re-decided below; a stale fingerprint must not outlive a refetch
         let ride: BikeRide
         do { ride = try await api.ride(id: id) } catch {
             result.failed.append(BikeIssue(rideID: id, reason: Self.reason(for: error, doing: "read this ride from the bike", kind: .bike)))
@@ -237,8 +246,15 @@ struct BikeImporter {
                 switch error {
                 case .noSamples, .invalidRide:
                     result.skipped.append(BikeIssue(rideID: id, reason: error.localizedDescription))
-                    rejected.insert(id)   // decided by the ride's own content: do not fetch it again
+                    // Decided by the ride's own content: remember it against this exact listing, unless the
+                    // ride only just ended (it may still be written to).
+                    let ended = (BikeRideID.startDate(from: id) ?? .distantPast).addingTimeInterval(TimeInterval(summary.elapsed))
+                    if ended <= now().addingTimeInterval(-Self.liveWindow) { rejected[id] = BikeFingerprint.of(summary) }
                     return
+                case .invalidDate:
+                    result.skipped.append(BikeIssue(rideID: id, reason: error.localizedDescription))
+                    return   // the date rule depends on the clock: never remembered
+
                 default: throw error
                 }
             }
