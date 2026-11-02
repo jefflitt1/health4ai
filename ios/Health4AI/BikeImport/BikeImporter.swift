@@ -205,7 +205,7 @@ struct BikeImporter {
                 continue
             }
             // Skipped without a fetch only while the listing still looks exactly as it did when it was rejected.
-            if rejected[summary.id] == BikeFingerprint.of(summary) {
+            if rejected[summary.id]?.holds(for: BikeFingerprint.of(summary), now: now()) == true {
                 Self.logger.info("not retrying ride \(summary.id, privacy: .public): rejected on an earlier import and unchanged")
                 continue
             }
@@ -228,7 +228,7 @@ struct BikeImporter {
     /// A ride that ended this recently may still be being written, so a content rejection is not trusted yet.
     static let liveWindow: TimeInterval = 600
 
-    private func importOne(_ summary: BikeRideSummary, into result: inout BikeImportResult, rejected: inout [String: String]) async {
+    private func importOne(_ summary: BikeRideSummary, into result: inout BikeImportResult, rejected: inout [String: BikeRejection]) async {
         let id = summary.id
         rejected[id] = nil   // re-decided below; a stale fingerprint must not outlive a refetch
         let ride: BikeRide
@@ -248,8 +248,15 @@ struct BikeImporter {
                     result.skipped.append(BikeIssue(rideID: id, reason: error.localizedDescription))
                     // Decided by the ride's own content: remember it against this exact listing, unless the
                     // ride only just ended (it may still be written to).
-                    let ended = (BikeRideID.startDate(from: id) ?? .distantPast).addingTimeInterval(TimeInterval(summary.elapsed))
-                    if ended <= now().addingTimeInterval(-Self.liveWindow) { rejected[id] = BikeFingerprint.of(summary) }
+                    // An elapsed outside the allowed range is a content rule that more time cannot fix, so it is
+                    // remembered at once; otherwise the elapsed used for the window is clamped to the limit so
+                    // an absurd value cannot push "ended" into the far future.
+                    let rangeProblem = !BikeLimits.elapsed.contains(summary.elapsed)
+                    let clamped = min(max(summary.elapsed, BikeLimits.elapsed.lowerBound), BikeLimits.elapsed.upperBound)
+                    let ended = (BikeRideID.startDate(from: id) ?? .distantPast).addingTimeInterval(TimeInterval(clamped))
+                    if rangeProblem || ended <= now().addingTimeInterval(-Self.liveWindow) {
+                        rejected[id] = BikeRejection(fingerprint: BikeFingerprint.of(summary), at: now())
+                    }
                     return
                 case .invalidDate:
                     result.skipped.append(BikeIssue(rideID: id, reason: error.localizedDescription))

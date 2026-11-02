@@ -92,15 +92,17 @@ final class BikeOrderingAndCapTests: XCTestCase {
     func testDefaultsStoreIsKeyedByTheRulesKey() {
         let suite = UserDefaults(suiteName: "bike-rejected-tests")!
         suite.removePersistentDomain(forName: "bike-rejected-tests")
-        DefaultsRejectedStore(defaults: suite, rulesKey: "k1").save(["a": "x", "b": "y"])
-        XCTAssertEqual(DefaultsRejectedStore(defaults: suite, rulesKey: "k1").load(), ["a": "x", "b": "y"])
+        let at = Date(timeIntervalSince1970: 1_790_000_000)
+        let saved = ["a": BikeRejection(fingerprint: "x", at: at), "b": BikeRejection(fingerprint: "y", at: nil)]
+        DefaultsRejectedStore(defaults: suite, rulesKey: "k1").save(saved)
+        XCTAssertEqual(DefaultsRejectedStore(defaults: suite, rulesKey: "k1").load(), saved)
         XCTAssertTrue(DefaultsRejectedStore(defaults: suite, rulesKey: "k2").load().isEmpty, "a new rules key re-checks everything")
         suite.removePersistentDomain(forName: "bike-rejected-tests")
     }
 
     func testIdsTheBikeNoLongerListsAreForgotten() async {
         let remembered = MemoryRejectedStore()
-        remembered.save(["20260101T000000Z": "fingerprint"])
+        remembered.save(["20260101T000000Z": BikeRejection(fingerprint: "fingerprint", at: Date())])
         var importer = BikeImporter(api: serve([ride(id: "20261001T100000Z")]), store: FakeStore())
         importer.rejectedStore = remembered
         _ = await importer.run()

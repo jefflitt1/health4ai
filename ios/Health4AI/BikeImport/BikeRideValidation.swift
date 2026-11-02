@@ -23,11 +23,14 @@ enum BikeLimits {
     // limit starts a fresh set and re-checks the rides. Add a line here when a limit is added. Nothing is
     // bumped by hand. `schema` is for a change of the rules' shape that no value above captures.
     static let schema = 1
+    /// A remembered rejection is trusted for this long, then the ride is fetched and judged again (the bike
+    /// may have corrected its samples without changing the listing's numbers).
+    static let rejectionExpiry: TimeInterval = 30 * 86_400
     static var entries: [(name: String, value: String)] {
         [("maxRidesPerImport", "\(maxRidesPerImport)"), ("maxSamplesPerRide", "\(maxSamplesPerRide)"), ("maxBytes", "\(maxBytes)"),
          ("power", "\(power)"), ("cadence", "\(cadence)"), ("heartRate", "\(heartRate)"), ("speed", "\(speed)"),
          ("elapsed", "\(elapsed)"), ("calories", "\(calories)"), ("distance", "\(distance)"),
-         ("earliestRide", "\(earliestRide.timeIntervalSince1970)")]
+         ("earliestRide", "\(earliestRide.timeIntervalSince1970)"), ("rejectionExpiry", "\(rejectionExpiry)")]
     }
     static var rulesKey: String { key(for: entries) }
 

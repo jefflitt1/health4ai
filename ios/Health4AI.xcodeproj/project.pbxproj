@@ -51,6 +51,7 @@
 		B0000077 /* BikeRound3Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000077 /* BikeRound3Tests.swift */; };
 		B0000078 /* BikeRound4Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000078 /* BikeRound4Tests.swift */; };
 		B0000080 /* BikeRound5Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000080 /* BikeRound5Tests.swift */; };
+		B0000082 /* BikeRound6Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000082 /* BikeRound6Tests.swift */; };
 		B0000071 /* BikeImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000071 /* BikeImportTests.swift */; };
 		B000000A /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A000000A /* HealthKit.framework */; };
 		B000000B /* BackgroundTasks.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A000000B /* BackgroundTasks.framework */; };
@@ -104,6 +105,7 @@
 		A0000077 /* BikeRound3Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeRound3Tests.swift; sourceTree = "<group>"; };
 		A0000078 /* BikeRound4Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeRound4Tests.swift; sourceTree = "<group>"; };
 		A0000080 /* BikeRound5Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeRound5Tests.swift; sourceTree = "<group>"; };
+		A0000082 /* BikeRound6Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeRound6Tests.swift; sourceTree = "<group>"; };
 		A0000071 /* BikeImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeImportTests.swift; sourceTree = "<group>"; };
 		A000000A /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
 		A000000B /* BackgroundTasks.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = BackgroundTasks.framework; path = System/Library/Frameworks/BackgroundTasks.framework; sourceTree = SDKROOT; };
@@ -229,6 +231,7 @@
 				A0000077 /* BikeRound3Tests.swift */,
 				A0000078 /* BikeRound4Tests.swift */,
 				A0000080 /* BikeRound5Tests.swift */,
+				A0000082 /* BikeRound6Tests.swift */,
 			);
 			path = Health4AITests;
 			sourceTree = "<group>";
@@ -395,6 +398,7 @@
 				B0000077 /* BikeRound3Tests.swift in Sources */,
 				B0000078 /* BikeRound4Tests.swift in Sources */,
 				B0000080 /* BikeRound5Tests.swift in Sources */,
+				B0000082 /* BikeRound6Tests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
