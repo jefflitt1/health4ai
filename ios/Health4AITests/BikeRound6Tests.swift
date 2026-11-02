@@ -34,7 +34,7 @@ final class BikeRejectionExpiryTests: XCTestCase {
         XCTAssertTrue(api2.detailCalls.isEmpty, "refetched \(api2.detailCalls)")
     }
 
-    private func runAfter(_ age: TimeInterval, storedAt: Date?) async -> FakeAPI {
+    private func runAfter(storedAt: Date?) async -> FakeAPI {
         let ride = badRide()
         let remembered = MemoryRejectedStore()
         remembered.save([id: BikeRejection(fingerprint: BikeFingerprint.of(ride.summary), at: storedAt)])
@@ -49,19 +49,19 @@ final class BikeRejectionExpiryTests: XCTestCase {
     /// W2: older than 30 days is judged again; younger is not.
     func testAnEntryOlderThanThirtyDaysIsRefetched() async {
         let t = start.addingTimeInterval(86_400 * 100)
-        let api = await runAfter(0, storedAt: t.addingTimeInterval(-31 * 86_400))
+        let api = await runAfter(storedAt: t.addingTimeInterval(-31 * 86_400))
         XCTAssertEqual(api.detailCalls, [id])
     }
 
     func testAnEntryYoungerThanThirtyDaysIsNotRefetched() async {
         let t = start.addingTimeInterval(86_400 * 100)
-        let api = await runAfter(0, storedAt: t.addingTimeInterval(-29 * 86_400))
+        let api = await runAfter(storedAt: t.addingTimeInterval(-29 * 86_400))
         XCTAssertTrue(api.detailCalls.isEmpty)
     }
 
     /// Migration: the round-4 form carried no date and counts as expired.
     func testAnEntryWithNoDateIsRefetched() async {
-        let api = await runAfter(0, storedAt: nil)
+        let api = await runAfter(storedAt: nil)
         XCTAssertEqual(api.detailCalls, [id])
     }
 

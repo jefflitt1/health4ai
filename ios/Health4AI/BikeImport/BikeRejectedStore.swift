@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Rides the validator rejected on their CONTENT (no samples, values out of range), remembered as
 /// `id -> BikeRejection`: the fingerprint of the listing summary and the day it was rejected. A ride is
@@ -36,26 +37,53 @@ final class MemoryRejectedStore: BikeRejectedStore {
     func save(_ rejected: [String: BikeRejection]) { self.rejected = rejected }
 }
 
-/// Stored as `id -> ["f": fingerprint, "t": seconds since 1970]`. The earlier form, `id -> fingerprint`
-/// (a bare string), is still read and counts as expired, so those rides are checked once more.
+/// Stored as `id -> ["f": fingerprint, "t": seconds since 1970]` under a key derived from the rules.
+/// The earlier form, `id -> fingerprint` (a bare string), is read only under the SAME key and counts as
+/// expired, so those rides are checked once more; a changed rules key starts a fresh set and `save`
+/// deletes the sets of other keys.
+///
+/// Corrupt data is never silently dropped or trusted: each case is reported through `onProblem` (logged by
+/// default, with the ride id where there is one), and the affected ride simply has no usable entry, so
+/// it is fetched and judged again.
 struct DefaultsRejectedStore: BikeRejectedStore {
+    private static let logger = Logger(subsystem: "com.jglittell.health4ai", category: "BikeRejectedStore")
+    static let keyPrefix = "h4a.bike.rejected."
+
     var defaults: UserDefaults = .standard
     var rulesKey = BikeLimits.rulesKey
-    var key: String { "h4a.bike.rejected.\(rulesKey)" }
+    var onProblem: (String) -> Void = { logger.error("\($0, privacy: .public)") }
+    var key: String { Self.keyPrefix + rulesKey }
 
     func load() -> [String: BikeRejection] {
+        guard let stored = defaults.object(forKey: key) else { return [:] }
+        guard let entries = stored as? [String: Any] else {
+            onProblem("remembered rejections under \(key) are not a dictionary; all rides will be checked again")
+            return [:]
+        }
         var out: [String: BikeRejection] = [:]
-        for (id, raw) in defaults.dictionary(forKey: key) ?? [:] {
+        for (id, raw) in entries {
             if let legacy = raw as? String {
                 out[id] = BikeRejection(fingerprint: legacy, at: nil)
             } else if let d = raw as? [String: Any], let f = d["f"] as? String {
-                out[id] = BikeRejection(fingerprint: f, at: (d["t"] as? Double).map { Date(timeIntervalSince1970: $0) })
+                var at: Date?
+                if let t = d["t"] {
+                    if let seconds = t as? Double { at = Date(timeIntervalSince1970: seconds) } else {
+                        onProblem("remembered rejection for ride \(id) has a date that is not a number; it will be checked again")
+                    }
+                }
+                out[id] = BikeRejection(fingerprint: f, at: at)
+            } else {
+                onProblem("remembered rejection for ride \(id) has an unknown shape; it will be checked again")
             }
         }
         return out
     }
 
     func save(_ rejected: [String: BikeRejection]) {
+        // Sets stored under earlier rules keys can never be read again: remove them.
+        for other in defaults.dictionaryRepresentation().keys where other.hasPrefix(Self.keyPrefix) && other != key {
+            defaults.removeObject(forKey: other)
+        }
         defaults.set(rejected.mapValues { r -> [String: Any] in
             var d: [String: Any] = ["f": r.fingerprint]
             if let at = r.at { d["t"] = at.timeIntervalSince1970 }
