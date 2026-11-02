@@ -17,6 +17,10 @@ enum BikeCopy {
         return result.error
     }
 
+    /// The one wording for "a ride imported without heart rate never gets it": used by the Import footer and
+    /// by the per-ride note, so the two cannot disagree.
+    static let heartRateCannotBeAddedLater = "A ride imported without heart rate cannot get it added later."
+
     /// Stands in for the run-level error in "Last import" while the permission message above says the real thing.
     static let deniedLastImport = "No rides imported. Health access is off (see above)."
 

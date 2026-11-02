@@ -29,6 +29,26 @@ final class BikeGateRound5Tests: XCTestCase {
         XCTAssertNil(s.detail)
     }
 
+    /// N2: a mixed row whose headline reason is the unreadable-id one has no detail line either.
+    func testMixedRowWithAnUnreadableHeadlineReasonDropsTheDetailLine() {
+        let issues = ["x1", "x2", "x3"].map { BikeIssue(rideID: $0, reason: "unreadable id") }
+            + [BikeIssue(rideID: "20261101T100000Z", reason: "other")]
+        let s = BikeIssueSummary(issues, format: stamp)!
+        XCTAssertEqual(s.reason, "unreadable id")
+        XCTAssertEqual(s.otherReasons, 1)
+        XCTAssertTrue(s.allUnreadable)
+        XCTAssertNil(s.detail)
+    }
+
+    /// N1: one wording for the heart-rate promise, in the footer and in the per-ride note.
+    func testHeartRateWordingIsOneConstant() throws {
+        XCTAssertEqual(BikeCopy.heartRateCannotBeAddedLater, "A ride imported without heart rate cannot get it added later.")
+        let path = #filePath.replacingOccurrences(of: "Health4AITests/BikeRound5Tests.swift", with: "Health4AI/BikeImport/BikeImportView.swift")
+        let source = try String(contentsOfFile: path, encoding: .utf8)   // throws, so this can never pass vacuously
+        XCTAssertTrue(source.contains("\\(BikeCopy.heartRateCannotBeAddedLater)"), "the footer must use the shared constant")
+        XCTAssertFalse(source.contains("will not get it later"))
+    }
+
     func testMoreThanThreeDatedRidesStillCountsOverflow() {
         let ids = (1...5).map { "2026110\($0)T100000Z" }
         let s = BikeIssueSummary(ids.map { BikeIssue(rideID: $0, reason: "r") } + [BikeIssue(rideID: "zz", reason: "other")], format: stamp)!

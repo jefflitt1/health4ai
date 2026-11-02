@@ -34,12 +34,13 @@ struct BikeIssueSummary: Equatable {
         rides = Array(names.prefix(Self.maxNamed))
         more = max(names.count - Self.maxNamed, 0)
         self.unreadable = unreadable
-        allUnreadable = unreadable == rideIssues.count
+        // Compared with the rides that have the headline reason (the ones the detail line is about), not the whole row.
+        allUnreadable = unreadable == ordered[0].value
     }
 
     /// Rides with the headline reason whose id has no readable date: counted once, never listed one by one.
     let unreadable: Int
-    /// Every ride in the row is unreadable: the headline reason already says so, so there is no detail line.
+    /// Every ride with the headline reason is unreadable: the reason already says so, so there is no detail line.
     let allUnreadable: Bool
 
     var unreadablePhrase: String? {

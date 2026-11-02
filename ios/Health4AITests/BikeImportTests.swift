@@ -353,7 +353,7 @@ final class BikeImporterTests: XCTestCase {
         XCTAssertEqual(r.imported, 1)
         XCTAssertEqual(store.saved.first?.writeHeartRate, false)
         XCTAssertEqual(r.notes.count, 1)
-        XCTAssertTrue(r.notes[0].reason.contains("cannot be added later"))
+        XCTAssertTrue(r.notes[0].reason.hasSuffix(BikeCopy.heartRateCannotBeAddedLater))
     }
 
     /// Raw HealthKit/NSError text must never reach the screen; it is logged instead.

@@ -279,16 +279,16 @@ struct BikeImporter {
     /// It is optional by design, and a ride saved without it can never get it later (its sync identifier
     /// is taken), so the note says so.
     private func heartRateAllowed(id: String, into result: inout BikeImportResult) async -> Bool {
-        let tail = "imported without it, and it cannot be added later"
+        let tail = BikeCopy.heartRateCannotBeAddedLater
         if store.heartRateWriteStatus == .notDetermined {
             do { try await store.requestHeartRateAuthorization() } catch {
                 Self.logger.error("heart rate authorization failed: \(String(describing: error), privacy: .public)")
-                result.notes.append(BikeIssue(rideID: id, reason: "Heart rate could not be requested; \(tail)"))
+                result.notes.append(BikeIssue(rideID: id, reason: "Heart rate could not be requested. \(tail)"))
                 return false
             }
         }
         if store.heartRateWriteStatus == .authorized { return true }
-        result.notes.append(BikeIssue(rideID: id, reason: "Heart rate access is off; \(tail)"))
+        result.notes.append(BikeIssue(rideID: id, reason: "Heart rate access is off. \(tail)"))
         return false
     }
 }

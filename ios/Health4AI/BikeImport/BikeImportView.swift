@@ -80,6 +80,8 @@ struct BikeImportView: View {
                 testing = true
                 Task { await model.testConnection(); testing = false }
             } label: {
+                // Plain Label, no foregroundStyle (design.md rule 3). Disabled, the TITLE dims and the icon keeps
+                // its tint: platform behaviour, accepted by the design gate.
                 Label("Test connection", systemImage: "network")
             }
             .disabled(testDisabled)
@@ -136,7 +138,7 @@ struct BikeImportView: View {
         } header: {
             Text("Import")
         } footer: {
-            Text("Off by default. Turning it on asks Health for permission to save workouts, active energy, cycling distance, power and cadence. All five are required. Heart rate is asked for only when a ride has it; a ride imported without heart rate will not get it later. A ride you delete from Health is imported again on the next import.")
+            Text("Off by default. Turning it on asks Health for permission to save workouts, active energy, cycling distance, power and cadence. All five are required. Heart rate is asked for only when a ride has it. \(BikeCopy.heartRateCannotBeAddedLater) A ride you delete from Health is imported again on the next import.")
         }
     }
 
