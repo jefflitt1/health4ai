@@ -29,6 +29,9 @@ struct BikeRideSample: Decodable, Equatable {
     let speedMph: Double
     let hr: Double
 
+    /// Decode-time ceiling for the time field (about 31 years); the real bound is applied by BikeRideValidator.
+    static let maxT = 1_000_000_000
+
     init(t: Int, cadence: Double, power: Double, resistance: Double? = nil, speedMph: Double, hr: Double) {
         self.t = t; self.cadence = cadence; self.power = power
         self.resistance = resistance; self.speedMph = speedMph; self.hr = hr
@@ -36,7 +39,12 @@ struct BikeRideSample: Decodable, Equatable {
 
     init(from decoder: Decoder) throws {
         var c = try decoder.unkeyedContainer()
-        t = Int(try c.decode(Double.self))
+        // `Int(Double)` traps on 1e30; a host-supplied number must never crash the app.
+        let rawT = try c.decode(Double.self)
+        guard rawT.isFinite, rawT >= 0, rawT <= Double(Self.maxT) else {
+            throw DecodingError.dataCorruptedError(in: c, debugDescription: "sample time \(rawT) is out of range")
+        }
+        t = Int(rawT)
         cadence = try c.decode(Double.self)
         power = try c.decode(Double.self)
         resistance = try c.decodeNil() ? nil : try c.decode(Double.self)

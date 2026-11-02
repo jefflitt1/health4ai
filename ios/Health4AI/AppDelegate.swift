@@ -50,8 +50,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // "Bike on your network" is independent of the sync destination and a no-op while off.
-        Task { @MainActor in await BikeImportCoordinator.shared.importOnForeground() }
         Task { @MainActor in
             guard Self.destinationConnected else { return }
             SyncEngine.shared.performForegroundSync(trigger: .foreground)

@@ -22,11 +22,11 @@ struct BikeBucket: Equatable {
 enum BikeSampleAggregator {
     static let bucketSeconds = 5
 
-    /// The ride length is summary.elapsed, raised to the last sample time if the Pi's rounding put a
-    /// sample past it, so no bucket ever ends after the workout does.
+    /// The ride length is summary.elapsed and is the hard end: no bucket ends after it, and samples at
+    /// or past it fold into the final bucket. If samples stop early, the buckets simply stop early.
     static func buckets(samples: [BikeRideSample], elapsed: Int, bucketSeconds: Int = bucketSeconds) -> [BikeBucket] {
-        guard let last = samples.map(\.t).max(), bucketSeconds > 0 else { return [] }
-        let duration = max(elapsed, last, 1)
+        guard !samples.isEmpty, bucketSeconds > 0 else { return [] }
+        let duration = max(elapsed, 1)
         let lastIndex = (duration - 1) / bucketSeconds
         var groups: [Int: [BikeRideSample]] = [:]
         for s in samples where s.t >= 0 {

@@ -70,6 +70,7 @@ enum BikeURLValidator {
         var out: [Int] = []
         for part in parts {
             guard (1...3).contains(part.count), part.allSatisfy({ $0.isASCII && $0.isNumber }),
+                  !(part.count > 1 && part.first == "0"),   // "010" is octal to some resolvers: ambiguous, refuse
                   let n = Int(part), n <= 255 else { return nil }
             out.append(n)
         }

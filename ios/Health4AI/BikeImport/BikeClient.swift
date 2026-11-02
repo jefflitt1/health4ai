@@ -22,29 +22,42 @@ enum BikeClientError: Error, LocalizedError, Equatable {
         case .http(let status, let path): return "The bike answered \(path) with HTTP \(status)."
         case .redirectRefused: return "The bike tried to redirect to another address, which is not allowed."
         case .badResponse(let why): return "That address answered, but not like a Peloton Pi (\(why))."
-        case .tooLarge: return "The bike's response was unexpectedly large and was refused."
+        case .tooLarge: return "The bike's response was larger than the 16 MB limit and was refused."
         }
     }
 }
 
-final class BikeHTTPClient: NSObject, BikeRideAPI, URLSessionTaskDelegate {
+/// Session delegate kept separate from the client: a URLSession retains its delegate until it is
+/// invalidated, so using the client itself as delegate made a retain cycle that leaked a session per use.
+private final class RedirectRefuser: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest) async -> URLRequest? {
+        nil   // do not follow; the 3xx response comes back and is reported as .redirectRefused
+    }
+}
+
+final class BikeHTTPClient: BikeRideAPI {
     private static let logger = Logger(subsystem: "com.jglittell.health4ai", category: "BikeImport")
-    static let maxBytes = 16 * 1024 * 1024
 
     private let baseURL: URL
-    private var session: URLSession!
+    private let maxBytes: Int
+    private let session: URLSession
 
-    init(baseURL: URL, timeout: TimeInterval = 8) {
+    /// `protocolClasses` exists so tests can serve canned responses.
+    init(baseURL: URL, timeout: TimeInterval = 8, maxBytes: Int = BikeLimits.maxBytes, protocolClasses: [AnyClass]? = nil) {
         self.baseURL = baseURL
-        super.init()
+        self.maxBytes = maxBytes
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = timeout
         config.timeoutIntervalForResource = 30
         config.waitsForConnectivity = false
         config.httpCookieStorage = nil
-        session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+        if let protocolClasses { config.protocolClasses = protocolClasses }
+        session = URLSession(configuration: config, delegate: RedirectRefuser(), delegateQueue: nil)
     }
 
+    /// Releases the session. Also done on deinit; callable early.
+    func invalidate() { session.finishTasksAndInvalidate() }
     deinit { session.invalidateAndCancel() }
 
     func listRides() async throws -> [BikeRideSummary] {
@@ -53,19 +66,27 @@ final class BikeHTTPClient: NSObject, BikeRideAPI, URLSessionTaskDelegate {
 
     func ride(id: String) async throws -> BikeRide {
         guard BikeRideID.startDate(from: id) != nil else { throw BikeClientError.badResponse("ride id \(id)") }
-        return try decode(BikeRide.self, from: try await get("api/rides/\(id)"))
+        return try decode(BikeRide.self, from: try await get("api/rides/\(id)", shownAs: "/api/rides/(this ride)"))
     }
 
-    private func get(_ path: String) async throws -> Data {
+    /// `shownAs` is the path used in messages the person sees, so a raw ride id never reaches the screen.
+    private func get(_ path: String, shownAs: String? = nil) async throws -> Data {
         var url = baseURL
         for part in path.split(separator: "/") { url.appendPathComponent(String(part)) }
         let host = baseURL.host ?? "the bike"
         do {
-            let (data, response) = try await session.data(from: url)
+            let (bytes, response) = try await session.bytes(from: url)
             guard let http = response as? HTTPURLResponse else { throw BikeClientError.badResponse("not HTTP") }
             guard !(300..<400).contains(http.statusCode) else { throw BikeClientError.redirectRefused }
-            guard (200..<300).contains(http.statusCode) else { throw BikeClientError.http(status: http.statusCode, path: "/" + path) }
-            guard data.count <= Self.maxBytes else { throw BikeClientError.tooLarge }
+            guard (200..<300).contains(http.statusCode) else { throw BikeClientError.http(status: http.statusCode, path: shownAs ?? "/" + path) }
+            // Refuse on the declared length before reading anything, then enforce the cap while streaming
+            // (a server can lie or omit the length).
+            guard response.expectedContentLength <= Int64(maxBytes) else { throw BikeClientError.tooLarge }
+            var data = Data()
+            for try await byte in bytes {
+                data.append(byte)
+                if data.count > maxBytes { throw BikeClientError.tooLarge }
+            }
             return data
         } catch let error as BikeClientError {
             Self.logger.error("GET /\(path, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
@@ -87,10 +108,5 @@ final class BikeHTTPClient: NSObject, BikeRideAPI, URLSessionTaskDelegate {
             Self.logger.error("decode \(String(describing: type), privacy: .public) failed: \(String(describing: error), privacy: .public)")
             throw BikeClientError.badResponse("unexpected JSON")
         }
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest) async -> URLRequest? {
-        return nil   // nil = do not follow; the 3xx response comes back and is reported as .redirectRefused
     }
 }

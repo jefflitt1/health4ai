@@ -29,7 +29,9 @@ struct Health4AIApp: App {
                 // second chance rather than a second task.
                 SyncEngine.shared.scheduleBackgroundSync()
             case .active:
-                break // AppDelegate.applicationDidBecomeActive handles foreground sync
+                // Bike import is triggered here, not from AppDelegate: scene-based apps may never get
+                // applicationDidBecomeActive. A no-op while the feature is off.
+                Task { @MainActor in await BikeImportCoordinator.shared.importOnForeground() }
             default:
                 break
             }

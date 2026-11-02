@@ -366,24 +366,27 @@ struct HomeView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            Divider().padding(.leading, 44)
-            NavigationLink {
-                BikeImportView()
-            } label: {
-                HStack {
-                    Image(systemName: "bicycle")
-                        .frame(width: 28)
-                        .foregroundStyle(.primary)
-                    Text("Bike on your network").foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+            // An optional extra for people already syncing; not offered before the first sync completes.
+            if hasSyncedOnce {
+                Divider().padding(.leading, 44)
+                NavigationLink {
+                    BikeImportView()
+                } label: {
+                    HStack {
+                        Image(systemName: "bicycle")
+                            .frame(width: 28)
+                            .foregroundStyle(.primary)
+                        Text("Bike on your network").foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding()
+                    .contentShape(Rectangle())
                 }
-                .padding()
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))

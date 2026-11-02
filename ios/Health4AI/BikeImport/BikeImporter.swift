@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 // The import logic, free of HealthKit and URLSession so tests drive it with fakes.
 // Dedupe truth is HealthKit (sync identifier on the saved workout), never local bookkeeping:
@@ -7,6 +8,17 @@ import Foundation
 
 enum BikeWriteStatus: Equatable {
     case notDetermined, authorized, denied, unavailable
+}
+
+/// Write access to the five core types (workout, active energy, cycling distance, power, cadence).
+/// All five are required: a ride saved without one would carry the sync identifier and never get it later.
+struct BikeCoreAccess: Equatable {
+    var denied: [String] = []
+    var notDetermined: [String] = []
+    var unavailable = false
+
+    var isComplete: Bool { denied.isEmpty && notDetermined.isEmpty && !unavailable }
+    var missing: [String] { denied + notDetermined }
 }
 
 /// Everything the store needs to write one ride. Built by `BikeWorkoutPlan.make`.
@@ -27,17 +39,20 @@ struct BikeWorkoutPlan: Equatable {
 
     static let metersPerMile = 1609.344
 
-    static func make(from ride: BikeRide) throws -> BikeWorkoutPlan {
+    static func make(from ride: BikeRide, now: Date = Date()) throws -> BikeWorkoutPlan {
         let id = ride.summary.id
         guard let start = BikeRideID.startDate(from: id) else { throw BikeImportError.badRideID(id) }
         guard !ride.samples.isEmpty else { throw BikeImportError.noSamples }
+        try BikeRideValidator.validate(ride, start: start, now: now)
         let buckets = BikeSampleAggregator.buckets(samples: ride.samples, elapsed: ride.summary.elapsed)
-        guard let last = buckets.last else { throw BikeImportError.noSamples }
+        guard !buckets.isEmpty else { throw BikeImportError.noSamples }
         let kcal = max(ride.summary.calories, 0)
         let meters = max(ride.summary.distanceMi, 0) * metersPerMile
+        // The workout runs for the summary's full length (the length its calories and distance cover),
+        // even if samples stop early; every bucket lies inside [start, end].
         return BikeWorkoutPlan(
             rideID: id, syncIdentifier: BikeRideID.syncIdentifier(for: id),
-            start: start, end: start.addingTimeInterval(TimeInterval(last.endOffset)),
+            start: start, end: start.addingTimeInterval(TimeInterval(ride.summary.elapsed)),
             totalKcal: kcal, totalMeters: meters, buckets: buckets,
             kcalPerBucket: BikeSampleAggregator.allocate(total: kcal, over: buckets, weight: \.workWeight),
             metersPerBucket: BikeSampleAggregator.allocate(total: meters, over: buckets, weight: \.distanceWeight),
@@ -46,14 +61,15 @@ struct BikeWorkoutPlan: Equatable {
 }
 
 protocol BikeWorkoutStore {
-    var workoutWriteStatus: BikeWriteStatus { get }
+    var coreAccess: BikeCoreAccess { get }
     var heartRateWriteStatus: BikeWriteStatus { get }
     func requestCoreAuthorization() async throws
     func requestHeartRateAuthorization() async throws
     /// The subset of `ids` already saved to Health by this app.
     func existingSyncIdentifiers(among ids: [String]) async throws -> Set<String>
-    /// Saves one workout. Returns the names of sample types skipped because the person denied them.
-    func save(_ plan: BikeWorkoutPlan) async throws -> [String]
+    /// Saves one workout. Throws `BikeImportError.saveUnconfirmed` if Health neither reported success
+    /// nor shows the workout afterwards.
+    func save(_ plan: BikeWorkoutPlan) async throws
 }
 
 protocol BikeRideAPI {
@@ -64,55 +80,78 @@ protocol BikeRideAPI {
 enum BikeImportError: Error, Equatable, LocalizedError {
     case noSamples
     case badRideID(String)
-    case permissionDenied
+    case invalidRide(String)
+    case coreAccessMissing([String])
     case permissionNotRequested
     case healthUnavailable
+    case saveUnconfirmed(String)
 
     var errorDescription: String? {
         switch self {
         case .noSamples: return "the bike recorded no samples for this ride"
         case .badRideID(let id): return "ride id \"\(id)\" is not a timestamp"
-        case .permissionDenied:
-            return "Health write access is off for health4ai. Turn on Workouts in Health > Sharing > Apps > health4ai."
-        case .permissionNotRequested: return "Health write access has not been granted yet. Turn the switch off and on again."
+        case .invalidRide(let why): return "rejected, \(why)"
+        case .coreAccessMissing(let names):
+            return "Health write access is off for: \(names.joined(separator: ", ")). "
+                + "Turn them on in the Health app (your profile picture, then Apps, then health4ai)."
+        case .permissionNotRequested: return "Health write access has not been granted yet. Turn Import on to be asked."
         case .healthUnavailable: return "Apple Health is not available on this device."
+        case .saveUnconfirmed(let id):
+            return "Health did not confirm saving this ride (the phone may be locked); it will be checked again next import"
         }
     }
+}
+
+/// One ride (or the whole run, when `rideID` is nil) and a plain-language reason. Never raw system error text.
+struct BikeIssue: Codable, Equatable {
+    var rideID: String?
+    var reason: String
 }
 
 struct BikeImportResult: Codable, Equatable {
     var date: Date
     var imported = 0
     var alreadyImported = 0
-    /// "<ride id>: <reason>" for rides left alone on purpose (e.g. no samples).
-    var skipped: [String] = []
-    /// "<ride id>: <error>" for rides that should have imported and did not.
-    var failed: [String] = []
-    /// Notes about partial writes, e.g. a sample type the person denied.
-    var notes: [String] = []
+    /// Rides left alone on purpose (no samples, values out of range).
+    var skipped: [BikeIssue] = []
+    /// Rides that should have imported and did not.
+    var failed: [BikeIssue] = []
+    /// Rides whose save Health did not confirm either way. Not counted as imported; re-checked next time.
+    var unconfirmed: [BikeIssue] = []
+    /// Partial writes (heart rate not saved) and limits applied.
+    var notes: [BikeIssue] = []
     /// Set when the run could not proceed at all (Pi unreachable, permission off). Never a success.
     var error: String?
 
-    var isSuccess: Bool { error == nil && failed.isEmpty }
+    var isSuccess: Bool { error == nil && failed.isEmpty && unconfirmed.isEmpty }
 }
 
 struct BikeImporter {
+    private static let logger = Logger(subsystem: "com.jglittell.health4ai", category: "BikeImport")
+
+    /// Text safe to show: our own errors speak for themselves; anything else (HealthKit, Foundation)
+    /// is logged in full and shown as a plain sentence, never as a domain or code.
+    static func reason(for error: Error, doing what: String) -> String {
+        if error is BikeImportError || error is BikeClientError { return error.localizedDescription }
+        logger.error("\(what, privacy: .public) failed: \(String(describing: error), privacy: .public)")
+        return "Health could not \(what). Check that Health is unlocked and try again."
+    }
+
     let api: BikeRideAPI
     let store: BikeWorkoutStore
     var now: () -> Date = Date.init
+    var maxRides = BikeLimits.maxRidesPerImport
 
     func run() async -> BikeImportResult {
         var result = BikeImportResult(date: now())
-        switch store.workoutWriteStatus {
-        case .authorized: break
-        case .denied: result.error = BikeImportError.permissionDenied.localizedDescription; return result
-        case .notDetermined: result.error = BikeImportError.permissionNotRequested.localizedDescription; return result
-        case .unavailable: result.error = BikeImportError.healthUnavailable.localizedDescription; return result
-        }
+        let access = store.coreAccess
+        if access.unavailable { result.error = BikeImportError.healthUnavailable.localizedDescription; return result }
+        if !access.denied.isEmpty { result.error = BikeImportError.coreAccessMissing(access.missing).localizedDescription; return result }
+        if !access.notDetermined.isEmpty { result.error = BikeImportError.permissionNotRequested.localizedDescription; return result }
 
         let rides: [BikeRideSummary]
         do { rides = try await api.listRides() } catch {
-            result.error = error.localizedDescription
+            result.error = Self.reason(for: error, doing: "read the bike")
             return result
         }
 
@@ -120,55 +159,67 @@ struct BikeImporter {
         do {
             known = try await store.existingSyncIdentifiers(among: rides.map { BikeRideID.syncIdentifier(for: $0.id) })
         } catch {
-            result.error = "Could not check Health for rides already imported: \(error.localizedDescription)"
+            result.error = Self.reason(for: error, doing: "check which rides are already imported")
             return result
         }
 
+        var pending: [BikeRideSummary] = []
         for summary in rides.sorted(by: { $0.id < $1.id }) {
-            if known.contains(BikeRideID.syncIdentifier(for: summary.id)) { result.alreadyImported += 1; continue }
-            await importOne(summary, into: &result)
+            if known.contains(BikeRideID.syncIdentifier(for: summary.id)) { result.alreadyImported += 1 } else { pending.append(summary) }
         }
+        if pending.count > maxRides {
+            result.notes.append(BikeIssue(rideID: nil, reason: "\(pending.count - maxRides) newer rides were left for the next import (limit \(maxRides) per import)"))
+            pending = Array(pending.prefix(maxRides))
+        }
+        for summary in pending { await importOne(summary, into: &result) }
         return result
     }
 
     private func importOne(_ summary: BikeRideSummary, into result: inout BikeImportResult) async {
         let id = summary.id
         guard BikeRideID.startDate(from: id) != nil else {
-            result.skipped.append("\(id): \(BikeImportError.badRideID(id).localizedDescription)")
+            result.skipped.append(BikeIssue(rideID: id, reason: BikeImportError.badRideID(id).localizedDescription))
             return
         }
         do {
             let ride = try await api.ride(id: id)
             guard ride.summary.id == id else {
-                result.failed.append("\(id): the bike returned a different ride (\(ride.summary.id))")
+                result.failed.append(BikeIssue(rideID: id, reason: "the bike returned a different ride than the one asked for"))
                 return
             }
             var plan: BikeWorkoutPlan
-            do { plan = try BikeWorkoutPlan.make(from: ride) } catch BikeImportError.noSamples {
-                result.skipped.append("\(id): \(BikeImportError.noSamples.localizedDescription)")
-                return
+            do { plan = try BikeWorkoutPlan.make(from: ride, now: now()) } catch let error as BikeImportError {
+                switch error {
+                case .noSamples, .invalidRide:
+                    result.skipped.append(BikeIssue(rideID: id, reason: error.localizedDescription))
+                    return
+                default: throw error
+                }
             }
             if plan.hasHeartRate { plan.writeHeartRate = await heartRateAllowed(id: id, into: &result) }
-            let skippedTypes = try await store.save(plan)
+            try await store.save(plan)
             result.imported += 1
-            if !skippedTypes.isEmpty {
-                result.notes.append("\(id): not saved because access is off: \(skippedTypes.joined(separator: ", "))")
-            }
+        } catch BikeImportError.saveUnconfirmed(let rideID) {
+            result.unconfirmed.append(BikeIssue(rideID: rideID, reason: BikeImportError.saveUnconfirmed(rideID).localizedDescription))
         } catch {
-            result.failed.append("\(id): \(error.localizedDescription)")
+            result.failed.append(BikeIssue(rideID: id, reason: Self.reason(for: error, doing: "save this ride")))
         }
     }
 
     /// Heart rate is asked for lazily, only when a ride actually has HR (it is not in the up-front prompt).
+    /// It is optional by design, and a ride saved without it can never get it later (its sync identifier
+    /// is taken), so the note says so.
     private func heartRateAllowed(id: String, into result: inout BikeImportResult) async -> Bool {
+        let tail = "this ride was imported without heart rate and will not get it later"
         if store.heartRateWriteStatus == .notDetermined {
             do { try await store.requestHeartRateAuthorization() } catch {
-                result.notes.append("\(id): heart rate not saved: \(error.localizedDescription)")
+                Self.logger.error("heart rate authorization failed: \(String(describing: error), privacy: .public)")
+                result.notes.append(BikeIssue(rideID: id, reason: "heart rate could not be requested; \(tail)"))
                 return false
             }
         }
         if store.heartRateWriteStatus == .authorized { return true }
-        result.notes.append("\(id): heart rate not saved because access is off")
+        result.notes.append(BikeIssue(rideID: id, reason: "heart rate access is off; \(tail)"))
         return false
     }
 }

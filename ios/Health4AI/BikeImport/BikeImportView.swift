@@ -8,66 +8,18 @@ struct BikeImportView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @State private var testing = false
+    @State private var healthOpenFailed = false
 
     var body: some View {
         List {
             Section {
-                TextField("http://peloton-pi.local:8080", text: $model.urlText)
-                    .keyboardType(.URL)
-                    .textContentType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .disabled(model.isEnabled)
-                if let problem = model.urlError {
-                    Label { Text(problem) } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
-                        .font(.caption)
-                }
-                Button {
-                    testing = true
-                    Task { await model.testConnection(); testing = false }
-                } label: {
-                    Label("Test connection", systemImage: "network")
-                }
-                .tint(.accentColor)
-                .disabled(testing || model.urlError != nil || model.urlText.isEmpty)
-                if let message = model.testMessage {
-                    Label { Text(message) } icon: {
-                        Image(systemName: model.testFailed ? "xmark.octagon.fill" : "checkmark.circle.fill")
-                            .foregroundStyle(model.testFailed ? .red : .green)
-                    }
-                    .font(.caption)
-                }
-            } header: {
-                Text("Bike address")
-            } footer: {
-                Text("Only .local names and private network addresses are accepted. health4ai talks to the bike directly over your Wi-Fi; nothing is sent to health4ai or anywhere else.")
+                Text("For rides recorded on a Peloton Pi head unit, or another bike server that speaks the same ride API, on your own Wi-Fi.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
 
-            Section {
-                Toggle("Import rides into Apple Health", isOn: Binding(
-                    get: { model.isEnabled },
-                    set: { on in Task { await model.setEnabled(on) } }
-                ))
-                if let error = model.setupError {
-                    Label { Text(error) } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
-                        .font(.caption)
-                }
-                if model.writeStatus == .denied {
-                    Button {
-                        if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
-                    } label: {
-                        Label("Open Settings", systemImage: "gearshape")
-                    }
-                    .tint(.accentColor)
-                    Text("Health write access is off. Open the Health app, then Sharing > Apps > health4ai, and turn on Workouts and the cycling types. Then switch this on again.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            } header: {
-                Text("Import")
-            } footer: {
-                Text("Off by default. Turning it on asks Health for permission to save workouts, active energy, cycling distance, power and cadence. Heart rate is asked for only if a ride has it. A ride you delete from Health is imported again on the next import.")
-            }
+            addressSection
+            importSection
 
             if model.isEnabled {
                 Section("Last import") {
@@ -75,9 +27,8 @@ struct BikeImportView: View {
                     Button {
                         Task { await model.importNow() }
                     } label: {
-                        Label(model.isRunning ? "Importing..." : "Import now", systemImage: "arrow.down.circle")
+                        Label(model.isRunning ? "Importing\u{2026}" : "Import now", systemImage: "arrow.down.circle")
                     }
-                    .tint(.accentColor)
                     .disabled(model.isRunning)
                 }
             }
@@ -92,6 +43,104 @@ struct BikeImportView: View {
         .background(Color(.systemGroupedBackground))
     }
 
+    // MARK: Address
+
+    private var addressSection: some View {
+        Section {
+            if model.isEnabled {
+                // Locked while on: a wrapping Text shows the whole address at any text size.
+                Text(model.urlText)
+                Text("Turn import off to change the address.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                TextField("Bike address", text: $model.urlText, prompt: Text("peloton-pi.local:8080"))
+                    .keyboardType(.URL)
+                    .textContentType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .onSubmit { model.validateAddress() }
+                    .onChange(of: model.urlText) { _, _ in model.addressProblem = nil }
+            }
+            if let problem = model.addressProblem {
+                Label { Text(problem) } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                    .font(.caption)
+            }
+            Button {
+                testing = true
+                Task { await model.testConnection(); testing = false }
+            } label: {
+                Label("Test connection", systemImage: "network")
+            }
+            .disabled(testing || model.urlText.trimmingCharacters(in: .whitespaces).isEmpty)
+            if let message = model.testMessage {
+                Label { Text(message) } icon: {
+                    Image(systemName: model.testFailed ? "xmark.octagon.fill" : "checkmark.circle.fill")
+                        .foregroundStyle(model.testFailed ? .red : .green)
+                }
+                .font(.caption)
+            }
+        } header: {
+            Text("Bike address")
+        } footer: {
+            Text("health4ai talks to the bike directly over your Wi-Fi and saves rides only to Apple Health. If you sync Workouts, imported rides are included like any other workout.")
+        }
+    }
+
+    // MARK: Import switch and permission state
+
+    private var importSection: some View {
+        Section {
+            Toggle("Import rides into Apple Health", isOn: Binding(
+                get: { model.isEnabled || model.isRequestingAccess },
+                set: { on in Task { await model.setEnabled(on) } }
+            ))
+            .disabled(model.isRequestingAccess)
+            if model.isRequestingAccess {
+                Text("Asking Health\u{2026}")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if !model.coreAccess.denied.isEmpty {
+                // One message naming what is missing; the setup error would only repeat it.
+                Label {
+                    Text("Health access is off for: \(model.coreAccess.denied.joined(separator: ", ")). Open the Health app, tap your profile picture, then Apps, then health4ai, and turn them on. Then switch import on again.")
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                }
+                .font(.caption)
+                Button {
+                    openHealth()
+                } label: {
+                    Label("Open Health", systemImage: "heart.text.square")
+                }
+                if healthOpenFailed {
+                    Text("Health could not be opened from here. Open it from your Home Screen.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else if let error = model.setupError {
+                Label { Text(error) } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                    .font(.caption)
+            }
+        } header: {
+            Text("Import")
+        } footer: {
+            Text("Off by default. Turning it on asks Health for permission to save workouts, active energy, cycling distance, power and cadence. All five are required. Heart rate is asked for only when a ride has it; a ride imported without heart rate will not get it later. A ride you delete from Health is imported again on the next import.")
+        }
+    }
+
+    private func openHealth() {
+        healthOpenFailed = false
+        guard let url = URL(string: "x-apple-health://") else { return }
+        openURL(url) { accepted in if !accepted { healthOpenFailed = true } }
+    }
+
+    // MARK: Results
+
+    private static func rideDate(_ d: Date) -> String { d.formatted(date: .abbreviated, time: .shortened) }
+
     @ViewBuilder private var resultRows: some View {
         if let r = model.lastResult {
             if let error = r.error {
@@ -101,26 +150,44 @@ struct BikeImportView: View {
                 Label {
                     Text(r.imported == 0 ? "No new rides." : "Imported \(r.imported) ride\(r.imported == 1 ? "" : "s").")
                 } icon: {
-                    Image(systemName: r.failed.isEmpty ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(r.failed.isEmpty ? .green : .orange)
+                    Image(systemName: r.isSuccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(r.isSuccess ? .green : .orange)
                 }
                 .font(.subheadline)
                 if r.alreadyImported > 0 {
                     Text("\(r.alreadyImported) already in Health").font(.caption).foregroundStyle(.secondary)
                 }
             }
-            ForEach(r.failed, id: \.self) { line in
-                Label { Text("Failed: \(line)") } icon: { Image(systemName: "xmark.circle.fill").foregroundStyle(.red) }.font(.caption)
-            }
-            ForEach(r.skipped, id: \.self) { line in
-                Label { Text("Skipped: \(line)") } icon: { Image(systemName: "minus.circle.fill").foregroundStyle(.secondary) }.font(.caption)
-            }
-            ForEach(r.notes, id: \.self) { line in
-                Text(line).font(.caption).foregroundStyle(.secondary)
-            }
+            issueRow("Failed", r.failed, symbol: "xmark.circle.fill", tint: .red)
+            issueRow("Not imported", r.skipped, symbol: "minus.circle.fill", tint: .secondary)
+            issueRow("Not confirmed", r.unconfirmed, symbol: "questionmark.circle.fill", tint: .orange)
+            issueRow("Note", r.notes, symbol: "info.circle.fill", tint: .secondary)
             Text(r.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
         } else {
             Text("No import yet.").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private func issueRow(_ title: String, _ issues: [BikeIssue], symbol: String, tint: Color) -> some View {
+        if let s = BikeIssueSummary(issues, format: Self.rideDate) {
+            VStack(alignment: .leading, spacing: 2) {
+                Label {
+                    Text("\(title): \(s.count) ride\(s.count == 1 ? "" : "s")")
+                } icon: {
+                    Image(systemName: symbol).foregroundStyle(tint)
+                }
+                .font(.subheadline)
+                Text(s.reason).font(.caption)
+                if s.otherReasons > 0 {
+                    Text("and \(s.otherReasons) other reason\(s.otherReasons == 1 ? "" : "s")").font(.caption).foregroundStyle(.secondary)
+                }
+                if !s.rides.isEmpty {
+                    Text(s.rides.joined(separator: ", ") + (s.more > 0 ? ", and \(s.more) more" : ""))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityElement(children: .combine)
         }
     }
 }

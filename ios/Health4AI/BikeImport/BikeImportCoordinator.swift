@@ -25,7 +25,11 @@ final class BikeImportCoordinator: ObservableObject {
     @Published private(set) var testMessage: String?
     @Published private(set) var testFailed = false
     @Published private(set) var setupError: String?
-    @Published private(set) var writeStatus: BikeWriteStatus = .notDetermined
+    @Published private(set) var coreAccess = BikeCoreAccess()
+    /// True while Health's permission sheet is up, so the switch does not appear to snap back.
+    @Published private(set) var isRequestingAccess = false
+    /// Set only when the person submits or tests the address, never while typing.
+    @Published var addressProblem: String?
 
     private let defaults: UserDefaults
     private let store: BikeWorkoutStore
@@ -42,7 +46,7 @@ final class BikeImportCoordinator: ObservableObject {
         if let data = defaults.data(forKey: Keys.lastResult) {
             lastResult = try? JSONDecoder().decode(BikeImportResult.self, from: data)
         }
-        writeStatus = store.workoutWriteStatus
+        coreAccess = store.coreAccess
     }
 
     var urlValidation: Result<URL, BikeURLError> { BikeURLValidator.validate(urlText) }
@@ -52,7 +56,9 @@ final class BikeImportCoordinator: ObservableObject {
         return nil
     }
 
-    func refreshStatus() { writeStatus = store.workoutWriteStatus }
+    func refreshStatus() { coreAccess = store.coreAccess }
+
+    func validateAddress() { addressProblem = urlError }
 
     // MARK: Opt-in
 
@@ -66,20 +72,27 @@ final class BikeImportCoordinator: ObservableObject {
             return
         }
         guard case .success(let url) = urlValidation else {
+            validateAddress()
             setupError = urlError ?? BikeURLError.empty.localizedDescription
             return
         }
+        addressProblem = nil
+        isRequestingAccess = true
+        defer { isRequestingAccess = false }
         do { try await store.requestCoreAuthorization() } catch {
-            Self.logger.error("write authorization failed: \(error.localizedDescription, privacy: .public)")
-            setupError = "Health write access could not be requested: \(error.localizedDescription)"
+            Self.logger.error("write authorization failed: \(String(describing: error), privacy: .public)")
+            setupError = "Health write access could not be requested. Open the Health app and try again."
             refreshStatus()
             return
         }
         refreshStatus()
-        guard writeStatus == .authorized else {
-            Self.logger.error("write authorization not granted: \(String(describing: self.writeStatus), privacy: .public)")
-            setupError = writeStatus == .denied ? BikeImportError.permissionDenied.localizedDescription
-                                                : BikeImportError.permissionNotRequested.localizedDescription
+        // All five core types are required, not just workouts: a ride saved without one would hold its
+        // sync identifier and could never be completed later.
+        guard coreAccess.isComplete else {
+            Self.logger.error("write authorization incomplete: \(self.coreAccess.missing.joined(separator: ","), privacy: .public)")
+            setupError = coreAccess.denied.isEmpty
+                ? BikeImportError.permissionNotRequested.localizedDescription
+                : BikeImportError.coreAccessMissing(coreAccess.missing).localizedDescription
             return
         }
         urlText = url.absoluteString
@@ -94,18 +107,18 @@ final class BikeImportCoordinator: ObservableObject {
     func testConnection() async {
         testMessage = nil
         testFailed = false
+        validateAddress()
         guard case .success(let url) = urlValidation else {
-            testFailed = true
-            testMessage = urlError ?? BikeURLError.empty.localizedDescription
-            return
+            if addressProblem == nil { addressProblem = BikeURLError.empty.localizedDescription }
+            return   // the problem is shown under the address field
         }
         do {
             let rides = try await makeAPI(url).listRides()
             testMessage = "Connected. The bike has \(rides.count) ride\(rides.count == 1 ? "" : "s")."
         } catch {
             testFailed = true
-            testMessage = error.localizedDescription
-            Self.logger.error("test connection failed: \(error.localizedDescription, privacy: .public)")
+            testMessage = BikeImporter.reason(for: error, doing: "read the bike")
+            Self.logger.error("test connection failed: \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -130,6 +143,8 @@ final class BikeImportCoordinator: ObservableObject {
         lastResult = result
         if let data = try? JSONEncoder().encode(result) { defaults.set(data, forKey: Keys.lastResult) }
         Self.logger.info("import: \(result.imported) new, \(result.alreadyImported) existing, \(result.skipped.count) skipped, \(result.failed.count) failed, error=\(result.error ?? "none", privacy: .public)")
-        for line in result.failed + result.skipped { Self.logger.error("\(line, privacy: .public)") }
+        for issue in result.failed + result.skipped + result.unconfirmed {
+            Self.logger.error("ride \(issue.rideID ?? "-", privacy: .public): \(issue.reason, privacy: .public)")
+        }
     }
 }

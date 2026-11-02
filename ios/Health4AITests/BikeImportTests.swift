@@ -185,20 +185,23 @@ private final class FakeAPI: BikeRideAPI {
 }
 
 private final class FakeStore: BikeWorkoutStore {
-    var workoutWriteStatus: BikeWriteStatus = .authorized
+    var coreAccess = BikeCoreAccess()
+    var unconfirmedIDs: Set<String> = []     // save "succeeds" in Health only for others; these throw saveUnconfirmed
     var heartRateWriteStatus: BikeWriteStatus = .notDetermined
     var healthKit: Set<String> = []          // stands in for Health: persists across "reinstalls"
     var saved: [BikeWorkoutPlan] = []
     var failSaves = false
+    var rawError: Error?
     var hrRequests = 0
     func requestCoreAuthorization() async throws {}
     func requestHeartRateAuthorization() async throws { hrRequests += 1; heartRateWriteStatus = .authorized }
     func existingSyncIdentifiers(among ids: [String]) async throws -> Set<String> { healthKit.intersection(ids) }
-    func save(_ plan: BikeWorkoutPlan) async throws -> [String] {
-        if failSaves { throw BikeImportError.permissionDenied }
+    func save(_ plan: BikeWorkoutPlan) async throws {
+        if let rawError { throw rawError }
+        if failSaves { throw BikeImportError.coreAccessMissing(["Workouts"]) }
+        if unconfirmedIDs.contains(plan.rideID) { throw BikeImportError.saveUnconfirmed(plan.rideID) }
         saved.append(plan)
         healthKit.insert(plan.syncIdentifier)
-        return []
     }
 }
 
@@ -242,7 +245,7 @@ final class BikeImporterTests: XCTestCase {
         let r = await BikeImporter(api: setUpAPI([empty]), store: store).run()
         XCTAssertEqual(r.imported, 0)
         XCTAssertEqual(r.skipped.count, 1)
-        XCTAssertTrue(r.skipped[0].contains("no samples"))
+        XCTAssertTrue(r.skipped[0].reason.contains("no samples"))
         XCTAssertTrue(store.saved.isEmpty)
         XCTAssertNil(r.error)
     }
@@ -258,10 +261,63 @@ final class BikeImporterTests: XCTestCase {
 
     func testDeniedPermissionStopsBeforeAnyNetwork() async {
         let api = setUpAPI([ride()]); let store = FakeStore()
-        store.workoutWriteStatus = .denied
+        store.coreAccess = BikeCoreAccess(denied: ["Workouts"])
         let r = await BikeImporter(api: api, store: store).run()
         XCTAssertNotNil(r.error)
         XCTAssertTrue(api.detailCalls.isEmpty)
+    }
+
+    /// Each core type on its own must block the import, because a ride saved without it would hold the
+    /// sync identifier and never get that metric later.
+    func testImporterRefusesWhenAnyCoreTypeIsNotAuthorized() async {
+        for name in ["Workouts", "Active energy", "Cycling distance", "Cycling power", "Cycling cadence"] {
+            for access in [BikeCoreAccess(denied: [name]), BikeCoreAccess(notDetermined: [name])] {
+                let api = setUpAPI([ride()]); let store = FakeStore()
+                store.coreAccess = access
+                let r = await BikeImporter(api: api, store: store).run()
+                XCTAssertNotNil(r.error, name)
+                XCTAssertEqual(r.imported, 0, name)
+                XCTAssertTrue(store.saved.isEmpty, name)
+                XCTAssertTrue(api.detailCalls.isEmpty, name)
+            }
+        }
+        let denied = await BikeImporter(api: setUpAPI([ride()]), store: { let s = FakeStore(); s.coreAccess = BikeCoreAccess(denied: ["Cycling power"]); return s }()).run()
+        XCTAssertTrue(denied.error?.contains("Cycling power") ?? false, "names the missing type")
+    }
+
+    func testUnconfirmedSaveIsNeitherImportedNorFailed() async {
+        let store = FakeStore(); store.unconfirmedIDs = ["20261102T172230Z"]
+        let r = await BikeImporter(api: setUpAPI([ride()]), store: store).run()
+        XCTAssertEqual(r.imported, 0)
+        XCTAssertEqual(r.unconfirmed.count, 1)
+        XCTAssertTrue(r.failed.isEmpty)
+        XCTAssertFalse(r.isSuccess)
+        store.unconfirmedIDs = []
+        let again = await BikeImporter(api: setUpAPI([ride()]), store: store).run()   // re-checked next import
+        XCTAssertEqual(again.imported, 1)
+    }
+
+    func testInvalidRideIsSkippedWithReasonAndNothingSaved() async {
+        let wild = BikeRide(summary: BikeRideSummary(id: "20261102T172230Z", elapsed: 10, outputKJ: 1, calories: 10, distanceMi: 0.1),
+                            samples: [BikeRideSample(t: 0, cadence: 60, power: 1e9, speedMph: 10, hr: 0)])
+        let store = FakeStore()
+        let r = await BikeImporter(api: setUpAPI([wild]), store: store).run()
+        XCTAssertEqual(r.skipped.count, 1)
+        XCTAssertTrue(r.skipped[0].reason.contains("power"))
+        XCTAssertTrue(store.saved.isEmpty)
+    }
+
+    func testRidesPerImportAreCapped() async {
+        let rides = (0..<5).map { ride(id: String(format: "20261102T17%02d00Z", 10 + $0)) }
+        let store = FakeStore()
+        var importer = BikeImporter(api: setUpAPI(rides), store: store)
+        importer.maxRides = 3
+        let r = await importer.run()
+        XCTAssertEqual(r.imported, 3)
+        XCTAssertEqual(r.notes.count, 1)
+        let rest = await BikeImporter(api: setUpAPI(rides), store: store).run()   // the remainder follows next time
+        XCTAssertEqual(rest.imported, 2)
+        XCTAssertEqual(rest.alreadyImported, 3)
     }
 
     func testOneBadRideDoesNotBlockTheOthers() async {
@@ -292,5 +348,40 @@ final class BikeImporterTests: XCTestCase {
         XCTAssertEqual(r.imported, 1)
         XCTAssertEqual(store.saved.first?.writeHeartRate, false)
         XCTAssertEqual(r.notes.count, 1)
+        XCTAssertTrue(r.notes[0].reason.contains("will not get it later"))
+    }
+
+    /// Raw HealthKit/NSError text must never reach the screen; it is logged instead.
+    func testHealthKitErrorTextNeverReachesTheVisibleReason() async {
+        let store = FakeStore()
+        store.rawError = NSError(domain: "com.apple.healthkit", code: 5, userInfo: [NSLocalizedDescriptionKey: "HKErrorDomain code 5 raw"])
+        let r = await BikeImporter(api: setUpAPI([ride()]), store: store).run()
+        XCTAssertEqual(r.failed.count, 1)
+        let shown = r.failed[0].reason.lowercased()
+        XCTAssertFalse(shown.contains("healthkit"))
+        XCTAssertFalse(shown.contains("domain"))
+        XCTAssertFalse(shown.contains("code 5"))
+        XCTAssertFalse(shown.contains("20261102T172230Z"), "no raw ride id")
+    }
+
+    func testIssueSummaryNamesAtMostThreeRidesByDate() {
+        let ids = ["20261101T100000Z", "20261102T100000Z", "20261103T100000Z", "20261104T100000Z", "20261105T100000Z"]
+        let issues = ids.map { BikeIssue(rideID: $0, reason: "same reason") }
+        let s = BikeIssueSummary(issues, format: { "D\($0.timeIntervalSince1970)" })!
+        XCTAssertEqual(s.count, 5)
+        XCTAssertEqual(s.rides.count, 3)
+        XCTAssertEqual(s.more, 2)
+        XCTAssertEqual(s.reason, "same reason")
+        XCTAssertEqual(s.otherReasons, 0)
+        XCTAssertTrue(s.rides.allSatisfy { !$0.contains("2026110") }, "dates are formatted, never raw ids")
+    }
+
+    func testIssueSummaryGroupsByMostCommonReason() {
+        let issues = [BikeIssue(rideID: "20261101T100000Z", reason: "a"), BikeIssue(rideID: "20261102T100000Z", reason: "b"),
+                      BikeIssue(rideID: "20261103T100000Z", reason: "b")]
+        let s = BikeIssueSummary(issues, format: { _ in "x" })!
+        XCTAssertEqual(s.reason, "b")
+        XCTAssertEqual(s.otherReasons, 1)
+        XCTAssertNil(BikeIssueSummary([], format: { _ in "x" }))
     }
 }
