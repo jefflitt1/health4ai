@@ -60,12 +60,15 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     #if DEBUG
     /// Test-only record of scene work that ran, so the live AppLifecycle wiring is unit-tested.
     @MainActor static var recordedSceneWork: [String] = []
+    /// Test-only: record and stop, so the wiring test does not sync or schedule tasks in the host.
+    @MainActor static var sceneWorkDryRun = false
     #endif
 
     @MainActor
     static func sceneBecameActive() {
         #if DEBUG
         recordedSceneWork.append("active")
+        if sceneWorkDryRun { return }
         #endif
         BulkExportManager.shared.endBackgroundTime()
         guard destinationConnected else { return }
@@ -93,6 +96,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     static func sceneEnteredBackground() {
         #if DEBUG
         recordedSceneWork.append("background")
+        if sceneWorkDryRun { return }
         #endif
         SyncEngine.shared.scheduleBackgroundSync()
         #if H4A_SHEETS

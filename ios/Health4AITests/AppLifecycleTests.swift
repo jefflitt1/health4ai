@@ -47,7 +47,8 @@ final class AppLifecycleTests: XCTestCase {
     /// The live router reaches the app delegate's real scene work (the wiring, not a stub).
     func testLiveRouterRunsTheRealSceneWork() {
         AppDelegate.recordedSceneWork = []
-        defer { AppDelegate.recordedSceneWork = [] }
+        AppDelegate.sceneWorkDryRun = true
+        defer { AppDelegate.recordedSceneWork = []; AppDelegate.sceneWorkDryRun = false }
         let live = AppLifecycle.makeLive()
         for phase in [ScenePhase.active, .inactive, .active, .inactive, .background, .inactive, .active] {
             live.handle(phase)
