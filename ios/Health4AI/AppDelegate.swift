@@ -5,7 +5,7 @@ import HealthKit
 
 /// UIApplicationDelegate responsible for:
 /// - BGTaskScheduler registration (must happen before didFinishLaunching returns)
-/// - Foreground sync on launch and app-foreground transitions
+/// - Foreground sync on launch; foreground/background work for scene transitions (see AppLifecycle)
 /// - HealthKit observer startup after auth check
 /// - Scheduling the background sync and backfill tasks when the app leaves the foreground
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -49,38 +49,62 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
-    func applicationDidBecomeActive(_ application: UIApplication) {
+    // MARK: - Scene lifecycle (called by AppLifecycle from the SwiftUI scenePhase handler)
+    //
+    // These used to be applicationDidBecomeActive / applicationDidEnterBackground /
+    // applicationWillEnterForeground. The app declares UIApplicationSceneManifest (Info.plist), so
+    // UIKit delivers lifecycle events to the scene and never to the app delegate: a simulator probe
+    // on 2026-11-02 logged every scenePhase change and zero app-delegate callbacks. The foreground
+    // sync, the widened-access check and the backfill's background time had never run.
+
+    #if DEBUG
+    /// Test-only record of scene work that ran, so the live AppLifecycle wiring is unit-tested.
+    @MainActor static var recordedSceneWork: [String] = []
+    /// Test-only: record and stop, so the wiring test does not sync or schedule tasks in the host.
+    @MainActor static var sceneWorkDryRun = false
+    #endif
+
+    @MainActor
+    static func sceneBecameActive() {
+        #if DEBUG
+        recordedSceneWork.append("active")
+        if sceneWorkDryRun { return }
+        #endif
+        BulkExportManager.shared.endBackgroundTime()
+        guard destinationConnected else { return }
+        SyncEngine.shared.performForegroundSync(trigger: .foreground)
+        #if H4A_SHEETS
+        // Sheets checks for widened Health access on every pass (SheetsSink).
+        guard !isSheetsMode else { return }
+        #endif
+        // Access is widened in Settings or the Health app, so it is noticed on return.
         Task { @MainActor in
-            guard Self.destinationConnected else { return }
-            SyncEngine.shared.performForegroundSync(trigger: .foreground)
-            #if H4A_SHEETS
-            // Sheets checks for widened Health access on every pass (SheetsSink).
-            guard !Self.isSheetsMode else { return }
-            #endif
-            // Access is widened in Settings or the Health app, so it is noticed on return.
             let syncState = SyncEngine.sharedSyncState
-            if await BulkExportManager.shared.rearmIfHistoryAccessWidened(syncState: syncState) {
+            guard await BulkExportManager.shared.rearmIfHistoryAccessWidened(syncState: syncState) else { return }
+            if UIApplication.shared.applicationState == .background {
+                // The person left before the check finished; sceneEnteredBackground already ran
+                // and skipped scheduling because the import was complete then. Schedule it now
+                // instead of starting a chunk with no background time.
+                BulkExportManager.shared.scheduleBackgroundBackfill()
+            } else {
                 BulkExportManager.shared.startBackfill(syncState: syncState)
             }
         }
     }
 
-    func applicationDidEnterBackground(_ application: UIApplication) {
-        Task { @MainActor in
-            SyncEngine.shared.scheduleBackgroundSync()
-            #if H4A_SHEETS
-            // The history import uploads to the database; Sheets mode has its own sweep.
-            guard !Self.isSheetsMode else { return }
-            #endif
-            BulkExportManager.shared.requestBackgroundTime()
-            BulkExportManager.shared.scheduleBackgroundBackfill()
-        }
-    }
-
-    func applicationWillEnterForeground(_ application: UIApplication) {
-        Task { @MainActor in
-            BulkExportManager.shared.endBackgroundTime()
-        }
+    @MainActor
+    static func sceneEnteredBackground() {
+        #if DEBUG
+        recordedSceneWork.append("background")
+        if sceneWorkDryRun { return }
+        #endif
+        SyncEngine.shared.scheduleBackgroundSync()
+        #if H4A_SHEETS
+        // The history import uploads to the database; Sheets mode has its own sweep.
+        guard !isSheetsMode else { return }
+        #endif
+        BulkExportManager.shared.requestBackgroundTime()
+        BulkExportManager.shared.scheduleBackgroundBackfill()
     }
 
     // MARK: - Private helpers

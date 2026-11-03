@@ -117,7 +117,7 @@ final class SyncEngine {
     /// Guards `syncAnchors` and keeps two sync passes from overlapping.
     ///
     /// Both were live: `AppDelegate.didFinishLaunching` starts a full pass and
-    /// `applicationDidBecomeActive` starts a second one moments later on the same cold
+    /// the scene becoming active (`AppLifecycle`) starts a second one moments later on the same cold
     /// launch, while any observer fire adds a third. They shared an unsynchronized
     /// Dictionary — undefined behaviour in Swift — and could regress each other's anchor,
     /// re-fetching a window that had already been posted.
@@ -417,7 +417,7 @@ final class SyncEngine {
     func runFullPass(trigger: SyncTrigger = .foreground) async -> FullPassOutcome {
         // Test AND set in ONE MainActor hop. Reading the flag, awaiting, then writing
         // it is check-then-act: both cold-launch callers (didFinishLaunching and
-        // applicationDidBecomeActive, which fire within moments of each other) could
+        // the scene becoming active, which fire within moments of each other) could
         // observe false before either wrote true, and both would proceed — exactly the
         // duplicate pass this guard exists to stop.
         let claimed = await MainActor.run { () -> Bool in
