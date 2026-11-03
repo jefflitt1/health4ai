@@ -706,7 +706,9 @@ final class BulkExportManager {
     /// Request ~30 seconds of background execution time when the app transitions to background.
     /// This lets the current 90-day chunk finish rather than being cut off mid-upload.
     func requestBackgroundTime() {
-        guard bgTaskID == .invalid else { return }
+        // Only while a chunk is actually running: with no import in flight the assertion would
+        // just be held until it expires.
+        guard bgTaskID == .invalid, currentTask != nil else { return }
         bgTaskID = UIApplication.shared.beginBackgroundTask(withName: "HK Backfill Chunk") { [weak self] in
             self?.endBackgroundTime()
         }

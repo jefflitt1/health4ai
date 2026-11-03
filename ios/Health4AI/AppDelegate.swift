@@ -57,8 +57,16 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     // on 2026-11-02 logged every scenePhase change and zero app-delegate callbacks. The foreground
     // sync, the widened-access check and the backfill's background time had never run.
 
+    #if DEBUG
+    /// Test-only record of scene work that ran, so the live AppLifecycle wiring is unit-tested.
+    @MainActor static var recordedSceneWork: [String] = []
+    #endif
+
     @MainActor
     static func sceneBecameActive() {
+        #if DEBUG
+        recordedSceneWork.append("active")
+        #endif
         BulkExportManager.shared.endBackgroundTime()
         guard destinationConnected else { return }
         SyncEngine.shared.performForegroundSync(trigger: .foreground)
@@ -69,7 +77,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Access is widened in Settings or the Health app, so it is noticed on return.
         Task { @MainActor in
             let syncState = SyncEngine.sharedSyncState
-            if await BulkExportManager.shared.rearmIfHistoryAccessWidened(syncState: syncState) {
+            guard await BulkExportManager.shared.rearmIfHistoryAccessWidened(syncState: syncState) else { return }
+            if UIApplication.shared.applicationState == .background {
+                // The person left before the check finished; sceneEnteredBackground already ran
+                // and skipped scheduling because the import was complete then. Schedule it now
+                // instead of starting a chunk with no background time.
+                BulkExportManager.shared.scheduleBackgroundBackfill()
+            } else {
                 BulkExportManager.shared.startBackfill(syncState: syncState)
             }
         }
@@ -77,6 +91,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     @MainActor
     static func sceneEnteredBackground() {
+        #if DEBUG
+        recordedSceneWork.append("background")
+        #endif
         SyncEngine.shared.scheduleBackgroundSync()
         #if H4A_SHEETS
         // The history import uploads to the database; Sheets mode has its own sweep.
