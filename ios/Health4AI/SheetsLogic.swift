@@ -340,6 +340,61 @@ enum DateKeys {
     }
 }
 
+// MARK: - Sheets HTTP responses
+
+/// What SheetsClient.send does with one HTTP answer. Pure, so the off-device harness can test
+/// it; SheetsClient only runs the request and maps the step to a thrown error.
+enum SheetsStep: Equatable {
+    case done
+    /// 401 on a token believed valid: refresh it once and resend.
+    case refreshTokenAndRetry
+    case retry(afterSeconds: UInt64)
+    case accessRevoked
+    case spreadsheetMissing
+    case fail(status: Int)
+}
+
+/// Whether sending the same request twice can apply it twice.
+enum SheetsReplay { case safe, unsafe }
+
+enum SheetsResponse {
+    static let maxRetries = 3
+
+    /// `attempt` is how many backoff retries this request has had so far.
+    static func step(status: Int, body: Data, attempt: Int, forcedRefresh: Bool, replay: SheetsReplay) -> SheetsStep {
+        switch status {
+        case 200...299:
+            return .done
+        case 401 where !forcedRefresh:
+            return .refreshTokenAndRetry
+        case 401:
+            // Still refused with a fresh token: access was removed, not a stale token.
+            return .accessRevoked
+        case 404:
+            return .spreadsheetMissing
+        case 403 where String(data: body, encoding: .utf8)?.contains("PERMISSION_DENIED") == true:
+            // With drive.file, a sheet the app can no longer see (ownership moved, access
+            // removed) answers 403, not 404. Treated the same: offer a new sheet.
+            return .spreadsheetMissing
+        // `where` binds per pattern, so each carries its own limit: a bare `429` here
+        // would retry a rate limit forever.
+        case 429 where attempt < maxRetries, 500...599 where attempt < maxRetries:
+            return .retry(afterSeconds: UInt64(1 << (attempt + 1)))
+        default:
+            return .fail(status: status)
+        }
+    }
+}
+
+// MARK: - Values payload
+
+enum SheetPayload {
+    /// The `values` array sent for `rows` written at `range`.
+    static func values(range: String, rows: [[String]]) -> [[Any]] {
+        rows
+    }
+}
+
 // MARK: - Rebuild backoff
 
 enum RebuildBackoff {
