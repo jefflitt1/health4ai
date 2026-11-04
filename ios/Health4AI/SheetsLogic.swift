@@ -202,6 +202,28 @@ enum SheetCell {
         return "'" + value
     }
 
+    /// "123", "-3.5", "7.50": ASCII digits, an optional leading minus and at most one point,
+    /// which is exactly what `number` writes. Not "1e5", "0x10", "nan", " 7" or "7,5", which a
+    /// person may have typed and which are kept as their text.
+    static func isPlainDecimal(_ s: String) -> Bool {
+        let body = s.hasPrefix("-") ? s.dropFirst() : Substring(s)
+        let parts = body.split(separator: ".", omittingEmptySubsequences: false)
+        return (1...2).contains(parts.count)
+            && parts.allSatisfy { !$0.isEmpty && $0.allSatisfy { ("0"..."9").contains($0) } }
+    }
+
+    /// A cell read UNFORMATTED (a JSON number or string) as the text this app writes: numbers in
+    /// en_US_POSIX digits, so a value held across a rewrite goes back as the same number whatever
+    /// the sheet's locale shows ("7,5" in a German sheet). nil for a value that is neither.
+    static func stored(_ value: Any) -> String? {
+        if let text = value as? String { return text }
+        guard let number = value as? NSNumber else { return nil }
+        var out = String(format: "%.10f", locale: Locale(identifier: "en_US_POSIX"), number.doubleValue)
+        while out.hasSuffix("0") { out.removeLast() }
+        if out.hasSuffix(".") { out.removeLast() }
+        return out == "-0" ? "0" : out
+    }
+
     /// A blank cell, not "0", when there is no data: a day without a Watch reading has no
     /// resting heart rate, and a 0 would drag every average an AI computes toward zero.
     static func number(_ value: Double?, decimals: Int) -> String {
@@ -354,11 +376,17 @@ enum SheetsStep: Equatable {
     case fail(status: Int)
 }
 
-/// Whether sending the same request twice can apply it twice.
+/// Whether sending the same request twice can apply it twice. `values:append`, creating a
+/// spreadsheet, adding a tab and adding rows are `.unsafe`: a 5xx can come back after Google
+/// applied the request (its front end failed, not the write), and a blind resend applies it
+/// again. Reads, `values:batchUpdate` and `values:batchClear` write the same cells either way.
 enum SheetsReplay { case safe, unsafe }
 
 enum SheetsResponse {
     static let maxRetries = 3
+
+    /// Seconds to wait before backoff retry number `retry` (1-based): 2, 4, 8.
+    static func backoffSeconds(_ retry: Int) -> UInt64 { UInt64(1 << retry) }
 
     /// `attempt` is how many backoff retries this request has had so far.
     static func step(status: Int, body: Data, attempt: Int, forcedRefresh: Bool, replay: SheetsReplay) -> SheetsStep {
@@ -372,26 +400,119 @@ enum SheetsResponse {
             return .accessRevoked
         case 404:
             return .spreadsheetMissing
-        case 403 where String(data: body, encoding: .utf8)?.contains("PERMISSION_DENIED") == true:
-            // With drive.file, a sheet the app can no longer see (ownership moved, access
-            // removed) answers 403, not 404. Treated the same: offer a new sheet.
-            return .spreadsheetMissing
+        case 403:
+            switch SheetsForbidden.classify(body) {
+            case .sheetOutOfReach: return .spreadsheetMissing
+            case .scopeMissing: return .accessRevoked
+            case .refused: return .fail(status: 403)
+            }
         // `where` binds per pattern, so each carries its own limit: a bare `429` here
-        // would retry a rate limit forever.
-        case 429 where attempt < maxRetries, 500...599 where attempt < maxRetries:
-            return .retry(afterSeconds: UInt64(1 << (attempt + 1)))
+        // would retry a rate limit forever. A rate-limited request was not applied, so 429
+        // is resent whatever the method; a 5xx only when resending cannot apply it twice.
+        case 429 where attempt < maxRetries, 500...599 where attempt < maxRetries && replay == .safe:
+            return .retry(afterSeconds: backoffSeconds(attempt + 1))
         default:
             return .fail(status: status)
         }
+    }
+
+    /// A Sheets 5xx (thrown by SheetsClient as SheetsError.http).
+    static func isServerError(_ error: Error) -> Bool {
+        if case SheetsError.http(let status, _) = error { return (500...599).contains(status) }
+        return false
+    }
+}
+
+/// What a Sheets 403 means. Google answers 403 PERMISSION_DENIED for very different things, and
+/// only one of them is "this sheet is gone": before this change every one of them made the app forget
+/// the person's sheet, including the Sheets API being disabled on the Cloud project for an hour,
+/// which would have split every user's history across two files (review I3, 2026-11-04).
+enum SheetsForbidden: Equatable {
+    /// Google's plain "The caller does not have permission": no ErrorInfo reason. With the
+    /// drive.file scope this is a sheet the app can no longer see (ownership moved, access
+    /// removed), which the app treats like a deleted sheet.
+    case sheetOutOfReach
+    /// The token lacks the drive.file scope (ErrorInfo ACCESS_TOKEN_SCOPE_INSUFFICIENT): a
+    /// Google access problem, so the fix is reconnecting Google, which keeps the same sheet.
+    case scopeMissing
+    /// Anything else: a project-level refusal (SERVICE_DISABLED, BILLING_DISABLED, a quota
+    /// reason), a reason this app does not know, or a body that is not Google's JSON error
+    /// (a proxy or captive portal page). The sheet is kept and the pass fails as an HTTP error.
+    case refused(reason: String?)
+
+    static func classify(_ body: Data) -> SheetsForbidden {
+        guard let object = try? JSONSerialization.jsonObject(with: body),
+              let error = (object as? [String: Any])?["error"] as? [String: Any] else {
+            return .refused(reason: nil)   // not Google's JSON error shape: unknown, so not "gone"
+        }
+        let details = error["details"] as? [[String: Any]] ?? []
+        let reasons = details.compactMap { $0["reason"] as? String }
+        if reasons.contains("ACCESS_TOKEN_SCOPE_INSUFFICIENT") { return .scopeMissing }
+        // Legacy v3-style `errors[].reason` carries only "forbidden" on the plain answer.
+        let legacy = (error["errors"] as? [[String: Any]] ?? []).compactMap { $0["reason"] as? String }
+        if details.isEmpty, legacy.allSatisfy({ $0 == "forbidden" }),
+           error["status"] as? String == "PERMISSION_DENIED" {
+            return .sheetOutOfReach
+        }
+        return .refused(reason: reasons.first ?? legacy.first)
     }
 }
 
 // MARK: - Values payload
 
+/// The columns this app writes as numbers, per tab (0 = A). Every other column is text: dates,
+/// times, names, sources and record IDs. Matches SheetLayout's headers.
+enum SheetSchema {
+    static let numericColumns: [String: Set<Int>] = [
+        SheetTabs.daily: Set(1...15),        // Steps through VO2 max
+        SheetTabs.workouts: [3, 4, 5],       // Duration, Active energy, Distance
+        SheetTabs.sleepStages: [4],          // Duration (min)
+    ]
+}
+
+/// Where an A1 range starts: its tab, first column (0 = A) and first row (nil for a whole-column
+/// range such as "Workouts!A:H", which values:append fills from the first empty row).
+struct A1Start: Equatable {
+    var tab: String
+    var column: Int
+    var row: Int?
+
+    init(tab: String, column: Int, row: Int?) {
+        self.tab = tab
+        self.column = column
+        self.row = row
+    }
+
+    init?(_ range: String) {
+        guard let bang = range.lastIndex(of: "!") else { return nil }
+        var tab = String(range[..<bang])
+        if tab.count >= 2, tab.hasPrefix("'"), tab.hasSuffix("'") { tab = String(tab.dropFirst().dropLast()) }
+        let cell = range[range.index(after: bang)...].prefix { $0 != ":" }
+        let letters = cell.prefix { $0.isASCII && $0.isLetter }
+        guard !letters.isEmpty else { return nil }
+        var column = 0
+        for c in letters.uppercased().unicodeScalars { column = column * 26 + Int(c.value) - 64 }
+        self.tab = tab
+        self.column = column - 1
+        let digits = cell.dropFirst(letters.count)
+        self.row = digits.isEmpty ? nil : Int(digits)
+    }
+}
+
 enum SheetPayload {
-    /// The `values` array sent for `rows` written at `range`.
+    /// The `values` array sent for `rows` written at `range`. A cell in a numeric column of a data
+    /// row goes as a JSON number. Sheets parses a USER_ENTERED string in the spreadsheet's
+    /// locale, so "7.50" was text in a German sheet and "1.5" could become 1 May; a JSON number
+    /// is stored as that number in every locale (review I2, 2026-11-04). Header rows (row 1),
+    /// blanks and text a person left in a numeric column (kept by a rewrite) stay strings.
     static func values(range: String, rows: [[String]]) -> [[Any]] {
-        rows
+        guard let start = A1Start(range), let numeric = SheetSchema.numericColumns[start.tab],
+              (start.row ?? 2) >= 2 else { return rows }
+        return rows.map { row in
+            row.enumerated().map { j, cell -> Any in
+                numeric.contains(start.column + j) && SheetCell.isPlainDecimal(cell) ? NSDecimalNumber(string: cell) : cell
+            }
+        }
     }
 }
 

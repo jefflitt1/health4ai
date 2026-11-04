@@ -136,5 +136,18 @@ mutate "rewrite ignores refused cols"  'refused: chunk.refusedColumns(on: $0.val
             if !plan.appends.isEmpty' 'refused: [])
             }
             if !plan.appends.isEmpty' sync
+mutate "5xx append resent blind"      '500...599 where attempt < maxRetries && replay == .safe:' '500...599 where attempt < maxRetries:'
+mutate "refused 403 forgets sheet"     'case .refused: return .fail(status: 403)' 'case .refused: return .spreadsheetMissing'
+mutate "scope 403 forgets sheet"       'case .scopeMissing: return .accessRevoked' 'case .scopeMissing: return .spreadsheetMissing'
+mutate "403 with a reason read as gone" 'if details.isEmpty, legacy.allSatisfy' 'if true, legacy.allSatisfy'
+mutate "numbers sent as text"          '&& SheetCell.isPlainDecimal(cell) ? NSDecimalNumber(string: cell) : cell' '&& false ? NSDecimalNumber(string: cell) : cell'
+mutate "header row sent as numbers"    '(start.row ?? 2) >= 2 else' '(start.row ?? 2) >= 1 else'
+mutate "partial row offset ignored"    'numeric.contains(start.column + j)' 'numeric.contains(j)'
+mutate "typed text sent as number"     '$0.allSatisfy { ("0"..."9").contains($0) }' '$0.allSatisfy { $0 != " " }'
+mutate "held values read as displayed" 'try await api.readValueColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!\(letter)2:\(letter)")' 'try await api.readColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!\(letter)2:\(letter)")' sync
+mutate "append retry resends all rows" 'pending = pending.filter { !present.contains($0[ids.index]) }' 'pending = pending.filter { _ in true }' sleep
+mutate "append 5xx not retried"        'catch let error where SheetsResponse.isServerError(error) && retries' 'catch let error where false && retries' sleep
+mutate "append retries unbounded"      'static let appendServerRetries = 2' 'static let appendServerRetries = 3' sleep
+mutate "stored keeps padding zeros"    'while out.hasSuffix("0") { out.removeLast() }' ''
 echo "survivors: $survivors"
 [ "$survivors" -eq 0 ]

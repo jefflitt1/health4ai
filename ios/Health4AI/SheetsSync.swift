@@ -151,6 +151,9 @@ struct SheetsProgress: Equatable {
 protocol SheetsAPI {
     func readDateColumn(spreadsheetId: String, range: String) async throws -> [String]
     func readColumn(spreadsheetId: String, range: String) async throws -> [String]
+    /// One column as stored (UNFORMATTED), numbers in en_US_POSIX digits (SheetCell.stored),
+    /// whatever the sheet's locale displays.
+    func readValueColumn(spreadsheetId: String, range: String) async throws -> [String]
     func writeRanges(spreadsheetId: String, _ ranges: [(range: String, rows: [[String]])]) async throws
     func append(spreadsheetId: String, range: String, rows: [[String]]) async throws
     func clear(spreadsheetId: String, ranges: [String]) async throws
@@ -436,7 +439,9 @@ struct SheetsSyncCore {
         var held: [Int: [String: String]] = [:]
         for col in Set(refused.values.joined()).sorted() {
             let letter = DailyColumn.letter(col)
-            let values = try await api.readColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!\(letter)2:\(letter)")
+            // As stored, not as displayed: a German sheet displays 7.5 as "7,5", which would go
+            // back as text (review I2, 2026-11-04).
+            let values = try await api.readValueColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!\(letter)2:\(letter)")
             var byDay: [String: String] = [:]
             for (i, key) in existing.enumerated() where i < values.count && !values[i].isEmpty { byDay[key] = values[i] }
             held[col] = byDay
@@ -468,7 +473,8 @@ struct SheetsSyncCore {
         let known = Set(try await api.readColumn(spreadsheetId: id, range: "\(SheetTabs.workouts)!H2:H"))
         let fresh = rows.filter { !known.contains($0[7]) }
         // In pieces: a catch-up after years with the switch off can be thousands of workouts.
-        try await appendInPieces(id: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)
+        try await appendInPieces(id: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh,
+                                 ids: (range: "\(SheetTabs.workouts)!H2:H", index: 7))
         return fresh.count
     }
 
