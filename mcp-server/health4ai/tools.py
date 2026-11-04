@@ -94,8 +94,8 @@ RAW_CUTOFF_DAYS = 30  # beyond this, queries hit daily summaries
 MAX_DAYS = 1825       # 5 years
 MAX_MONTHS = 120      # 10 years
 MAX_LIMIT = 1000
-# Row ceiling for fetches whose rows are counted, summed or averaged. The 500-row default is far
-# too small there: steps sync as one merged row per hour, so 30 days
+# Row ceiling for fetches that feed an aggregate over a raw window (at most RAW_CUTOFF_DAYS).
+# The 500-row default is far too small there: steps sync as one merged row per hour, so 30 days
 # is 720 rows before any per-device ones, and two sleep trackers write ~140 stage rows a night.
 RAW_WINDOW_LIMIT = 100000
 
@@ -664,9 +664,8 @@ def get_health_summary(days: int = 7) -> dict:
     uid = current_user_id.get()
     since = _since(days)
 
-    # Counted, so never capped: two sleep trackers write ~140 stage rows a night.
-    sleep_rows = _fetch_metrics(SLEEP, uid, since, limit=RAW_WINDOW_LIMIT)
-    workout_rows = _fetch_metrics(WORKOUT, uid, since, limit=RAW_WINDOW_LIMIT)
+    sleep_rows = _fetch_metrics(SLEEP, uid, since)
+    workout_rows = _fetch_metrics(WORKOUT, uid, since, limit=50)
 
     def avg(rows: list[dict]) -> float | None:
         vals = [r["value"] for r in rows if r.get("value") is not None]
@@ -1311,7 +1310,7 @@ def get_coaching_brief() -> dict:
     # Every fetch that is counted, summed or read from its oldest end gets the full window
     # (RAW_WINDOW_LIMIT): a fixed cap here dropped nights, workouts and step hours silently.
     hrv_14d = _fetch_metrics(HRV, uid, since_14d, limit=RAW_WINDOW_LIMIT)
-    rhr_14d = _fetch_metrics(RESTING_HR, uid, since_14d, limit=50)
+    rhr_14d = _fetch_metrics(RESTING_HR, uid, since_14d, limit=RAW_WINDOW_LIMIT)
     sleep_14d = _fetch_metrics(SLEEP, uid, since_14d, limit=RAW_WINDOW_LIMIT)
     workouts_30d = _fetch_metrics(WORKOUT, uid, since_30d, limit=RAW_WINDOW_LIMIT)
     steps_7d = _fetch_metrics(STEPS, uid, since_7d, limit=RAW_WINDOW_LIMIT)

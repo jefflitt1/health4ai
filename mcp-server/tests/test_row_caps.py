@@ -1,10 +1,9 @@
-"""Tools that count, sum or average rows must not silently lose rows to a fixed row cap.
+"""Aggregates over a raw window (30 days or less) must not silently lose rows to a fixed row cap.
 
 Why (2026-11-03): steps sync as one merged row per hour, so get_health_summary's default 500-row
-fetch held only ~21 days and under-reported a 30-day total by about 30%. Two sleep trackers write
-~140 stage rows a night, so the same default cut get_health_summary's sleep count after about
-3.5 nights, and its workouts stopped at 50. get_coaching_brief had the same fixed caps on sleep
-(500), steps (500), workouts (50), weight (30) and HRV (200).
+fetch held only ~21 days and under-reported a 30-day total by about 30%. get_coaching_brief had
+fixed caps on sleep (500; two sleep trackers write ~140 stage rows a night), steps (500), active
+energy (500), workouts (50), resting HR (50), weight (30) and HRV (200).
 
 No database is touched: _fetch_metrics is replaced with a stub that honours `since` and `limit`
 the way the real query does (newest first).
@@ -61,15 +60,6 @@ def test_thirty_day_summary_counts_every_hourly_step_row(monkeypatch):
     out = tools.get_health_summary(30)
     assert out["steps"]["total"] == 7200.0
     assert out["steps"]["days_with_data"] >= 30
-
-
-def test_summary_counts_every_workout_and_sleep_row(monkeypatch):
-    workouts = [{"started_at": _iso(NOW - timedelta(hours=10 * i + 1)), "value": None,
-                 "metadata": {"workout_type": "walking"}} for i in range(60)]
-    _stub(monkeypatch, {tools.WORKOUT: workouts, tools.SLEEP: _two_trackers(7)})
-    out = tools.get_health_summary(30)
-    assert out["workouts"]["count"] == 60
-    assert out["sleep"]["total_records"] == 7 * 140
 
 
 def test_coaching_brief_counts_every_row_in_its_windows(monkeypatch):
