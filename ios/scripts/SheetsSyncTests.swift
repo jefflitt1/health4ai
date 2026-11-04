@@ -25,6 +25,12 @@ final class FakeSheet: SheetsAPI {
     var afterFirstRead: (() -> Void)?   // a person edits the sheet between our reads
     var reads = 0
     var growRequests = 0      // actual appendDimension requests (the grid changed)
+    /// The Nth values:append (counted over both tabs) answers 503. true: Google had already
+    /// applied the rows when its front end failed; false: it had not.
+    var appendServerErrors: [Int: Bool] = [:]
+    var appendCalls = 0
+    /// A sheet in a comma-decimal locale (de_DE): FORMATTED reads of the Daily tab show 7.5 as "7,5".
+    var commaDisplay = false
 
     private func hit(_ op: String) throws { ops.append(op); if failOp == op { throw Injected() } }
 
@@ -52,7 +58,8 @@ final class FakeSheet: SheetsAPI {
         if p.tab == SheetTabs.daily {
             try hit("readDailyColumn")
             let c = Int(p.col.asciiValue! - 65)
-            return daily.dropFirst(p.first - 2).map { $0.count > c ? $0[c] : "" }
+            let raw = daily.dropFirst(p.first - 2).map { $0.count > c ? $0[c] : "" }
+            return commaDisplay ? raw.map { $0.replacingOccurrences(of: ".", with: ",") } : raw
         }
         try hit("readWorkoutIds")
         if range.contains("C2") { return workouts.map { $0.count > 2 ? $0[2] : "" } }
@@ -88,13 +95,25 @@ final class FakeSheet: SheetsAPI {
             } else { col[i + k] = row }
         }
     }
+    /// UNFORMATTED read of a Daily column: the stored values, whatever the sheet's locale shows.
+    func readValueColumn(spreadsheetId: String, range: String) async throws -> [String] {
+        let p = parse(range)
+        try hit("readDailyColumn")
+        let c = Int(p.col.asciiValue! - 65)
+        return daily.dropFirst(p.first - 2).map { $0.count > c ? $0[c] : "" }
+    }
     func append(spreadsheetId: String, range: String, rows: [[String]]) async throws {
+        appendCalls += 1
+        let serverError = appendServerErrors[appendCalls]
         if parse(range).tab == SheetTabs.sleepStages {
             try hit("appendSleep"); sleepAppendSizes.append(rows.count)
             if failSleepAppendNumber == sleepAppendSizes.count { throw Injected() }
-            sleep += rows; return
+            if serverError != false { sleep += rows }
+        } else {
+            try hit("append"); workoutAppendSizes.append(rows.count)
+            if serverError != false { workouts += rows }
         }
-        try hit("append"); workoutAppendSizes.append(rows.count); workouts += rows
+        if serverError != nil { throw SheetsError.http(status: 503, detail: "backend error") }
     }
     func clear(spreadsheetId: String, ranges: [String]) async throws {
         try hit("clear")
@@ -366,6 +385,12 @@ func runSyncTests(_ check: (Bool, String) -> Void, calendar cal: Calendar, at: (
         $0.duringDailyRead = { if edited.daily.first?.first != "note" { edited.daily.insert(["note", "5"] + Array(repeating: "", count: 14), at: 0) } }
     })
     check(edited.daily.first { $0.first == "2026-09-29" }?[1] == "777", "rebuild_held_value_survives_mid_pass_edit")
+    // A sheet in a comma-decimal locale: the held value is read as stored (UNFORMATTED), not as
+    // displayed, so 7.5 goes back as 7.5 and not as the text "7,5" (review I2, 2026-11-04).
+    let german = oldSheet(); german.commaDisplay = true
+    german.daily[german.daily.firstIndex { $0.first == "2026-09-29" }!][1] = "7.5"
+    _ = await drive(german, source { $0.unreadStepDays = [day("2026-09-29")] })
+    check(german.daily.first { $0.first == "2026-09-29" }?[1] == "7.5", "rebuild_held_value_read_unformatted")
     check(u1.progress.unreadDays == ["2025-03-05", "2025-03-06"], "unread_days_saved_for_retry")
 
     // Next pass, HealthKit answers again: the blank rows are filled in place and the notice clears.
@@ -514,6 +539,27 @@ func runSaveChoiceTests(_ check: (Bool, String) -> Void, calendar cal: Calendar,
     check(w.workouts.count == 2 && w.workouts.first?.first == "2020-01-05", "workouts_catch_up_adds_older")
     _ = await drive(w, wsrc) { _ in }
     check(w.workouts.count == 2, "workouts_merge_never_duplicates")
+
+    // values:append answers 503 after Google applied it (review I1, 2026-11-04): the retry re-reads
+    // the IDs and sends only what is missing, so no workout is written twice and the pass succeeds.
+    let applied = FakeSheet(); applied.appendServerErrors = [1: true]
+    let a1 = await drive(applied, wsrc) { $0.workoutsCatchUp = true }
+    check(a1.error == nil && applied.workouts.count == 2 && Set(applied.workouts.map { $0[7] }).count == 2,
+          "workouts_append_5xx_after_apply_not_duplicated")
+    // 503 before Google applied it: the retry sends every row once.
+    let notApplied = FakeSheet(); notApplied.appendServerErrors = [1: false]
+    let a2 = await drive(notApplied, wsrc) { $0.workoutsCatchUp = true }
+    check(a2.error == nil && notApplied.workouts.count == 2 && notApplied.appendCalls == 2, "workouts_append_5xx_before_apply_retried")
+    // Google keeps failing: the pass fails after a bounded number of tries, still without duplicates.
+    let down = FakeSheet(); down.appendServerErrors = [1: false, 2: false, 3: true, 4: false]
+    let a3 = await drive(down, wsrc) { $0.workoutsCatchUp = true }
+    check({ if case SheetsError.http(503, _)? = a3.error { return true }; return false }() && down.workouts.count == 2
+          && down.appendCalls == 1 + SheetsSyncCore.appendServerRetries, "workouts_append_5xx_bounded_and_not_duplicated")
+    // Sleep stages: the second piece of a long history is applied, then answered 503.
+    let sleepy = FakeSheet(); sleepy.appendServerErrors = [2: true]
+    let a4 = await drive(sleepy, source { $0.sleepNights = nights(from: "2025-01-01"); $0.recordsPerNight = 12 })
+    check(a4.error == nil && sleepy.sleep.count == big.sleep.count && Set(ids(sleepy)).count == sleepy.sleep.count,
+          "sleep_append_5xx_after_apply_not_duplicated")
 
     // Years of workouts caught up at once: appended in pieces, each whole, none twice.
     let many = FakeSheet()

@@ -25,7 +25,8 @@ final class SheetsClient: SheetsAPI, @unchecked Sendable {
             "properties": ["title": title],
             "sheets": tabs.map { ["properties": ["title": $0, "gridProperties": ["frozenRowCount": 1]]] },
         ]
-        let data = try await send(method: "POST", url: Self.base, json: body)
+        // Not resent on a 5xx: a create Google applied before failing would leave a second file.
+        let data = try await send(method: "POST", url: Self.base, json: body, replay: .unsafe)
         guard let created = try? JSONDecoder().decode(CreatedSpreadsheet.self, from: data) else {
             throw SheetsError.badResponse
         }
@@ -40,6 +41,24 @@ final class SheetsClient: SheetsAPI, @unchecked Sendable {
         struct ValueRange: Decodable { let values: [[String]]? }
         let decoded = try JSONDecoder().decode(ValueRange.self, from: data)
         return decoded.values?.first ?? []
+    }
+
+    /// One column as stored (UNFORMATTED_VALUE): numbers come back as JSON numbers and are
+    /// written as en_US_POSIX digits (SheetCell.stored), so a German sheet's "7,5" reads as "7.5".
+    func readValueColumn(spreadsheetId: String, range: String) async throws -> [String] {
+        var comps = URLComponents(url: valuesURL(spreadsheetId, range), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            URLQueryItem(name: "majorDimension", value: "COLUMNS"),
+            URLQueryItem(name: "valueRenderOption", value: "UNFORMATTED_VALUE"),
+        ]
+        let data = try await send(method: "GET", url: comps.url!, json: nil)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw SheetsError.badResponse
+        }
+        return try ((object["values"] as? [[Any]])?.first ?? []).map { cell in
+            guard let text = SheetCell.stored(cell) else { throw SheetsError.badResponse }
+            return text
+        }
     }
 
     /// The Daily tab's date column as day keys. Read UNFORMATTED: a USER_ENTERED date is
@@ -70,8 +89,8 @@ final class SheetsClient: SheetsAPI, @unchecked Sendable {
         guard !ranges.isEmpty else { return }
         let url = Self.base.appendingPathComponent(spreadsheetId).appendingPathComponent("values:batchUpdate")
         let body: [String: Any] = [
-            // USER_ENTERED so "2026-09-28" becomes a real date and "7.5" a number, which is
-            // what makes the sheet chartable and lets an AI connector do arithmetic on it.
+            // USER_ENTERED so "2026-09-28" becomes a real date. Numeric cells go as JSON numbers
+            // (SheetPayload), so the sheet's locale cannot turn "7.50" into text or a date.
             "valueInputOption": "USER_ENTERED",
             "data": ranges.map { ["range": $0.range, "values": SheetPayload.values(range: $0.range, rows: $0.rows)] },
         ]
@@ -99,7 +118,9 @@ final class SheetsClient: SheetsAPI, @unchecked Sendable {
         let add = GridGrowth.rowsToAdd(currentRows: props.gridProperties.rowCount, needed: needed, headroom: headroom)
         if add > 0 {
             let url = Self.base.appendingPathComponent("\(spreadsheetId):batchUpdate")
-            _ = try await send(method: "POST", url: url, json: GridGrowth.appendRowsBody(sheetId: props.sheetId, count: add))
+            // .unsafe: a resent appendDimension adds the rows twice. The next pass re-reads the height.
+            _ = try await send(method: "POST", url: url, json: GridGrowth.appendRowsBody(sheetId: props.sheetId, count: add),
+                               replay: .unsafe)
         }
         return props.gridProperties.rowCount + add
     }
@@ -121,7 +142,8 @@ final class SheetsClient: SheetsAPI, @unchecked Sendable {
         let url = Self.base.appendingPathComponent("\(spreadsheetId):batchUpdate")
         let body: [String: Any] = ["requests": [["addSheet": ["properties": [
             "title": title, "gridProperties": ["frozenRowCount": 1]]]]]]
-        _ = try await send(method: "POST", url: url, json: body)
+        // .unsafe: a resent addSheet that Google already applied fails as a duplicate tab name.
+        _ = try await send(method: "POST", url: url, json: body, replay: .unsafe)
         Self.logger.info("Added tab \(title, privacy: .public)")
         return true
     }
@@ -132,7 +154,9 @@ final class SheetsClient: SheetsAPI, @unchecked Sendable {
         _ = try await send(method: "POST", url: url, json: ["ranges": ranges])
     }
 
-    /// Appends rows after the last row of the table in `range` (e.g. `Workouts!A:H`).
+    /// Appends rows after the last row of the table in `range` (e.g. `Workouts!A:H`). Never
+    /// resent on a 5xx (Google may have applied it): SheetsSyncCore.appendInPieces retries it
+    /// after re-reading the tab's IDs, so a retry cannot write a row twice.
     func append(spreadsheetId: String, range: String, rows: [[String]]) async throws {
         guard !rows.isEmpty else { return }
         var comps = URLComponents(url: valuesURL(spreadsheetId, range, suffix: ":append"), resolvingAgainstBaseURL: false)!
@@ -140,7 +164,8 @@ final class SheetsClient: SheetsAPI, @unchecked Sendable {
             URLQueryItem(name: "valueInputOption", value: "USER_ENTERED"),
             URLQueryItem(name: "insertDataOption", value: "INSERT_ROWS"),
         ]
-        _ = try await send(method: "POST", url: comps.url!, json: ["values": SheetPayload.values(range: range, rows: rows)])
+        _ = try await send(method: "POST", url: comps.url!, json: ["values": SheetPayload.values(range: range, rows: rows)],
+                           replay: .unsafe)
     }
 
     // MARK: Transport
@@ -152,8 +177,10 @@ final class SheetsClient: SheetsAPI, @unchecked Sendable {
         return URL(string: "\(Self.base.absoluteString)/\(id)/values/\(encoded)\(suffix)")!
     }
 
-    /// One retry after a 401 with a forced token refresh; up to three backoff retries on
-    /// 429/5xx; everything else is thrown to the caller, which logs it to Sync History.
+    /// One retry after a 401 with a forced token refresh; up to three backoff retries on 429,
+    /// and on 5xx only for a `.safe` request; everything else is thrown to the caller, which
+    /// logs it to Sync History. A 403 forgets the sheet only for Google's plain "caller does not
+    /// have permission" (SheetsForbidden); any other 403 keeps it and is thrown as HTTP 403.
     /// The decision for each answer is SheetsResponse.step (pure, tested off device).
     private func send(method: String, url: URL, json: Any?, replay: SheetsReplay = .safe) async throws -> Data {
         var forcedRefresh = false
