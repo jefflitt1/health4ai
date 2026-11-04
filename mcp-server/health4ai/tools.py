@@ -94,6 +94,10 @@ RAW_CUTOFF_DAYS = 30  # beyond this, queries hit daily summaries
 MAX_DAYS = 1825       # 5 years
 MAX_MONTHS = 120      # 10 years
 MAX_LIMIT = 1000
+# Row ceiling for fetches whose rows are counted, summed or averaged. The 500-row default is far
+# too small there: steps sync as one merged row per hour, so 30 days
+# is 720 rows before any per-device ones, and two sleep trackers write ~140 stage rows a night.
+RAW_WINDOW_LIMIT = 100000
 
 
 def _connect():
@@ -519,7 +523,7 @@ def _get_tiered_daily(metric_type: str, user_id: str, days: int) -> list[dict]:
     # Recent raw portion (from max(window_start, cutoff) forward, local-day aligned)
     raw_since = max(window_start, cutoff)
     raw_rows = _fetch_metrics(metric_type, user_id, _local_day_bounds_utc(raw_since, raw_since)[0],
-                              limit=100000)
+                              limit=RAW_WINDOW_LIMIT)
     daily: dict[tuple[str, str], dict] = {
         (d["date"], d["unit"]): d for d in _daily_from_raw(raw_rows) if d["date"] >= cutoff
     }
@@ -660,8 +664,9 @@ def get_health_summary(days: int = 7) -> dict:
     uid = current_user_id.get()
     since = _since(days)
 
-    sleep_rows = _fetch_metrics(SLEEP, uid, since)
-    workout_rows = _fetch_metrics(WORKOUT, uid, since, limit=50)
+    # Counted, so never capped: two sleep trackers write ~140 stage rows a night.
+    sleep_rows = _fetch_metrics(SLEEP, uid, since, limit=RAW_WINDOW_LIMIT)
+    workout_rows = _fetch_metrics(WORKOUT, uid, since, limit=RAW_WINDOW_LIMIT)
 
     def avg(rows: list[dict]) -> float | None:
         vals = [r["value"] for r in rows if r.get("value") is not None]
@@ -682,9 +687,10 @@ def get_health_summary(days: int = 7) -> dict:
         tier["note"] += " Counts are day-points across steps, HRV and resting HR."
     else:
         tier = None
-        steps_points, steps_unit = _single_unit(_daily_from_raw(_fetch_metrics(STEPS, uid, since)))
-        hrv_rows = _fetch_metrics(HRV, uid, since)
-        resting_hr_rows = _fetch_metrics(RESTING_HR, uid, since)
+        steps_points, steps_unit = _single_unit(
+            _daily_from_raw(_fetch_metrics(STEPS, uid, since, limit=RAW_WINDOW_LIMIT)))
+        hrv_rows = _fetch_metrics(HRV, uid, since, limit=RAW_WINDOW_LIMIT)
+        resting_hr_rows = _fetch_metrics(RESTING_HR, uid, since, limit=RAW_WINDOW_LIMIT)
 
         hrv_avg = avg(hrv_rows)
         hrv_latest = hrv_rows[0]["value"] if hrv_rows else None
@@ -1302,17 +1308,19 @@ def get_coaching_brief() -> dict:
     since_30d = _since(30)
     since_7d = _since(7)
 
-    hrv_14d = _fetch_metrics(HRV, uid, since_14d, limit=200)
+    # Every fetch that is counted, summed or read from its oldest end gets the full window
+    # (RAW_WINDOW_LIMIT): a fixed cap here dropped nights, workouts and step hours silently.
+    hrv_14d = _fetch_metrics(HRV, uid, since_14d, limit=RAW_WINDOW_LIMIT)
     rhr_14d = _fetch_metrics(RESTING_HR, uid, since_14d, limit=50)
-    sleep_14d = _fetch_metrics(SLEEP, uid, since_14d, limit=500)
-    workouts_30d = _fetch_metrics(WORKOUT, uid, since_30d, limit=50)
-    steps_7d = _fetch_metrics(STEPS, uid, since_7d, limit=500)
+    sleep_14d = _fetch_metrics(SLEEP, uid, since_14d, limit=RAW_WINDOW_LIMIT)
+    workouts_30d = _fetch_metrics(WORKOUT, uid, since_30d, limit=RAW_WINDOW_LIMIT)
+    steps_7d = _fetch_metrics(STEPS, uid, since_7d, limit=RAW_WINDOW_LIMIT)
     # Tier-aware: VO2Max readings are infrequent (Watch Cardio Fitness), so the most
     # recent one is often already past RAW_CUTOFF_DAYS and would read as None from a
     # raw-only fetch even though real history exists in daily summaries.
     vo2_points = _get_tiered_daily(VO2MAX, uid, 365)
-    weight_rows = _fetch_metrics(WEIGHT, uid, since_30d, limit=30)
-    energy_7d = _fetch_metrics(ACTIVE_ENERGY, uid, since_7d, limit=500)
+    weight_rows = _fetch_metrics(WEIGHT, uid, since_30d, limit=RAW_WINDOW_LIMIT)
+    energy_7d = _fetch_metrics(ACTIVE_ENERGY, uid, since_7d, limit=RAW_WINDOW_LIMIT)
     data_status = _data_status(hrv_14d, rhr_14d, sleep_14d, workouts_30d, steps_7d)
 
     def avg(rows: list[dict]) -> float | None:
