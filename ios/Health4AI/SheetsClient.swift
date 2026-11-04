@@ -73,7 +73,7 @@ final class SheetsClient: SheetsAPI, @unchecked Sendable {
             // USER_ENTERED so "2026-09-28" becomes a real date and "7.5" a number, which is
             // what makes the sheet chartable and lets an AI connector do arithmetic on it.
             "valueInputOption": "USER_ENTERED",
-            "data": ranges.map { ["range": $0.range, "values": $0.rows] },
+            "data": ranges.map { ["range": $0.range, "values": SheetPayload.values(range: $0.range, rows: $0.rows)] },
         ]
         _ = try await send(method: "POST", url: url, json: body)
     }
@@ -140,7 +140,7 @@ final class SheetsClient: SheetsAPI, @unchecked Sendable {
             URLQueryItem(name: "valueInputOption", value: "USER_ENTERED"),
             URLQueryItem(name: "insertDataOption", value: "INSERT_ROWS"),
         ]
-        _ = try await send(method: "POST", url: comps.url!, json: ["values": rows])
+        _ = try await send(method: "POST", url: comps.url!, json: ["values": SheetPayload.values(range: range, rows: rows)])
     }
 
     // MARK: Transport
@@ -154,7 +154,8 @@ final class SheetsClient: SheetsAPI, @unchecked Sendable {
 
     /// One retry after a 401 with a forced token refresh; up to three backoff retries on
     /// 429/5xx; everything else is thrown to the caller, which logs it to Sync History.
-    private func send(method: String, url: URL, json: Any?) async throws -> Data {
+    /// The decision for each answer is SheetsResponse.step (pure, tested off device).
+    private func send(method: String, url: URL, json: Any?, replay: SheetsReplay = .safe) async throws -> Data {
         var forcedRefresh = false
         var attempt = 0
         while true {
@@ -168,28 +169,20 @@ final class SheetsClient: SheetsAPI, @unchecked Sendable {
             }
             let (data, response) = try await URLSession.shared.data(for: req)
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            switch status {
-            case 200...299:
+            switch SheetsResponse.step(status: status, body: data, attempt: attempt,
+                                       forcedRefresh: forcedRefresh, replay: replay) {
+            case .done:
                 return data
-            case 401 where !forcedRefresh:
+            case .refreshTokenAndRetry:
                 forcedRefresh = true
-                continue
-            case 401:
-                // Still refused with a fresh token: access was removed, not a stale token.
-                throw GoogleAuthError.accessRevoked
-            case 404:
-                throw SheetsError.spreadsheetMissing
-            case 403 where String(data: data, encoding: .utf8)?.contains("PERMISSION_DENIED") == true:
-                // With drive.file, a sheet the app can no longer see (ownership moved, access
-                // removed) answers 403, not 404. Treated the same: offer a new sheet.
-                throw SheetsError.spreadsheetMissing
-            // `where` binds per pattern, so each carries its own limit: a bare `429` here
-            // would retry a rate limit forever.
-            case 429 where attempt < 3, 500...599 where attempt < 3:
+            case .retry(let seconds):
                 attempt += 1
-                try await Task.sleep(nanoseconds: UInt64(1 << attempt) * 1_000_000_000)
-                continue
-            default:
+                try await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+            case .accessRevoked:
+                throw GoogleAuthError.accessRevoked
+            case .spreadsheetMissing:
+                throw SheetsError.spreadsheetMissing
+            case .fail(let status):
                 let detail = String(data: data, encoding: .utf8) ?? ""
                 Self.logger.error("Sheets \(method, privacy: .public) \(status): \(detail, privacy: .private)")
                 throw SheetsError.http(status: status, detail: detail)
