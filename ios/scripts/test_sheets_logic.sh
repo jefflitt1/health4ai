@@ -111,7 +111,8 @@ mutate "sleep appended in one request" 'static let appendChunkRows = 2000' 'stat
 mutate "empty sleep marked done"       'guard let oldest = try await source.oldestSleepRecord() else { return 0 }' 'guard let oldest = try await source.oldestSleepRecord() else { progress.sleepStagesThrough = DayKey.string(for: today, calendar: calendar); return 0 }' sleep
 mutate "workouts off ignored"          'private var mergeRecentWorkouts: Bool { saveWorkouts && !workoutsCatchUp }' 'private var mergeRecentWorkouts: Bool { !workoutsCatchUp }' sync
 mutate "workouts catch-up ignored"     'if latest.workouts && latest.workoutsCatchUp {' 'if false {' sync
-mutate "workouts appended in one request" 'try await appendInPieces(id: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)' 'try await api.append(spreadsheetId: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)' sync
+mutate "workouts appended in one request" 'try await appendInPieces(id: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh,
+                                 ids: (range: "\(SheetTabs.workouts)!H2:H", index: 7))' 'try await api.append(spreadsheetId: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)' sync
 mutate "range refusal not split"       '} catch let error where splittable(error) {' '} catch let error where false && splittable(error) {'
 mutate "split stops at whole range"    'guard days.count > 1 else { out.failedDays.append(days[0]); return }' 'out.failedDays += days; return'
 mutate "single refused day thrown"     'guard days.count > 1 else { out.failedDays.append(days[0]); return }' 'guard days.count > 1 else { throw error }'
