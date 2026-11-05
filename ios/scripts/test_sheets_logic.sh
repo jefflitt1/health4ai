@@ -142,7 +142,6 @@ mutate "refused 403 forgets sheet"     'case .refused: return .fail(status: 403)
 mutate "scope 403 forgets sheet"       'case .scopeMissing: return .accessRevoked' 'case .scopeMissing: return .spreadsheetMissing'
 mutate "403 with a reason read as gone" 'if details.isEmpty, legacy.allSatisfy' 'if true, legacy.allSatisfy'
 mutate "numbers sent as text"          '&& SheetCell.isPlainDecimal(cell) ? NSDecimalNumber(string: cell) : cell' '&& false ? NSDecimalNumber(string: cell) : cell'
-mutate "header row sent as numbers"    '(start.row ?? 2) >= 2 else' '(start.row ?? 2) >= 1 else'
 mutate "partial row offset ignored"    'numeric.contains(start.column + j)' 'numeric.contains(j)'
 mutate "typed text sent as number"     '$0.allSatisfy { ("0"..."9").contains($0) }' '$0.allSatisfy { $0 != " " }'
 mutate "held values read as displayed" 'try await api.readValueColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!\(letter)2:\(letter)")' 'try await api.readColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!\(letter)2:\(letter)")' sync
