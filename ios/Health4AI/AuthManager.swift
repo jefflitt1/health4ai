@@ -114,13 +114,19 @@ final class AuthManager: ObservableObject {
     // MARK: - Supabase base URL (extracted from endpoint)
 
     /// The Supabase project URL is derived from the ingest endpoint by stripping the path.
+    /// Keeps the port: a self-hosted project on a non-default port posts samples there
+    /// (resolvedEndpointURL keeps it), so signing in and refreshing must go there too.
     private func supabaseBaseURL(from serverURL: String) -> String {
         guard let url = URL(string: serverURL),
               let scheme = url.scheme,
               let host = url.host else {
             return serverURL
         }
-        return "\(scheme)://\(host)"
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = host
+        components.port = url.port
+        return components.string ?? "\(scheme)://\(host)"
     }
 
     // MARK: - Public interface
