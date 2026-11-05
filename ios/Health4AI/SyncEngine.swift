@@ -891,6 +891,10 @@ final class SyncEngine {
                 }
             } catch let syncError as SyncError {
                 if case .unauthorized = syncError { throw syncError }
+                // A 4xx thrown from the switch above lands here too. Rethrow it: retrying a
+                // request the server rejected as malformed or too large only repeats the
+                // rejection three times with 1s + 2s of backoff.
+                if case .httpError(let code) = syncError, code < 500 { throw syncError }
                 lastError = syncError
                 if attempt == maxAttempts - 1 { throw lastError }
             } catch {
