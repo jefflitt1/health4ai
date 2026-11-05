@@ -111,7 +111,8 @@ mutate "sleep appended in one request" 'static let appendChunkRows = 2000' 'stat
 mutate "empty sleep marked done"       'guard let oldest = try await source.oldestSleepRecord() else { return 0 }' 'guard let oldest = try await source.oldestSleepRecord() else { progress.sleepStagesThrough = DayKey.string(for: today, calendar: calendar); return 0 }' sleep
 mutate "workouts off ignored"          'private var mergeRecentWorkouts: Bool { saveWorkouts && !workoutsCatchUp }' 'private var mergeRecentWorkouts: Bool { !workoutsCatchUp }' sync
 mutate "workouts catch-up ignored"     'if latest.workouts && latest.workoutsCatchUp {' 'if false {' sync
-mutate "workouts appended in one request" 'try await appendInPieces(id: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)' 'try await api.append(spreadsheetId: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)' sync
+mutate "workouts appended in one request" 'try await appendInPieces(id: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh,
+                                 ids: (range: "\(SheetTabs.workouts)!H2:H", index: 7))' 'try await api.append(spreadsheetId: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)' sync
 mutate "range refusal not split"       '} catch let error where splittable(error) {' '} catch let error where false && splittable(error) {'
 mutate "split stops at whole range"    'guard days.count > 1 else { out.failedDays.append(days[0]); return }' 'out.failedDays += days; return'
 mutate "single refused day thrown"     'guard days.count > 1 else { out.failedDays.append(days[0]); return }' 'guard days.count > 1 else { throw error }'
@@ -136,5 +137,17 @@ mutate "rewrite ignores refused cols"  'refused: chunk.refusedColumns(on: $0.val
             if !plan.appends.isEmpty' 'refused: [])
             }
             if !plan.appends.isEmpty' sync
+mutate "5xx append resent blind"      '500...599 where attempt < maxRetries && replay == .safe:' '500...599 where attempt < maxRetries:'
+mutate "refused 403 forgets sheet"     'case .refused: return .fail(status: 403)' 'case .refused: return .spreadsheetMissing'
+mutate "scope 403 forgets sheet"       'case .scopeMissing: return .accessRevoked' 'case .scopeMissing: return .spreadsheetMissing'
+mutate "403 with a reason read as gone" 'if details.isEmpty, legacy.allSatisfy' 'if true, legacy.allSatisfy'
+mutate "numbers sent as text"          '&& SheetCell.isPlainDecimal(cell) ? NSDecimalNumber(string: cell) : cell' '&& false ? NSDecimalNumber(string: cell) : cell'
+mutate "partial row offset ignored"    'numeric.contains(start.column + j)' 'numeric.contains(j)'
+mutate "typed text sent as number"     '$0.allSatisfy { ("0"..."9").contains($0) }' '$0.allSatisfy { $0 != " " }'
+mutate "held values read as displayed" 'try await api.readValueColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!\(letter)2:\(letter)")' 'try await api.readColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!\(letter)2:\(letter)")' sync
+mutate "append retry resends all rows" 'pending = pending.filter { !present.contains($0[ids.index]) }' 'pending = pending.filter { _ in true }' sleep
+mutate "append 5xx not retried"        'catch let error where SheetsResponse.isServerError(error) && retries' 'catch let error where false && retries' sleep
+mutate "append retries unbounded"      'static let appendServerRetries = 2' 'static let appendServerRetries = 3' sleep
+mutate "stored keeps padding zeros"    'while out.hasSuffix("0") { out.removeLast() }' ''
 echo "survivors: $survivors"
 [ "$survivors" -eq 0 ]
