@@ -1,7 +1,7 @@
 // Consent-gated loading of the site's optional third-party scripts: PostHog, Microsoft
-// Clarity and the Meta Pixel. NOTHING from those vendors runs, and none of their cookies or
+// Clarity. NOTHING from those vendors runs, and none of their cookies or
 // storage is written, until the visitor accepts in the banner (ConsentBanner.astro). Before
-// this, Layout.astro injected all three on every production page with no consent step
+// this, Layout.astro injected the vendors on every production page with no consent step
 // (review W1, 2026-11-04).
 //
 // Plain functions over an injected window/document/storage so node:test drives them
@@ -25,7 +25,6 @@ export function readConfig(root) {
   return {
     posthog: key && host ? { key, host } : null,
     clarityId: get('clarity-id'),
-    metaPixelId: get('meta-pixel-id'),
   };
 }
 
@@ -33,7 +32,6 @@ export function configuredVendors(config) {
   return [
     config.posthog && 'PostHog',
     config.clarityId && 'Microsoft Clarity',
-    config.metaPixelId && 'Meta Pixel',
   ].filter(Boolean);
 }
 
@@ -88,12 +86,6 @@ function loadClarity(win, doc, id) {
   (function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y)})(win,doc,"clarity","script",id);
 }
 
-function loadMetaPixel(win, doc, id) {
-  !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(win,doc,'script','https://connect.facebook.net/en_US/fbevents.js');
-  win.fbq('init', id);
-  win.fbq('track', 'PageView');
-}
-
 /** Loads every configured vendor, once per page. Returns the names loaded. */
 export function loadVendors(config, win, doc) {
   if (win.__h4aVendorsLoaded) return [];
@@ -101,12 +93,11 @@ export function loadVendors(config, win, doc) {
   const loaded = [];
   if (config.posthog) { loadPostHog(win, doc, config.posthog); loaded.push('PostHog'); }
   if (config.clarityId) { loadClarity(win, doc, config.clarityId); loaded.push('Microsoft Clarity'); }
-  if (config.metaPixelId) { loadMetaPixel(win, doc, config.metaPixelId); loaded.push('Meta Pixel'); }
   return loaded;
 }
 
 // First-party storage the vendors write after consent, removed when it is withdrawn.
-const VENDOR_COOKIES = ['_fbp', '_fbc', '_clck', '_clsk'];
+const VENDOR_COOKIES = ['_clck', '_clsk'];
 const VENDOR_STORAGE_PREFIXES = ['ph_', '__ph_', '_clck', '_clsk'];
 
 /**
@@ -116,7 +107,6 @@ const VENDOR_STORAGE_PREFIXES = ['ph_', '__ph_', '_clck', '_clsk'];
 export function withdraw(win, doc, storage) {
   win.posthog?.opt_out_capturing?.();
   win.clarity?.('consent', false);
-  win.fbq?.('consent', 'revoke');
   const host = win.location.hostname;
   const domains = ['', `; domain=${host}`, `; domain=.${host.replace(/^www\./, '')}`];
   for (const name of VENDOR_COOKIES) {

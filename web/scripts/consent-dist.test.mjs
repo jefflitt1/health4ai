@@ -1,7 +1,7 @@
 // Built pages load no third-party tracker before consent (review W1, 2026-11-04). Runs on the
 // emitted HTML in dist/. Build with the vendor env vars set to check the gated path:
 //   PUBLIC_POSTHOG_PROJECT_TOKEN=phc_test PUBLIC_POSTHOG_HOST=https://us.i.posthog.com \
-//   PUBLIC_CLARITY_PROJECT_ID=clar_test PUBLIC_META_PIXEL_ID=123456 npm run build
+//   PUBLIC_CLARITY_PROJECT_ID=clar_test npm run build
 // Without them (a build with no vendors) it checks that no banner or loader is emitted at all.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -27,7 +27,7 @@ const inlineScripts = (html) => [...html.matchAll(/<script(?![^>]*\bsrc=)([^>]*)
 const TRACKER_STARTS = [
   ['PostHog', /posthog\.init\(|\/static\/array\.js/],
   ['Microsoft Clarity', /clarity\.ms\/tag\//],
-  ['Meta Pixel', /fbevents\.js|fbq\(\s*['"]init/],
+  ['Meta Pixel', /fbevents\.js|fbq\(\s*['"]init|connect\.facebook\.net/],
 ];
 
 test('the build emitted pages to check', () => {
@@ -46,7 +46,7 @@ test('no page starts a tracker in inline HTML, so nothing can run before consent
   }
 });
 
-const configured = ['PUBLIC_POSTHOG_PROJECT_TOKEN', 'PUBLIC_CLARITY_PROJECT_ID', 'PUBLIC_META_PIXEL_ID']
+const configured = ['PUBLIC_POSTHOG_PROJECT_TOKEN', 'PUBLIC_CLARITY_PROJECT_ID']
   .some((name) => process.env[name]);
 
 // Pages rendered through Layout.astro (every one has a canonical link). Files copied as-is from
@@ -74,5 +74,5 @@ test('the vendor loaders ship only inside the consent module', { skip: !configur
   const loader = bundles.find((js) => js.includes('h4a.consent'));
   assert.ok(loader, 'the consent module is bundled and referenced by the page');
   assert.match(loader, /clarity\.ms\/tag\//, 'Clarity is loaded from the consent module');
-  assert.match(loader, /fbevents\.js/, 'the Meta Pixel is loaded from the consent module');
+  assert.doesNotMatch(loader, /fbevents|fbq|facebook/, 'the Meta Pixel is not in the consent module');
 });

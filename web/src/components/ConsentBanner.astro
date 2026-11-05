@@ -5,12 +5,10 @@
 const posthogKey  = import.meta.env.PUBLIC_POSTHOG_PROJECT_TOKEN as string | undefined;
 const posthogHost = import.meta.env.PUBLIC_POSTHOG_HOST as string | undefined;
 const clarityId   = import.meta.env.PUBLIC_CLARITY_PROJECT_ID as string | undefined;
-const metaPixelId = import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined;
 
 const vendors = [
   posthogKey && posthogHost && 'PostHog (product analytics)',
   clarityId && 'Microsoft Clarity (session recordings and heatmaps)',
-  metaPixelId && 'the Meta Pixel (reports page visits to Meta for ad measurement)',
 ].filter(Boolean) as string[];
 const list = vendors.length < 2
   ? vendors.join('')
@@ -23,7 +21,6 @@ const list = vendors.length < 2
     data-posthog-key={posthogKey && posthogHost ? posthogKey : undefined}
     data-posthog-host={posthogKey && posthogHost ? posthogHost : undefined}
     data-clarity-id={clarityId || undefined}
-    data-meta-pixel-id={metaPixelId || undefined}
   >
     <section class="consent-banner" data-consent-banner role="region" aria-label="Cookie choice" hidden>
       <p>

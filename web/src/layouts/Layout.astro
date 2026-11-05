@@ -23,7 +23,7 @@ const path = Astro.url.pathname;
 const canonicalUrl = Astro.props.canonicalUrl
   ?? `https://health4.ai${path.endsWith('/') ? path : `${path}/`}`;
 
-// PostHog, Microsoft Clarity and the Meta Pixel load only after the visitor accepts in
+// PostHog and Microsoft Clarity load only after the visitor accepts in
 // ConsentBanner (src/lib/consent.mjs), and only on production hosts.
 ---
 <!doctype html>
@@ -102,7 +102,7 @@ const canonicalUrl = Astro.props.canonicalUrl
     <!-- CSP -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline' https://us.i.posthog.com https://us-assets.i.posthog.com https://www.clarity.ms https://connect.facebook.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://donnmhbwhpjlmpnwgdqr.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://www.clarity.ms https://*.clarity.ms https://r.clarity.ms https://www.facebook.com https://connect.facebook.net; img-src 'self' data: https://www.facebook.com; font-src 'self';"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' https://us.i.posthog.com https://us-assets.i.posthog.com https://www.clarity.ms; style-src 'self' 'unsafe-inline'; connect-src 'self' https://donnmhbwhpjlmpnwgdqr.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://www.clarity.ms https://*.clarity.ms https://r.clarity.ms; img-src 'self' data:; font-src 'self';"
     />
 
   </head>

@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-const lastUpdated = '2026-10-20';
+const lastUpdated = '2026-11-04';
 ---
 <style>
   /* Anyone linking directly to #testflight (historical TestFlight section)
@@ -28,7 +28,7 @@ const lastUpdated = '2026-10-20';
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
         <li><strong class="text-neutral-200">Health data: we do not collect it.</strong> HealthKit metrics you authorize flow directly from your device to a spreadsheet in your own Google Drive (if you choose Save to Google Sheets; see section 4) or to a Supabase project you create and own. health4.ai never receives, stores, or has access to your health data. A cloud AI provider you separately connect to may process data you choose to send to it.</li>
         <li><strong class="text-neutral-200">Account data</strong>: before launch, we collected email addresses from pre-launch waitlist sign-ups to notify people when the app shipped and, for those who opted in, to send a TestFlight beta invitation. The app is now live on the App Store and we no longer collect waitlist emails.</li>
-        <li><strong class="text-neutral-200">Usage data</strong>: anonymous page views and feature interaction events via PostHog (US-hosted). PostHog never receives health data. We do not use advertising cookies or trackers.</li>
+        <li><strong class="text-neutral-200">Usage data</strong>: if you accept the cookie banner, page views and feature interaction events via PostHog (product analytics, US-hosted, which may also record sessions with form inputs masked), and session recordings and heatmaps via Microsoft Clarity. Neither receives health data. We do not use advertising cookies or trackers.</li>
       </ul>
     </section>
 
@@ -96,7 +96,10 @@ const lastUpdated = '2026-10-20';
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">8. Analytics & cookies</h2>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        We use PostHog (US-hosted) for product analytics. PostHog receives page views and feature interaction events, and no health data. We do not use advertising cookies or trackers.
+        We use two services to understand how the website is used. PostHog (US-hosted) provides product analytics: it receives page views and feature interaction events, and may record sessions with form inputs masked. Microsoft Clarity provides session recordings and heatmaps: it records how you move, click and scroll on our pages. Neither receives health data, because the website never has it.
+      </p>
+      <p class="text-neutral-400 text-sm leading-relaxed mt-3">
+        Both load only after you accept the cookie banner. Until you accept, neither runs and neither sets cookies or browser storage on your device. You can change your mind at any time with the Cookie choices button on any page. Declining after you accepted stops both, removes the cookies and storage they set on this site, and reloads the page. Microsoft may also set cookies on its own domains, which this site cannot remove; see Microsoft's privacy statement. We do not use advertising cookies or trackers.
       </p>
     </section>
 

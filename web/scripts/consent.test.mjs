@@ -32,7 +32,6 @@ const ALL = {
   'data-posthog-key': 'phc_test',
   'data-posthog-host': 'https://us.i.posthog.com',
   'data-clarity-id': 'clar_test',
-  'data-meta-pixel-id': '123456',
 };
 
 function setup({ host = 'health4.ai', attrs = ALL, storage = fakeStorage() } = {}) {
@@ -67,7 +66,6 @@ const saved = (choice, v = CONSENT_VERSION) => fakeStorage({ [CONSENT_KEY]: JSON
 const VENDOR_SCRIPTS = [
   'https://us.i.posthog.com/static/array.js',
   'https://www.clarity.ms/tag/clar_test',
-  'https://connect.facebook.net/en_US/fbevents.js',
 ];
 
 test('first visit: the banner asks and nothing from any vendor loads', () => {
@@ -93,9 +91,9 @@ test('accept loads every configured vendor once and remembers the choice', () =>
   assert.equal(t.ui.change.hidden, false);
   assert.equal(readChoice(t.storage), 'granted');
   assert.deepEqual(t.win.posthog._i[0].slice(0, 1), ['phc_test'], 'PostHog initialised with the project key');
-  assert.deepEqual(t.win.fbq.queue.map((a) => [...a]), [['init', '123456'], ['track', 'PageView']]);
+  assert.equal(t.win.fbq, undefined, 'the Meta Pixel is never loaded');
   t.ui.accept.click();
-  assert.equal(t.loaded().length, 3, 'a second accept does not load anything twice');
+  assert.equal(t.loaded().length, 2, 'a second accept does not load anything twice');
 });
 
 test('a saved accept loads on the next page without asking', () => {
@@ -171,17 +169,27 @@ test('withdrawing after accept stops each vendor, removes their storage and relo
   storage.setItem('unrelated', 'kept');
   const t = setup({ storage });
   t.start();
-  assert.equal(t.loaded().length, 3);
+  assert.equal(t.loaded().length, 2);
   t.ui.change.click();
   assert.equal(t.ui.banner.hidden, false, 'Cookie choices reopens the banner');
   t.ui.decline.click();
   assert.ok(t.win.posthog.some((call) => call[0] === 'opt_out_capturing'), 'PostHog told to stop capturing');
   assert.deepEqual([...t.win.clarity.q.at(-1)], ['consent', false], 'Clarity consent withdrawn');
-  assert.deepEqual([...t.win.fbq.queue.at(-1)], ['consent', 'revoke'], 'Meta Pixel consent revoked');
-  for (const name of ['_fbp', '_clck', '_clsk']) {
+  for (const name of ['_clck', '_clsk']) {
     assert.ok(t.doc.cookies.some((c) => c.startsWith(`${name}=;`) && c.includes('expires=Thu, 01 Jan 1970')), `${name} cookie expired`);
   }
   assert.deepEqual([...storage.map.keys()].sort(), [CONSENT_KEY, 'unrelated'].sort(), 'vendor storage removed, choice kept');
   assert.equal(readChoice(storage), 'denied');
   assert.equal(t.win.reloads, 1, 'reloaded so no vendor code keeps running');
+});
+
+test('the Meta Pixel is not supported: a stray pixel id loads nothing and asks about nothing', () => {
+  const t = setup({ attrs: { ...ALL, 'data-meta-pixel-id': '123456' } });
+  t.start();
+  t.ui.accept.click();
+  assert.deepEqual(t.loaded(), VENDOR_SCRIPTS, 'only PostHog and Clarity load');
+  assert.equal(t.win.fbq, undefined);
+  assert.ok(!t.loaded().some((src) => src.includes('facebook')));
+  const only = setup({ attrs: { 'data-meta-pixel-id': '123456' } });
+  assert.equal(only.start().state, 'no-vendors', 'a pixel id alone is not a vendor');
 });
