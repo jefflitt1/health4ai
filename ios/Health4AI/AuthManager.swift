@@ -114,13 +114,19 @@ final class AuthManager: ObservableObject {
     // MARK: - Supabase base URL (extracted from endpoint)
 
     /// The Supabase project URL is derived from the ingest endpoint by stripping the path.
+    /// Keeps the port: a self-hosted project on a non-default port posts samples there
+    /// (resolvedEndpointURL keeps it), so signing in and refreshing must go there too.
     private func supabaseBaseURL(from serverURL: String) -> String {
         guard let url = URL(string: serverURL),
               let scheme = url.scheme,
               let host = url.host else {
             return serverURL
         }
-        return "\(scheme)://\(host)"
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = host
+        components.port = url.port
+        return components.string ?? "\(scheme)://\(host)"
     }
 
     // MARK: - Public interface
@@ -249,10 +255,26 @@ final class AuthManager: ObservableObject {
         return Date() >= expiry.addingTimeInterval(-60)
     }
 
+    /// The refresh in flight, shared by every caller that finds the token expired meanwhile.
+    private var refreshTask: Task<Void, Error>?
+
     /// Returns a valid access token, refreshing it if necessary.
+    ///
+    /// One refresh at a time. At launch the foreground sync and the merged-hours check (and the
+    /// history import) each ask for a token within moments, and after an hour away all of them
+    /// find it expired. Supabase rotates refresh tokens, so parallel refreshes spend the same
+    /// token twice, which a project with reuse detection treats as theft and answers by
+    /// revoking the session. Callers that arrive mid-refresh wait for that one.
     func validToken(serverURL: String) async throws -> String {
         if isTokenExpired {
-            try await refreshAccessToken(serverURL: serverURL)
+            if let inFlight = refreshTask {
+                try await inFlight.value
+            } else {
+                let task = Task { try await self.refreshAccessToken(serverURL: serverURL) }
+                refreshTask = task
+                defer { refreshTask = nil }
+                try await task.value
+            }
         }
         guard let token = currentToken else {
             throw AuthManagerError.tokenMissing
