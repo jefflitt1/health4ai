@@ -503,11 +503,11 @@ enum SheetPayload {
     /// The `values` array sent for `rows` written at `range`. A cell in a numeric column of a data
     /// row goes as a JSON number. Sheets parses a USER_ENTERED string in the spreadsheet's
     /// locale, so "7.50" was text in a German sheet and "1.5" could become 1 May; a JSON number
-    /// is stored as that number in every locale (review I2, 2026-11-04). Header rows (row 1),
-    /// blanks and text a person left in a numeric column (kept by a rewrite) stay strings.
+    /// is stored as that number in every locale (review I2, 2026-11-04). Header labels, blanks
+    /// and text a person left in a numeric column (kept by a rewrite) are not plain decimals, so
+    /// they stay strings.
     static func values(range: String, rows: [[String]]) -> [[Any]] {
-        guard let start = A1Start(range), let numeric = SheetSchema.numericColumns[start.tab],
-              (start.row ?? 2) >= 2 else { return rows }
+        guard let start = A1Start(range), let numeric = SheetSchema.numericColumns[start.tab] else { return rows }
         return rows.map { row in
             row.enumerated().map { j, cell -> Any in
                 numeric.contains(start.column + j) && SheetCell.isPlainDecimal(cell) ? NSDecimalNumber(string: cell) : cell
