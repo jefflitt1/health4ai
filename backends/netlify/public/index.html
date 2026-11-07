@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>health4ai setup</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1d1d1f; --muted: #6e6e73; --bg: #fff; --card: #f5f5f7; --accent: #ff2d78; --danger: #c4002b; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #f5f5f7; --muted: #a1a1a6; --bg: #000; --card: #1c1c1e; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; margin: 32px 0 8px; }
+  p.lede, .muted { color: var(--muted); }
+  section.card { background: var(--card); border-radius: 12px; padding: 16px; margin-top: 12px; }
+  label { display: block; font-weight: 600; margin-bottom: 6px; }
+  input { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--muted); background: var(--bg); color: var(--fg); font: inherit; }
+  button { margin-top: 10px; padding: 9px 14px; border-radius: 8px; border: 0; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--fg); border: 1px solid var(--muted); }
+  button.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); margin: 0; padding: 4px 10px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row code { flex: 1; overflow-wrap: anywhere; }
+  code { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); padding: 6px 8px; border-radius: 6px; display: inline-block; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); }
+  .error { color: var(--danger); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>health4ai setup</h1>
+  <p class="lede">Issue Device keys for this Deployment and copy what the iOS app and MCP server need.</p>
+
+  <section class="card" id="unlock">
+    <label for="secret">Setup secret</label>
+    <input id="secret" type="password" autocomplete="current-password">
+    <button id="unlock-btn">Unlock</button>
+    <p id="unlock-error" class="error" hidden></p>
+  </section>
+
+  <div id="panel" hidden>
+    <h2>For the iOS app</h2>
+    <section class="card">
+      <label>Site URL</label>
+      <div class="row"><code id="site-url"></code><button class="secondary" data-copy="site-url">Copy</button></div>
+    </section>
+
+    <h2>For the MCP server (<code>HEALTHKIT_USER_ID</code>)</h2>
+    <section class="card">
+      <div class="row"><code id="person-id"></code><button class="secondary" data-copy="person-id">Copy</button></div>
+      <p class="muted">The database connection string (<code>DATABASE_URL</code>) is not shown here. Copy it from the Netlify dashboard: Data &amp; Storage → Database.</p>
+    </section>
+
+    <h2>Issue a Device key</h2>
+    <section class="card">
+      <label for="label">Label</label>
+      <input id="label" placeholder="e.g. My iPhone" maxlength="100">
+      <button id="issue-btn">Issue key</button>
+      <div id="new-key" hidden>
+        <p><strong>Copy this key now.</strong> It is shown once and cannot be recovered.</p>
+        <div class="row"><code id="new-key-value"></code><button class="secondary" data-copy="new-key-value">Copy</button></div>
+      </div>
+    </section>
+
+    <h2>Device keys</h2>
+    <section class="card">
+      <table>
+        <thead><tr><th>Label</th><th>Key</th><th>Last used</th><th></th></tr></thead>
+        <tbody id="keys"></tbody>
+      </table>
+      <p id="no-keys" class="muted" hidden>No keys yet.</p>
+    </section>
+    <p id="panel-error" class="error" hidden></p>
+  </div>
+</main>
+<script>
+  // The secret lives only in this variable: never stored, so closing the tab locks the page.
+  let secret = ''
+  const $ = (id) => document.getElementById(id)
+
+  async function api(path, init = {}) {
+    // A new action clears the last one's error; a failure shows its own again.
+    $('panel-error').hidden = true
+    const res = await fetch(path, { ...init, headers: { 'X-Setup-Secret': secret, 'Content-Type': 'application/json' } })
+    if (res.status === 204) return null
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(body.error || (res.status === 429 ? 'Too many attempts. Wait a minute and try again.' : `Request failed (${res.status})`))
+    return body
+  }
+
+  function showError(id, err) { $(id).textContent = err.message; $(id).hidden = false }
+
+  function when(ts) { return ts ? new Date(ts).toLocaleString() : 'never' }
+
+  async function loadKeys() {
+    const { keys } = await api('/api/setup/keys')
+    const tbody = $('keys')
+    tbody.replaceChildren()
+    for (const k of keys) {
+      const tr = document.createElement('tr')
+      for (const text of [k.label || '(no label)', k.key_prefix + '…', k.revoked_at ? 'revoked' : when(k.last_used_at)]) {
+        const td = document.createElement('td'); td.textContent = text; tr.append(td)
+      }
+      const td = document.createElement('td')
+      if (!k.revoked_at) {
+        const b = document.createElement('button')
+        b.className = 'danger'; b.textContent = 'Revoke'
+        b.onclick = async () => {
+          if (!confirm(`Revoke "${k.label || k.key_prefix}"? That device stops syncing until it gets a new key.`)) return
+          try { await api(`/api/setup/keys/${k.id}/revoke`, { method: 'POST' }); await loadKeys() } catch (e) { showError('panel-error', e) }
+        }
+        td.append(b)
+      }
+      tr.append(td)
+      tbody.append(tr)
+    }
+    $('no-keys').hidden = keys.length > 0
+  }
+
+  $('unlock-btn').onclick = async () => {
+    secret = $('secret').value
+    $('unlock-error').hidden = true
+    try {
+      const { person_id } = await api('/api/setup')
+      $('person-id').textContent = person_id
+      $('site-url').textContent = location.origin
+      await loadKeys()
+      $('unlock').hidden = true
+      $('panel').hidden = false
+    } catch (e) { secret = ''; showError('unlock-error', e) }
+  }
+  $('secret').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('unlock-btn').click() })
+
+  $('issue-btn').onclick = async () => {
+    try {
+      const issued = await api('/api/setup/keys', { method: 'POST', body: JSON.stringify({ label: $('label').value }) })
+      $('new-key-value').textContent = issued.key
+      $('new-key').hidden = false
+      $('label').value = ''
+      await loadKeys()
+    } catch (e) { showError('panel-error', e) }
+  }
+
+  document.addEventListener('click', async (e) => {
+    const id = e.target?.dataset?.copy
+    if (!id) return
+    await navigator.clipboard.writeText($(id).textContent)
+    e.target.textContent = 'Copied'
+    setTimeout(() => { e.target.textContent = 'Copy' }, 1500)
+  })
+</script>
+</body>
+</html>

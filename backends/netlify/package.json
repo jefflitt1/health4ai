@@ -1,0 +1,26 @@
+{
+  "name": "health4ai-backend-netlify",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.17.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "setup-secret": "node scripts/setup-secret.ts"
+  },
+  "dependencies": {
+    "@netlify/database": "2.0.1",
+    "@netlify/functions": "6.0.2"
+  },
+  "devDependencies": {
+    "@netlify/database-dev": "1.0.1",
+    "@types/node": "^24.19.2",
+    "@types/pg": "8.23.1",
+    "pg": "8.23.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}
