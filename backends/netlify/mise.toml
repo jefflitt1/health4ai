@@ -1,0 +1,6 @@
+[tools]
+node = "24.22.2"
+pnpm = "12.17.0"
+# mise refuses a release without npm provenance once an earlier one had it, and
+# @netlify/serverless-functions-api has published without it since 1.5.2 (2023).
+"npm:netlify-cli" = { version = "27.16.1", trust_policy_excludes = ["@netlify/serverless-functions-api"] }
