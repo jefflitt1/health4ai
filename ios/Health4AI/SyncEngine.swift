@@ -925,12 +925,46 @@ final class SyncEngine {
     /// already in flight, which would write its own anchor back immediately afterwards and
     /// quietly defeat the reset.
     func resetAnchors() {
-        Task {
-            await Self.serialized {
-                self.syncAnchors.removeAll()
-                UserDefaults.standard.removeObject(forKey: Self.anchorsKey)
-            }
+        Task { await resetAnchorsNow() }
+    }
+
+    /// `resetAnchors`, finished before it returns, for a caller that starts syncing next.
+    func resetAnchorsNow() async {
+        await Self.serialized {
+            self.syncAnchors.removeAll()
+            UserDefaults.standard.removeObject(forKey: Self.anchorsKey)
         }
+    }
+
+    /// Called after a database connection succeeds and before syncing starts. If the anchors
+    /// and import progress were built against another database, restarts them so this one gets
+    /// the whole history (SyncPosition), then records `endpoint` as their owner.
+    ///
+    /// On the main actor like every other BulkExportManager caller. An import still running for
+    /// the old database is awaited to a stop first: startBackfill right after a bare
+    /// cancelBackfill would run two imports at once (see cancelAndWait).
+    @MainActor
+    func adoptSyncPosition(endpoint: String, isSupabase: Bool) async {
+        let defaults = UserDefaults.standard
+        if SyncPosition.needsReset(recorded: defaults.string(forKey: SyncPosition.endpointKey),
+                                   connecting: endpoint, connectingIsSupabase: isSupabase) {
+            await BulkExportManager.shared.cancelAndWait()
+            await resetAnchorsNow()
+            BulkExportManager.shared.resetBackfill()
+            syncState.resetSyncProgress()
+            // The old server's merged-hours verdict says nothing about this one; the next sync
+            // asks it afresh.
+            syncState.serverLacksMergedHours = false
+        }
+        defaults.set(endpoint, forKey: SyncPosition.endpointKey)
+    }
+
+    /// An install from before SyncPosition that is still signed in records the database it
+    /// syncs to, so a later sign-in to a different Supabase project is recognised as one.
+    func recordSyncPositionIfUnset(endpoint: String) {
+        let defaults = UserDefaults.standard
+        guard defaults.string(forKey: SyncPosition.endpointKey) == nil, !endpoint.isEmpty else { return }
+        defaults.set(endpoint, forKey: SyncPosition.endpointKey)
     }
 }
 

@@ -31,7 +31,12 @@ struct DestinationPickerSection: View {
 
     private var selection: Binding<ConnectionType> {
         Binding(
-            get: { syncState.connectionType == .googleSheets ? .googleSheets : .supabase },
+            get: {
+                switch syncState.connectionType {
+                case .googleSheets, .netlify: syncState.connectionType
+                default: .supabase
+                }
+            },
             set: { choose($0) }
         )
     }
@@ -40,7 +45,8 @@ struct DestinationPickerSection: View {
         Section {
             // Two segments truncate at accessibility text sizes on a 375pt screen; a menu
             // picker does not.
-            if dynamicTypeSize.isAccessibilitySize {
+            // Three segments truncate sooner still, so the menu takes over above Large.
+            if dynamicTypeSize.isAccessibilitySize || dynamicTypeSize > .large {
                 Picker("Destination", selection: selection) { options }
                     .pickerStyle(.menu)
                     .labelsHidden()
@@ -51,9 +57,14 @@ struct DestinationPickerSection: View {
         } header: {
             Text("Where your data goes")
         } footer: {
-            Text(syncState.connectionType == .googleSheets
-                 ? "Easiest. A spreadsheet in your own Google Drive with one row per day. Any AI that can read Google Drive can use it."
-                 : "For technical users. Every reading, into a Postgres database you run.")
+            switch syncState.connectionType {
+            case .googleSheets:
+                Text("Easiest. A spreadsheet in your own Google Drive with one row per day. Any AI that can read Google Drive can use it.")
+            case .netlify:
+                Text("For technical users. Every reading, into a database on a Netlify site you own.")
+            default:
+                Text("For technical users. Every reading, into a Postgres database you run.")
+            }
         }
         .confirmationDialog("Switch destination?", isPresented: Binding(
             get: { pending != nil }, set: { if !$0 { pending = nil } }
@@ -73,6 +84,7 @@ struct DestinationPickerSection: View {
     @ViewBuilder private var options: some View {
         Text("Google Sheet").tag(ConnectionType.googleSheets)
         Text("Your database").tag(ConnectionType.supabase)
+        Text("Netlify").tag(ConnectionType.netlify)
     }
 
     private func choose(_ type: ConnectionType) {

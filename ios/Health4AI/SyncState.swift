@@ -6,6 +6,9 @@ import Combine
 enum ConnectionType: String, CaseIterable {
     case supabase = "supabase"
     case rest     = "rest"     // any REST endpoint
+    /// The person's own Netlify site running backends/netlify: same ingest contract as the
+    /// Supabase function, authenticated by a Device key the site issues instead of a sign-in.
+    case netlify  = "netlify"
     #if H4A_SHEETS
     /// Daily summaries into the person's own Google Sheet (SheetsSink). Exclusive with the
     /// database path by decision (Jeff 2026-09-28): a person is on one destination or the other.
@@ -19,6 +22,7 @@ enum ConnectionType: String, CaseIterable {
         switch self {
         case .supabase:     return "Supabase"
         case .rest:         return "REST / Webhook"
+        case .netlify:      return "Your Netlify site"
         #if H4A_SHEETS
         case .googleSheets: return "Google Sheets"
         #endif
@@ -196,6 +200,14 @@ final class SyncState: ObservableObject {
         }
     }
 
+    /// Netlify: the site's base URL, e.g. https://health.example.com
+    @Published var netlifySiteURL: String {
+        didSet {
+            UserDefaults.standard.set(netlifySiteURL, forKey: Keys.netlifySiteURL)
+            if netlifySiteURL != oldValue { serverLacksMergedHours = false }
+        }
+    }
+
     /// Generic REST: full endpoint URL
     @Published var serverURL: String {
         didSet {
@@ -228,6 +240,25 @@ final class SyncState: ObservableObject {
 
     // MARK: - Computed endpoint
 
+    /// The Netlify site's address with a scheme and no trailing slash ("" when none is set).
+    /// Shared by the ingest endpoint and the Ask Any AI sheet's link to the site, so the two
+    /// never disagree about which site they mean.
+    var netlifySiteBaseURL: String {
+        var base = netlifySiteURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if base.isEmpty { return "" }
+        // Netlify shows site addresses without a scheme ("my-site.netlify.app"); assume https
+        // rather than leaving Connect disabled with no explanation. A Netlify site is always
+        // served over https, so a typed http:// or HTTPS:// means the same site.
+        if let separator = base.range(of: "://") {
+            let scheme = base[..<separator.lowerBound].lowercased()
+            base = (scheme == "http" ? "https" : scheme) + base[separator.lowerBound...]
+        } else {
+            base = "https://" + base
+        }
+        return base
+    }
+
     var resolvedEndpointURL: String {
         switch connectionType {
         case .supabase:
@@ -235,6 +266,9 @@ final class SyncState: ObservableObject {
             return base.isEmpty ? serverURL : "\(base)/functions/v1/healthkit-ingest"
         case .rest:
             return serverURL
+        case .netlify:
+            let base = netlifySiteBaseURL
+            return base.isEmpty ? "" : "\(base)/api/ingest"
         #if H4A_SHEETS
         case .googleSheets:
             // No sample endpoint in Sheets mode: SyncEngine routes to SheetsSink before any
@@ -301,6 +335,7 @@ final class SyncState: ObservableObject {
         }
         let savedProjectURL = defaults.string(forKey: Keys.supabaseProjectURL) ?? ""
         self.supabaseProjectURL = savedProjectURL
+        self.netlifySiteURL = defaults.string(forKey: Keys.netlifySiteURL) ?? ""
 
         self.serverURL = defaults.string(forKey: Keys.serverURL) ?? ""
         let authRaw = defaults.string(forKey: Keys.restAuthType) ?? RestAuthType.bearer.rawValue
@@ -502,10 +537,22 @@ final class SyncState: ObservableObject {
         // key, so didSet writing it again is harmless.
         connectionType = Self.defaultConnectionType(defaults)
         supabaseProjectURL = ""
+        netlifySiteURL = ""
         serverURL = ""
         restAuthType = .bearer
         restApiKeyHeader = "X-API-Key"
         importHorizon = .lastYear
+        resetSyncProgress()
+        isAuthenticated = false
+        userEmail = nil
+        serverLacksMergedHours = false
+        backgroundDeliveryFailedTypes = []
+        emptyExpectedMetricNames = []
+    }
+
+    /// What this device has sent and when, which describes one database only. Cleared with the
+    /// sync position when the app connects to a different database (SyncEngine.adoptSyncPosition).
+    func resetSyncProgress() {
         lastSyncDate = nil
         lastSyncRecordCount = 0
         backfillCompleted = false
@@ -517,11 +564,6 @@ final class SyncState: ObservableObject {
         backfillCurrentDate = nil
         backfillLastBatchAt = nil
         lifetimeSyncedRecords = 0
-        isAuthenticated = false
-        userEmail = nil
-        serverLacksMergedHours = false
-        backgroundDeliveryFailedTypes = []
-        emptyExpectedMetricNames = []
         importFailedMetricNames = []
     }
 
@@ -603,6 +645,7 @@ final class SyncState: ObservableObject {
 private enum Keys {
     static let connectionType       = "hkb.connectionType"
     static let supabaseProjectURL   = "hkb.supabaseProjectURL"
+    static let netlifySiteURL       = "hkb.netlifySiteURL"
     static let serverURL            = "hkb.serverURL"
     static let restAuthType         = "hkb.restAuthType"
     static let restApiKeyHeader     = "hkb.restApiKeyHeader"
