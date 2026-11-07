@@ -858,9 +858,10 @@ final class BulkExportManager {
         UserDefaults.standard.removeObject(forKey: "hkb.backfillCompleted")
         UserDefaults.standard.removeObject(forKey: "hkb.backfillProgress")
         UserDefaults.standard.removeObject(forKey: Self.backfillInProgressKey)
-        // Clears the stored list only; the published names are the caller's. Both callers are safe
-        // today: ConnectionView erases SyncState right after, and Re-run Import only offers this
-        // once backfillCompleted, which runBackfill latches only with the failed list empty.
+        // Clears the stored list only; the published names are the caller's. Every caller is safe
+        // today: ConnectionView erases SyncState right after, SyncEngine.adoptSyncPosition clears
+        // them with SyncState.resetSyncProgress, and Re-run Import only offers this once
+        // backfillCompleted, which runBackfill latches only with the failed list empty.
         UserDefaults.standard.removeObject(forKey: Self.failedImportTypesKey)
         // Clear all per-type chunk checkpoints and window ends, and the persisted floor so
         // the fresh run computes one for whatever the horizon is now.
