@@ -61,6 +61,7 @@ final class HealthKitManager {
             // Vitals
             .heartRate, .restingHeartRate, .heartRateVariabilitySDNN,
             .walkingHeartRateAverage, .oxygenSaturation, .bodyTemperature,
+            .appleSleepingWristTemperature,
             .bloodPressureSystolic, .bloodPressureDiastolic, .respiratoryRate,
             .peripheralPerfusionIndex,
             // Results
@@ -496,6 +497,7 @@ final class HealthKitManager {
             HKQuantityTypeIdentifier.bloodGlucose.rawValue:               HKUnit(from: "mg/dL"),
             HKQuantityTypeIdentifier.bodyTemperature.rawValue:            .degreeCelsius(),
             HKQuantityTypeIdentifier.basalBodyTemperature.rawValue:       .degreeCelsius(),
+            HKQuantityTypeIdentifier.appleSleepingWristTemperature.rawValue: .degreeCelsius(),
             HKQuantityTypeIdentifier.flightsClimbed.rawValue:             .count(),
             HKQuantityTypeIdentifier.pushCount.rawValue:                  .count(),
             HKQuantityTypeIdentifier.vo2Max.rawValue:                     HKUnit(from: "ml/kg·min"),
