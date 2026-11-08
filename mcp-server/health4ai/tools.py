@@ -788,6 +788,7 @@ def get_sleep(days: int = 7) -> dict:
     One source per night (see _sleep_stage_rows_by_night): Oura > Apple Watch > Whoop >
     Garmin > Withings > whichever other source has the most stage records that night.
     """
+    days = _clamp_days(days)
     uid = current_user_id.get()
     since = _since(days)
     rows = _fetch_metrics(SLEEP, uid, since, limit=1000)
@@ -1060,6 +1061,8 @@ def get_workouts(days: int = 30, limit: int = 20) -> dict:
     """
     Recent workouts with type, duration, distance, and calories.
     """
+    days = _clamp_days(days)
+    limit = _clamp_limit(limit)
     uid = current_user_id.get()
     since = _since(days)
     rows = _fetch_metrics(WORKOUT, uid, since, limit=limit)
@@ -1104,7 +1107,8 @@ def get_daily_snapshot(date: str = "") -> dict:
         date = _today_local().isoformat()
 
     try:
-        datetime.strptime(date, "%Y-%m-%d")
+        # Zero-padded, because the tier check below compares dates as strings (2026-9-1 → 2026-09-01).
+        date = datetime.strptime(date, "%Y-%m-%d").date().isoformat()
     except ValueError:
         return {"error": f"Invalid date format '{date}' — expected YYYY-MM-DD"}
 
@@ -1577,6 +1581,11 @@ def compare_periods(
         err = _valid(s, e)
         if err:
             return {"metric_type": metric_type, "error": err}
+    # strptime also accepts unpadded dates (2026-9-1); everything below compares dates as strings
+    # and parses them with date.fromisoformat, so pass them on zero-padded.
+    period_a_start, period_a_end, period_b_start, period_b_end = (
+        datetime.strptime(d, "%Y-%m-%d").date().isoformat()
+        for d in (period_a_start, period_a_end, period_b_start, period_b_end))
 
     def _period_stats(start: str, end: str) -> dict:
         pts, unit = _single_unit(_daily_series_for_range(metric_type, uid, start, end))
