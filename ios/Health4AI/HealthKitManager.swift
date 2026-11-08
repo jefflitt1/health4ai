@@ -115,7 +115,9 @@ final class HealthKitManager {
 
         if #available(iOS 18.0, *) {
             let ios18Identifiers: [HKQuantityTypeIdentifier] = [
-                .estimatedWorkoutEffortScore
+                .estimatedWorkoutEffortScore,
+                // Apple Watch Series 9+/Ultra 2 with sleep apnea notifications (#44).
+                .appleSleepingBreathingDisturbances
             ]
             for identifier in ios18Identifiers {
                 if let type = HKQuantityType.quantityType(forIdentifier: identifier) {
@@ -473,7 +475,7 @@ final class HealthKitManager {
 
     /// Preferred unit per quantity identifier. Every dietary type is listed explicitly:
     /// leaving them to the fallback is what put nutrition into kilograms.
-    private static let unitMap: [String: HKUnit] = [
+    static let unitMap: [String: HKUnit] = [
             HKQuantityTypeIdentifier.stepCount.rawValue:                  .count(),
             HKQuantityTypeIdentifier.distanceWalkingRunning.rawValue:     .meter(),
             HKQuantityTypeIdentifier.distanceCycling.rawValue:            .meter(),
@@ -498,6 +500,9 @@ final class HealthKitManager {
             HKQuantityTypeIdentifier.bodyTemperature.rawValue:            .degreeCelsius(),
             HKQuantityTypeIdentifier.basalBodyTemperature.rawValue:       .degreeCelsius(),
             HKQuantityTypeIdentifier.appleSleepingWristTemperature.rawValue: .degreeCelsius(),
+            // iOS 18+ type keyed by its raw string: naming the symbol here would need an
+            // availability guard the static map cannot have. Unit per HKTypeIdentifiers.h.
+            "HKQuantityTypeIdentifierAppleSleepingBreathingDisturbances": .count(),
             HKQuantityTypeIdentifier.flightsClimbed.rawValue:             .count(),
             HKQuantityTypeIdentifier.pushCount.rawValue:                  .count(),
             HKQuantityTypeIdentifier.vo2Max.rawValue:                     HKUnit(from: "ml/kg·min"),
