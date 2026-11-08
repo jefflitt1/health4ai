@@ -48,7 +48,8 @@ The off-device tests compile `SheetsLogic.swift` with `-D H4A_SHEETS`: `ios/scri
 
 `.github/workflows/testflight.yml` archives Release with plain `xcodebuild archive`; it reads the committed
 setting, so it also builds WITH Sheets, and runs `ci_post_xcodebuild.sh` on the archive before upload, so a
-no-Sheets archive fails there too. Debug and Release are now identical for Sheets.
+no-Sheets archive fails there too. Debug and Release are now identical for Sheets. That workflow cannot build the
+app today (runner Xcode 16.4 lacks the iOS 27 SDK); Xcode Cloud is the live path, see `docs/GITHUB-TESTFLIGHT.md`.
 
 ## Screenshots and demo video
 
