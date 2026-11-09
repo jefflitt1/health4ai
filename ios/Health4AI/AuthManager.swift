@@ -211,6 +211,7 @@ final class AuthManager: ObservableObject {
         }
 
         let anonKey = try requireAnonKey()
+        let generation = signOutGeneration
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -226,6 +227,9 @@ final class AuthManager: ObservableObject {
 
         let decoder = JSONDecoder()
         let authResponse = try decoder.decode(AuthResponse.self, from: data)
+        // Signed out (or erased) while the request was in flight: saving now would put the session back
+        // after the person removed it (review 2026-11-09).
+        guard generation == signOutGeneration else { throw AuthManagerError.tokenMissing }
         try saveToKeychain(key: Self.accessTokenKey, value: authResponse.accessToken)
         try saveToKeychain(key: Self.refreshTokenKey, value: authResponse.refreshToken)
         let expiry = Date().addingTimeInterval(TimeInterval(authResponse.expiresIn))
@@ -234,7 +238,11 @@ final class AuthManager: ObservableObject {
 
     // MARK: - Sign out
 
+    /// Bumped by every sign-out, so a token refresh already in flight does not save its tokens afterwards.
+    private var signOutGeneration = 0
+
     func signOut() {
+        signOutGeneration += 1
         deleteFromKeychain(key: Self.accessTokenKey)
         deleteFromKeychain(key: Self.refreshTokenKey)
         deleteFromKeychain(key: Self.userEmailKey)
