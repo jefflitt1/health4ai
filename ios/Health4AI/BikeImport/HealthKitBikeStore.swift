@@ -72,7 +72,9 @@ final class HealthKitBikeStore: BikeWorkoutStore {
         let builder = HKWorkoutBuilder(healthStore: store, configuration: config, device: device)
         let withHR = plan.writeHeartRate && status(heartRate) == .authorized
 
-        try await BikeSaveConfirmation.run(plan: plan, collect: {
+        try await BikeSaveConfirmation.run(plan: plan, clearOrphans: {
+            try await self.deleteOrphanSamples(rideID: plan.rideID)
+        }, collect: {
             try await builder.beginCollection(at: plan.start)
             try await builder.addMetadata([
                 HKMetadataKeyIndoorWorkout: true,
@@ -84,8 +86,11 @@ final class HealthKitBikeStore: BikeWorkoutStore {
             for (i, b) in plan.buckets.enumerated() {
                 let s = plan.start.addingTimeInterval(TimeInterval(b.startOffset))
                 let e = plan.start.addingTimeInterval(TimeInterval(b.endOffset))
+                // Each sample carries the ride's id, so leftovers from a failed save can be found and
+                // deleted by ride, never by time window (see deleteOrphanSamples).
                 func q(_ type: HKQuantityType, _ unit: HKUnit, _ value: Double) -> HKQuantitySample {
-                    HKQuantitySample(type: type, quantity: HKQuantity(unit: unit, doubleValue: value), start: s, end: e)
+                    HKQuantitySample(type: type, quantity: HKQuantity(unit: unit, doubleValue: value), start: s, end: e,
+                                     device: device, metadata: [HKMetadataKeyExternalUUID: plan.rideID])
                 }
                 if plan.kcalPerBucket[i] > 0 { samples.append(q(energy, .kilocalorie(), plan.kcalPerBucket[i])) }
                 if plan.metersPerBucket[i] > 0 { samples.append(q(distance, .meter(), plan.metersPerBucket[i])) }
@@ -102,5 +107,25 @@ final class HealthKitBikeStore: BikeWorkoutStore {
         }, lookup: { ids in
             try await self.existingSyncIdentifiers(among: ids)
         })
+    }
+
+    /// Deletes the quantity samples THIS app saved for this ride. Only reached for a ride whose workout Health
+    /// does not have, so anything matching is left over from an earlier save that failed or went unconfirmed,
+    /// or from a workout the person deleted while keeping its data (audit H1). Matched by the ride id each
+    /// sample carries, not by time window or device, so another ride's samples can never match (review
+    /// 2026-11-09). HealthKit lets an app delete only objects it wrote; the source predicate says so too.
+    /// Heart rate is included only when this app may write it; without that access it cannot have saved any.
+    /// Known residual: samples left by a failed save on TestFlight builds 72-73 carry no ride id and are not
+    /// matched here. The bike import never shipped on the App Store before this change.
+    private func deleteOrphanSamples(rideID: String) async throws {
+        let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            HKQuery.predicateForObjects(from: HKSource.default()),
+            HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID, allowedValues: [rideID]),
+        ])
+        var types = [energy, distance, power, cadence]
+        if status(heartRate) == .authorized { types.append(heartRate) }
+        for type in types {
+            _ = try await store.deleteObjects(of: type, predicate: predicate)
+        }
     }
 }
