@@ -72,7 +72,9 @@ final class HealthKitBikeStore: BikeWorkoutStore {
         let builder = HKWorkoutBuilder(healthStore: store, configuration: config, device: device)
         let withHR = plan.writeHeartRate && status(heartRate) == .authorized
 
-        try await BikeSaveConfirmation.run(plan: plan, collect: {
+        try await BikeSaveConfirmation.run(plan: plan, clearOrphans: {
+            try await self.deleteOrphanSamples(start: plan.start, end: plan.end, device: device)
+        }, collect: {
             try await builder.beginCollection(at: plan.start)
             try await builder.addMetadata([
                 HKMetadataKeyIndoorWorkout: true,
@@ -102,5 +104,25 @@ final class HealthKitBikeStore: BikeWorkoutStore {
         }, lookup: { ids in
             try await self.existingSyncIdentifiers(among: ids)
         })
+    }
+
+    /// Deletes samples THIS app saved for the bike device inside the ride's window. Only reached for a ride
+    /// whose workout Health does not have, so anything matching is left over from an earlier save that failed
+    /// or went unconfirmed, or from a workout the person deleted while keeping its data (audit H1). HealthKit
+    /// lets an app delete only objects it wrote, and the source and device predicates narrow it further.
+    /// Heart rate is included only when this app may write it; without that access it cannot have saved any.
+    private func deleteOrphanSamples(start: Date, end: Date, device: HKDevice) async throws {
+        let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            HKQuery.predicateForObjects(from: HKSource.default()),
+            HKQuery.predicateForObjects(withDeviceProperty: HKDevicePropertyKeyName,
+                                        allowedValues: [device.name ?? "Peloton Pi"]),
+            HKQuery.predicateForSamples(withStart: start, end: end,
+                                        options: [.strictStartDate, .strictEndDate]),
+        ])
+        var types = [energy, distance, power, cadence]
+        if status(heartRate) == .authorized { types.append(heartRate) }
+        for type in types {
+            _ = try await store.deleteObjects(of: type, predicate: predicate)
+        }
     }
 }

@@ -102,6 +102,22 @@ final class BikeImportCoordinator: ObservableObject {
         await importNow()
     }
 
+    /// Erase Local Data: switches the import off and forgets the bike's address, the last result and the
+    /// remembered rejections, so the next foreground imports nothing (audit H2). Saved rides stay in Health,
+    /// which the Erase dialog promises not to touch.
+    func eraseAll() {
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("h4a.bike.") {
+            defaults.removeObject(forKey: key)
+        }
+        isEnabled = false
+        urlText = ""
+        lastResult = nil
+        testMessage = nil
+        testFailed = false
+        setupError = nil
+        addressProblem = nil
+    }
+
     // MARK: Test + import
 
     func testConnection() async {

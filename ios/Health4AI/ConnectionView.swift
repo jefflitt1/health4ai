@@ -100,6 +100,7 @@ struct ConnectionView: View {
                 SyncEngine.shared.stopObserving()
                 SyncEngine.shared.resetAnchors()
                 BulkExportManager.shared.resetBackfill()
+                BikeImportCoordinator.shared.eraseAll()
                 syncState.eraseLocalDataAndConfiguration()
             }
             Button("Cancel", role: .cancel) {}

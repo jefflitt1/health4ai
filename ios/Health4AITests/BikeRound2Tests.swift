@@ -30,7 +30,7 @@ final class BikeSaveConfirmationTests: XCTestCase {
         let p = try plan()
         var discarded = false
         do {
-            try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { false }, discard: { discarded = true },
+            try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: {}, finish: { false }, discard: { discarded = true },
                                                lookup: { _ in throw Boom() })
             XCTFail("returned")
         } catch { XCTAssertEqual(error as? BikeImportError, .saveUnconfirmed(p.rideID)) }
@@ -39,27 +39,27 @@ final class BikeSaveConfirmationTests: XCTestCase {
 
     func testNilFinishThenLookupFindingTheWorkoutIsSaved() async throws {
         let p = try plan()
-        try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { false }, discard: {}, lookup: { _ in [p.syncIdentifier] })
+        try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: {}, finish: { false }, discard: {}, lookup: { _ in [p.syncIdentifier] })
     }
 
     func testNilFinishThenEmptyLookupIsUnconfirmed() async throws {
         let p = try plan()
         do {
-            try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { false }, discard: {}, lookup: { _ in [] })
+            try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: {}, finish: { false }, discard: {}, lookup: { _ in [] })
             XCTFail("returned")
         } catch { XCTAssertEqual(error as? BikeImportError, .saveUnconfirmed(p.rideID)) }
     }
 
     func testFinishReturningAWorkoutNeverQueries() async throws {
         let p = try plan()
-        try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { true }, discard: {}, lookup: { _ in XCTFail("queried"); return [] })
+        try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: {}, finish: { true }, discard: {}, lookup: { _ in XCTFail("queried"); return [] })
     }
 
     /// A finish that throws may still have written the workout, so Health is asked; discard is not called after a finish.
     func testThrowingFinishThatWasWrittenIsSaved() async throws {
         let p = try plan()
         var discarded = false
-        try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { throw Boom() }, discard: { discarded = true },
+        try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: {}, finish: { throw Boom() }, discard: { discarded = true },
                                            lookup: { _ in [p.syncIdentifier] })
         XCTAssertFalse(discarded)
     }
@@ -68,7 +68,7 @@ final class BikeSaveConfirmationTests: XCTestCase {
         let p = try plan()
         var discarded = false
         do {
-            try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { throw Boom() }, discard: { discarded = true }, lookup: { _ in [] })
+            try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: {}, finish: { throw Boom() }, discard: { discarded = true }, lookup: { _ in [] })
             XCTFail("returned")
         } catch { XCTAssertTrue(error is Boom) }
         XCTAssertFalse(discarded)
@@ -77,7 +77,7 @@ final class BikeSaveConfirmationTests: XCTestCase {
     func testThrowingFinishWithFailingLookupIsUnconfirmed() async throws {
         let p = try plan()
         do {
-            try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { throw Boom() }, discard: {}, lookup: { _ in throw Boom() })
+            try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: {}, finish: { throw Boom() }, discard: {}, lookup: { _ in throw Boom() })
             XCTFail("returned")
         } catch { XCTAssertEqual(error as? BikeImportError, .saveUnconfirmed(p.rideID)) }
     }
@@ -86,10 +86,35 @@ final class BikeSaveConfirmationTests: XCTestCase {
         let p = try plan()
         var discarded = false
         do {
-            try await BikeSaveConfirmation.run(plan: p, collect: { throw Boom() }, finish: { true }, discard: { discarded = true }, lookup: { _ in [] })
+            try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: { throw Boom() }, finish: { true }, discard: { discarded = true }, lookup: { _ in [] })
             XCTFail("returned")
         } catch { XCTAssertTrue(error is Boom) }
         XCTAssertTrue(discarded)
+    }
+
+    /// Audit H1: leftover samples from a failed or unconfirmed save are cleared BEFORE the ride's samples
+    /// are added again, so a retry replaces them instead of doubling the day's energy and distance.
+    func testOrphanSamplesAreClearedBeforeCollection() async throws {
+        let p = try plan()
+        var steps: [String] = []
+        try await BikeSaveConfirmation.run(plan: p, clearOrphans: { steps.append("clear") },
+                                           collect: { steps.append("collect") }, finish: { true },
+                                           discard: {}, lookup: { _ in [] })
+        XCTAssertEqual(steps, ["clear", "collect"])
+    }
+
+    /// If the leftovers cannot be cleared, nothing is written: the ride is retried next import rather than
+    /// saved on top of samples that would double it.
+    func testFailedOrphanClearingStopsTheSave() async throws {
+        let p = try plan()
+        var collected = false
+        do {
+            try await BikeSaveConfirmation.run(plan: p, clearOrphans: { throw Boom() },
+                                               collect: { collected = true }, finish: { true },
+                                               discard: {}, lookup: { _ in [] })
+            XCTFail("returned")
+        } catch { XCTAssertTrue(error is Boom) }
+        XCTAssertFalse(collected)
     }
 }
 
@@ -243,5 +268,33 @@ final class BikeScreenTextTests: XCTestCase {
         let other = BikeCopy.rideDate(date("20250505T120000Z"), now: now, calendar: cal)
         XCTAssertFalse(same.contains("2026"), same)
         XCTAssertTrue(other.contains("2025"), other)
+    }
+}
+
+// MARK: Audit H2: Erase Local Data turns the bike import off
+
+@MainActor
+final class BikeEraseTests: XCTestCase {
+    func testEraseAllForgetsEveryBikeSettingAndSwitchesTheImportOff() {
+        let suite = "bike-erase-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: BikeImportCoordinator.Keys.enabled)
+        defaults.set("http://peloton-pi.local:8080", forKey: BikeImportCoordinator.Keys.url)
+        defaults.set(Data("{}".utf8), forKey: BikeImportCoordinator.Keys.lastResult)
+        defaults.set(["r1": "f"], forKey: DefaultsRejectedStore.keyPrefix + "rules")
+        defaults.set("kept", forKey: "hkb.unrelated")
+
+        let c = BikeImportCoordinator(defaults: defaults, store: FakeStore())
+        XCTAssertTrue(c.isEnabled)
+        c.eraseAll()
+
+        XCTAssertFalse(c.isEnabled)
+        XCTAssertEqual(c.urlText, "")
+        XCTAssertNil(c.lastResult)
+        XCTAssertTrue(defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("h4a.bike.") }.isEmpty)
+        XCTAssertEqual(defaults.string(forKey: "hkb.unrelated"), "kept", "only bike keys are this method's to remove")
+        XCTAssertFalse(BikeImportCoordinator(defaults: defaults, store: FakeStore()).isEnabled,
+                       "a fresh launch after erase must not import")
     }
 }
