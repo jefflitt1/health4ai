@@ -272,6 +272,8 @@ struct BikeImporter {
                 }
             }
             if plan.hasHeartRate { plan.writeHeartRate = await heartRateAllowed(id: id, into: &result) }
+            // Asked again here: the fetch and the heart-rate prompt above both wait, and an erase can land then.
+            guard await shouldContinue() else { return }
             try await store.save(plan)
             result.imported += 1
         } catch BikeImportError.saveUnconfirmed(let rideID) {

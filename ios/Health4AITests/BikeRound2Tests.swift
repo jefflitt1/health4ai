@@ -387,10 +387,26 @@ final class BikeImporterStopTests: XCTestCase {
         let store = FakeStore()
         var importer = BikeImporter(api: api, store: store)
         var asked = 0
-        importer.shouldContinue = { asked += 1; return asked == 1 }
+        importer.shouldContinue = { asked += 1; return asked <= 2 }   // ride a: before fetch, before save
         let result = await importer.run()
         XCTAssertEqual(store.saved.map(\.rideID), ["20261102T172230Z"])
         XCTAssertEqual(result.imported, 1)
-        XCTAssertEqual(asked, 2)
+        XCTAssertEqual(asked, 3)
+    }
+
+    /// An erase that lands while a ride is being fetched stops that ride before it is saved.
+    func testStopCheckIsAskedAgainBeforeTheSave() async {
+        let a = ride()
+        let api = FakeAPI()
+        api.list = .success([a.summary])
+        api.rides = [a.summary.id: a]
+        let store = FakeStore()
+        var importer = BikeImporter(api: api, store: store)
+        var asked = 0
+        importer.shouldContinue = { asked += 1; return asked == 1 }   // erased during the fetch
+        let result = await importer.run()
+        XCTAssertEqual(api.detailCalls, [a.summary.id])
+        XCTAssertTrue(store.saved.isEmpty)
+        XCTAssertEqual(result.imported, 0)
     }
 }
