@@ -77,7 +77,10 @@ def _stage(device: str, start: datetime, minutes: int, value: float = 3.0) -> di
     }
 
 
-NIGHT = datetime(2026, 3, 10, 23, 0, tzinfo=timezone.utc)
+# Recent, not a fixed date: get_sleep keeps only nights that end inside its window, and a real
+# query never returns rows from outside it. A fixed March date only worked while the stub ignored
+# the window.
+NIGHT = (datetime.now(timezone.utc) - timedelta(days=3)).replace(hour=23, minute=0, second=0, microsecond=0)
 
 
 def _sleep_with(monkeypatch, rows):

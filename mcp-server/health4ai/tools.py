@@ -748,6 +748,7 @@ def get_health_summary(days: int = 7) -> dict:
 # HKCategoryValueSleepAnalysis: 0=InBed, 1=AsleepUnspecified, 2=Awake,
 # 3=AsleepCore, 4=AsleepDeep, 5=AsleepREM. Only 3/4/5 are true sleep stages.
 _SLEEP_STAGE_NAMES = {3.0: "core", 4.0: "deep", 5.0: "rem"}
+SLEEP_SEGMENT_DAYS = 7  # get_sleep lists stage segments for nights that ended this many days back
 # Highest priority first. Anything not listed ranks below all of these and competes on
 # record count. This used to be an ALLOW list of the author's two devices, which gave
 # every Whoop / Garmin / Withings / iPhone-only user a null sleep total.
@@ -792,17 +793,33 @@ def get_sleep(days: int = 7) -> dict:
     Returns per-night breakdown with stage durations (REM, Deep/Core, Light, Awake).
     One source per night (see _sleep_stage_rows_by_night): Oura > Apple Watch > Whoop >
     Garmin > Withings > whichever other source has the most stage records that night.
+    A night is listed whole if it ended inside the window. Stage segments (each stage's start
+    and end) are listed for nights that ended in the last 7 days; older nights carry stage totals.
     """
     days = _clamp_days(days)
     uid = current_user_id.get()
-    since = _since(days)
-    rows = _fetch_metrics(SLEEP, uid, since, limit=1000)
+    since_dt = _parse_ts(_since(days))
+    segments_since = since_dt if days <= SLEEP_SEGMENT_DAYS else _parse_ts(_since(SLEEP_SEGMENT_DAYS))
+    # Two days further back, so a night that began before the window edge is fetched whole; a
+    # night is then kept only if it ends inside the window. Cutting at the edge left the oldest
+    # night half counted.
+    rows = _fetch_metrics(SLEEP, uid, _since(days + 2), limit=RAW_WINDOW_LIMIT)
+    by_night = _sleep_stage_rows_by_night(rows)
+    if len(rows) >= RAW_WINDOW_LIMIT and by_night:
+        # At the row cap the oldest fetched night may be missing its earlier stages.
+        by_night.pop(min(by_night))
 
     nights: dict[str, dict] = {}
-    for night_key, (device, stage_rows) in _sleep_stage_rows_by_night(rows).items():
+    older: list[dict] = []  # nights that ended before segments_since
+    for night_key, (device, stage_rows) in by_night.items():
+        night_end = max(_parse_ts(r["ended_at"]) for r in stage_rows)
+        if night_end <= since_dt:
+            continue
         night = nights[night_key] = {
             "date": night_key, "source": device, "stages": {}, "total_minutes": 0, "segments": [],
         }
+        if night_end <= segments_since:
+            older.append(night)
         for row in stage_rows:
             start_dt = _parse_ts(row["started_at"])
             end_dt = _parse_ts(row["ended_at"])
@@ -822,10 +839,18 @@ def get_sleep(days: int = 7) -> dict:
     total_hours = [n["total_minutes"] / 60 for n in sorted_nights if n["total_minutes"] > 0]
     avg_hours = round(sum(total_hours) / len(total_hours), 1) if total_hours else None
 
+    # Segments are 5-minute rows from some trackers: a long window listed in full would flood an
+    # AI client's context. Older nights keep their stage totals.
+    for night in older:
+        night.pop("segments")
+
     return {
         "period_days": days,
         "avg_sleep_hours": avg_hours,
         "nights": sorted_nights,
+        **({"segments_note": f"Stage segments are listed only for nights that ended in the last "
+                             f"{SLEEP_SEGMENT_DAYS} days; older nights carry stage totals."}
+           if older else {}),
     }
 
 
