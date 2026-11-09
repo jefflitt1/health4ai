@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-const lastUpdated = '2026-10-20';
+const lastUpdated = '2026-11-09';
 ---
 <style>
   /* Anyone linking directly to #testflight (historical TestFlight section)
@@ -27,6 +27,7 @@ const lastUpdated = '2026-10-20';
       <h2 class="text-white font-semibold text-base mb-3">1. What data we collect</h2>
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
         <li><strong class="text-neutral-200">Health data: we do not collect it.</strong> HealthKit metrics you authorize flow directly from your device to a spreadsheet in your own Google Drive (if you choose Save to Google Sheets; see section 4) or to a Supabase project you create and own. health4.ai never receives, stores, or has access to your health data. A cloud AI provider you separately connect to may process data you choose to send to it.</li>
+        <li><strong class="text-neutral-200">Bike on your network (optional, version 1.0.6 and later).</strong> If you turn this on, the app reads finished rides from a ride server on your own home Wi-Fi, at a local address you enter, and saves each ride to the Apple Health app on your iPhone as an indoor cycling workout with active energy, cycling distance, power, cadence and, if you allow it, heart rate. This needs two permissions you can refuse or withdraw at any time: writing those types to Health, and iOS Local Network access. The app only connects to local network addresses for this feature and never to any internet server. Nothing is sent to health4.ai, and nothing is written to Health unless you turn the feature on. Rides you import stay in Health if you turn it off or erase the app's data; you can delete them in the Health app.</li>
         <li><strong class="text-neutral-200">Account data</strong>: before launch, we collected email addresses from pre-launch waitlist sign-ups to notify people when the app shipped and, for those who opted in, to send a TestFlight beta invitation. The app is now live on the App Store and we no longer collect waitlist emails.</li>
         <li><strong class="text-neutral-200">Usage data</strong>: anonymous page views and feature interaction events via PostHog (US-hosted). PostHog never receives health data. We do not use advertising cookies or trackers.</li>
       </ul>
