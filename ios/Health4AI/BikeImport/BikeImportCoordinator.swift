@@ -161,6 +161,7 @@ final class BikeImportCoordinator: ObservableObject {
         if case .success(let url) = urlValidation {
             var importer = BikeImporter(api: makeAPI(url), store: store)
             importer.rejectedStore = DefaultsRejectedStore(defaults: defaults)
+            importer.shouldContinue = { [weak self] in await MainActor.run { self?.eraseGeneration == generation } }
             result = await importer.run()
         } else {
             var r = BikeImportResult(date: Date())
@@ -169,8 +170,11 @@ final class BikeImportCoordinator: ObservableObject {
         }
         refreshStatus()
         guard generation == eraseGeneration else {
-            // Erased mid-run: the rejections store may have written keys back while the import ran.
-            removeBikeKeys()
+            // Erased mid-run: the rejections store may have written its keys back while the import ran.
+            // Only those: the person may already have set the import up again, and those settings stay.
+            for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(DefaultsRejectedStore.keyPrefix) {
+                defaults.removeObject(forKey: key)
+            }
             Self.logger.info("import finished after an erase; its result was not kept")
             return
         }

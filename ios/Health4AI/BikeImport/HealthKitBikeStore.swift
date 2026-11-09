@@ -115,6 +115,8 @@ final class HealthKitBikeStore: BikeWorkoutStore {
     /// sample carries, not by time window or device, so another ride's samples can never match (review
     /// 2026-11-09). HealthKit lets an app delete only objects it wrote; the source predicate says so too.
     /// Heart rate is included only when this app may write it; without that access it cannot have saved any.
+    /// Known residual: samples left by a failed save on TestFlight builds 72-73 carry no ride id and are not
+    /// matched here. The bike import never shipped on the App Store before this change.
     private func deleteOrphanSamples(rideID: String) async throws {
         let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
             HKQuery.predicateForObjects(from: HKSource.default()),

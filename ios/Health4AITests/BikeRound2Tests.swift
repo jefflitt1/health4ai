@@ -330,4 +330,67 @@ final class BikeEraseDuringImportTests: XCTestCase {
         XCTAssertFalse(c.isEnabled)
         XCTAssertTrue(defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("h4a.bike.") }.isEmpty)
     }
+
+    /// Review 2026-11-09 (Codex recheck): after an erase, the import already running saves no more rides.
+    func testEraseDuringImportStopsFurtherSaves() async {
+        let suite = "bike-erase-stop-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: BikeImportCoordinator.Keys.enabled)
+        defaults.set("http://peloton-pi.local:8080", forKey: BikeImportCoordinator.Keys.url)
+
+        let api = GatedAPI()
+        let r = ride()
+        api.inner.list = .success([r.summary])
+        api.inner.rides[r.summary.id] = r
+        let store = FakeStore()
+        let c = BikeImportCoordinator(defaults: defaults, store: store, makeAPI: { _ in api })
+        api.beforeList = { await MainActor.run { c.eraseAll() } }
+        await c.importNow()
+
+        XCTAssertTrue(store.saved.isEmpty)
+        XCTAssertTrue(api.inner.detailCalls.isEmpty, "a ride must not even be fetched after the erase")
+    }
+
+    /// Settings entered again after the erase, while the old import was still running, survive its end.
+    func testImportFinishingAfterEraseKeepsSettingsEnteredSince() async {
+        let suite = "bike-erase-reenter-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: BikeImportCoordinator.Keys.enabled)
+        defaults.set("http://peloton-pi.local:8080", forKey: BikeImportCoordinator.Keys.url)
+
+        let api = GatedAPI()
+        let c = BikeImportCoordinator(defaults: defaults, store: FakeStore(), makeAPI: { _ in api })
+        api.beforeList = {
+            await MainActor.run {
+                c.eraseAll()
+                defaults.set("http://bike.local:8080", forKey: BikeImportCoordinator.Keys.url)
+                defaults.set(["r1": "f"], forKey: DefaultsRejectedStore.keyPrefix + "rules")
+            }
+        }
+        await c.importNow()
+
+        XCTAssertEqual(defaults.string(forKey: BikeImportCoordinator.Keys.url), "http://bike.local:8080")
+        XCTAssertNil(defaults.object(forKey: DefaultsRejectedStore.keyPrefix + "rules"))
+        XCTAssertNil(c.lastResult)
+    }
+}
+
+final class BikeImporterStopTests: XCTestCase {
+    /// The stop check is asked before every ride, so an erase between two rides stops the second.
+    func testStopCheckIsAskedBeforeEachRide() async {
+        let a = ride(id: "20261102T172230Z"), b = ride(id: "20261101T172230Z")
+        let api = FakeAPI()
+        api.list = .success([a.summary, b.summary])
+        api.rides = [a.summary.id: a, b.summary.id: b]
+        let store = FakeStore()
+        var importer = BikeImporter(api: api, store: store)
+        var asked = 0
+        importer.shouldContinue = { asked += 1; return asked == 1 }
+        let result = await importer.run()
+        XCTAssertEqual(store.saved.map(\.rideID), ["20261102T172230Z"])
+        XCTAssertEqual(result.imported, 1)
+        XCTAssertEqual(asked, 2)
+    }
 }
