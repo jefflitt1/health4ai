@@ -62,6 +62,19 @@ def test_thirty_day_summary_counts_every_hourly_step_row(monkeypatch):
     assert out["steps"]["days_with_data"] >= 30
 
 
+def test_summary_counts_every_sleep_and_workout_row(monkeypatch):
+    # Two sleep trackers for a week (980 rows; the old default cap was 500) and 120 workouts over
+    # 90 days (old cap 50). Sleep and workouts are counted from raw rows at every window length.
+    workouts = [{"started_at": _iso(NOW - timedelta(hours=17 * i + 1)), "value": None,
+                 "metadata": {"workout_type": "walking" if i % 2 else "cycling"}} for i in range(120)]
+    _stub(monkeypatch, {tools.WORKOUT: workouts, tools.SLEEP: _two_trackers(7)})
+    monkeypatch.setattr(tools, "_get_tiered_daily", lambda *a, **k: [])
+    out = tools.get_health_summary(90)
+    assert out["sleep"]["total_records"] == 7 * 140
+    assert out["workouts"]["count"] == 120
+    assert sorted(out["workouts"]["types"]) == ["cycling", "walking"]
+
+
 def test_coaching_brief_counts_every_row_in_its_windows(monkeypatch):
     # 100 step rows of 10 on each of the last 6 local days (600 rows; the old cap was 500), 60
     # workouts in 30 days (old cap 50), two sleep trackers for a week (980 rows; old cap 500), and

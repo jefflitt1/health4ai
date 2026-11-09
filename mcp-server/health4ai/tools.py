@@ -94,7 +94,8 @@ RAW_CUTOFF_DAYS = 30  # beyond this, queries hit daily summaries
 MAX_DAYS = 1825       # 5 years
 MAX_MONTHS = 120      # 10 years
 MAX_LIMIT = 1000
-# Row ceiling for fetches that feed an aggregate over a raw window (at most RAW_CUTOFF_DAYS).
+# Row ceiling for fetches that feed an aggregate over a raw window (at most RAW_CUTOFF_DAYS),
+# and for get_health_summary's sleep and workout counts, which stay raw at every window length.
 # The 500-row default is far too small there: steps sync as one merged row per hour, so 30 days
 # is 720 rows before any per-device ones, and two sleep trackers write ~140 stage rows a night.
 RAW_WINDOW_LIMIT = 100000
@@ -664,8 +665,10 @@ def get_health_summary(days: int = 7) -> dict:
     uid = current_user_id.get()
     since = _since(days)
 
-    sleep_rows = _fetch_metrics(SLEEP, uid, since)
-    workout_rows = _fetch_metrics(WORKOUT, uid, since, limit=50)
+    # Counted, so not capped at the 500-row default: two sleep trackers write ~140 stage rows a
+    # night, and a workout cap of 50 reported 50 for any longer history.
+    sleep_rows = _fetch_metrics(SLEEP, uid, since, limit=RAW_WINDOW_LIMIT)
+    workout_rows = _fetch_metrics(WORKOUT, uid, since, limit=RAW_WINDOW_LIMIT)
 
     def avg(rows: list[dict]) -> float | None:
         vals = [r["value"] for r in rows if r.get("value") is not None]
