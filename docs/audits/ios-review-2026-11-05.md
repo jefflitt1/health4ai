@@ -4,6 +4,8 @@ Scope: `ios/Health4AI` (all Swift, Info.plist, entitlements, privacy manifest), 
 
 Severity reflects user impact (lost or duplicated data, privacy, App Review) times likelihood.
 
+Status update 2026-11-09: the five fixes first proposed in PR #43, plus H1 and the H2 remainder, shipped in #51 (iOS 1.0.6). Their status lines below say so. Every other item is unchanged since the review.
+
 ## Architecture map
 
 - **Authorization.** `HealthKitManager.requestAuthorization(scope:adding:)` asks for read access to the chosen scope: essentials, or complete (about 120 types). The scope is persisted only after the request succeeds. Sheets adds `DailySummaryBuilder.readTypes` on top, and `statusForAuthorizationRequest` gates each Sheets pass (`SheetsError.healthNotAsked`). On iOS 27, a limited-history grant is detected with `earliestAuthorizedSampleDate` (`historyAccessLimit`). The bike import is the only writer to Health, with share access for five core types plus heart rate.
@@ -40,32 +42,32 @@ Severity reflects user impact (lost or duplicated data, privacy, App Review) tim
 
 ## Findings, ranked
 
-Status: **FIXED** means a commit in this branch (unverified, needs an Xcode build). **OPEN** means it is reported only.
+Status: **FIXED** means the fix is on main (shipped in #51). **OPEN** means it is reported only.
 
 ### High
 
-**H1. Bike import can duplicate Active Energy and Cycling Distance after a failed or unconfirmed save.** OPEN
+**H1. Bike import can duplicate Active Energy and Cycling Distance after a failed or unconfirmed save.** FIXED in #51 (each sample now carries the ride id, and leftovers from a failed save are deleted by ride id before a retry)
 - Where: `BikeImport/HealthKitBikeStore.swift:66-96`, `BikeImport/BikeSaveConfirmation.swift:30-44`.
 - Only the workout carries `HKMetadataKeySyncIdentifier`; the per-bucket quantity samples carry no metadata. `HKWorkoutBuilder` saves samples as they are added, and `discardWorkout()` does not delete them (the code's own header note says so).
 - Scenario: `addSamples` succeeds, then `endCollection` throws, or `finishWorkout` returns nil and the lookup misses. The ride is reported failed or unconfirmed, and the next import adds every sample again, so the day's energy and distance totals double. The same happens when a person deletes only the workout in Health, which the copy says re-imports the ride.
 - Fix: give each sample its own sync identifier (`"<ride sync id>:<type>:<bucket>"`) plus `HKMetadataKeySyncVersion`, so a re-save replaces instead of adding. Alternatively, before retrying a ride, delete this app's samples in the ride's window. Needs a device test.
 
-**H2. Erase Local Data left sync history and device names behind.** FIXED (98ef454)
+**H2. Erase Local Data left sync history and device names behind.** FIXED in #51
 - Where: `SyncState.swift:494`, `ConnectionView.swift:97-107`.
 - The dialog promises to remove sync history. The function swept only `hkb.` defaults and the Keychain, so `sync-history.json` and `sources.json` survived. `sources.json` holds names such as "Jeff's Apple Watch" with sample counts.
 - Fix: call `SyncHistoryStore.shared.removeAll()`, plus a new `SourcesTracker.removeAll()`.
-- Still OPEN within this item: the `h4a.bike.*` keys (bike address, last result, rejected set, enabled flag) and the in-memory `BikeImportCoordinator.isEnabled`. After an erase, the next foreground still imports rides into Health. Fix: remove `h4a.` keys in the same loop and `await BikeImportCoordinator.shared.setEnabled(false)` from the erase button's action.
+- Also fixed in #51 (`BikeImportCoordinator.eraseAll()`). As originally reported: the `h4a.bike.*` keys (bike address, last result, rejected set, enabled flag) and the in-memory `BikeImportCoordinator.isEnabled`. After an erase, the next foreground still imports rides into Health. Fix: remove `h4a.` keys in the same loop and `await BikeImportCoordinator.shared.setEnabled(false)` from the erase button's action.
 
 ### Medium
 
-**M1. Observer queries leaked, and the workout observer survived sign-out.** FIXED (09a19ad)
+**M1. Observer queries leaked, and the workout observer survived sign-out.** FIXED in #51
 - Where: `SyncEngine.swift:269-395`.
 - `startObserving` executed new `HKObserverQuery`s on every call and only replaced the dictionary entry. It is called from launch, from sign-in (`ContentView.swift:313`) and from the Sheets connect flow (`SheetsDestinationView.swift:215`), so earlier queries kept running.
 - `registerWorkoutObserver`'s query was never stored, so `stopObserving` never stopped it. After sign-out or a destination switch, every workout fired a sync that failed with "Auth failed" and was logged to Sync History.
 - Fix: `startObserving` calls `stopObserving` first, and the workout query is tracked.
 - Remaining note: the workout type is also in every scope's per-type observers, so each workout triggers two (serialized) syncs. The second finds an empty page. Removing the extra observer is a follow-up once someone confirms nothing depends on its "Workouts" history label.
 
-**M2. Concurrent Supabase token refreshes.** FIXED (b47304e)
+**M2. Concurrent Supabase token refreshes.** FIXED in #51
 - Where: `AuthManager.swift:253`.
 - At launch, `reconnectIfAuthenticated` starts the foreground sync and then `applyMergedHoursResendIfNeeded`; the backfill calls `validToken` too, outside the sync mutex. After an hour away all of them find the token expired and refresh with the same rotating refresh token. Supabase allows reuse only inside its reuse interval (10s by default); a slow network or a stricter project config revokes the session family and signs the person out.
 - Fix: share one in-flight refresh `Task` (MainActor-isolated).
@@ -107,11 +109,11 @@ Status: **FIXED** means a commit in this branch (unverified, needs an Xcode buil
 
 ### Low
 
-**L1. 4xx ingest responses were retried three times.** FIXED (5831549)
+**L1. 4xx ingest responses were retried three times.** FIXED in #51
 - Where: `SyncEngine.swift:885-895`.
 - The 4xx branch threw `SyncError.httpError` inside the `do`, and the `catch let syncError as SyncError` swallowed it and looped. A 400 or 413 cost three posts and 3s of backoff, against the comment's intent.
 
-**L2. The Supabase auth URL dropped the port.** FIXED (cc670a0)
+**L2. The Supabase auth URL dropped the port.** FIXED in #51
 - Where: `AuthManager.swift:117`.
 - Sign-in and refresh went to `scheme://host`, while ingest went to `scheme://host:port`.
 
@@ -170,20 +172,11 @@ Status: **FIXED** means a commit in this branch (unverified, needs an Xcode buil
 - Google OAuth: PKCE S256, state checked, `drive.file` only, refresh token in the Keychain, access token in memory, revoke on disconnect.
 - No analytics or crash SDKs in the app; the privacy manifest declares Health and Fitness, not linked, not tracking.
 
-## Fixes in this branch
+## Fixes
 
-All unverified: each needs an Xcode build.
-
-| Commit | Change |
-|---|---|
-| 5831549 | `postSamples` no longer retries 4xx |
-| 09a19ad | `startObserving` idempotent; workout observer tracked and stopped |
-| cc670a0 | Supabase auth URL keeps the port |
-| b47304e | One shared Supabase token refresh |
-| 98ef454 | Erase removes sync history and the sources list |
-
-Suggested device checks:
-- Sign out, record a workout, and confirm no new failed Sync History row appears.
-- Sign out and back in twice, change a step count, and confirm one sync runs, not three.
-- Leave the app for over an hour, cold-launch, and confirm one `/auth/v1/token?grant_type=refresh_token` request.
-- Erase, then open Sync History and Your Sources, and confirm both are empty.
+All of these shipped in #51 (iOS 1.0.6), which also covers H1 and the H2 remainder:
+- `postSamples` no longer retries 4xx.
+- `startObserving` is idempotent; the workout observer is tracked and stopped.
+- The Supabase auth URL keeps the port.
+- Concurrent callers share one Supabase token refresh.
+- Erase removes the sync history and the sources list, and turns the bike import off.
