@@ -38,7 +38,8 @@ class FreshnessTests(unittest.TestCase):
             return list(rows_by_metric.get(metric_type, []))
 
         with mock.patch.object(tools, "_fetch_metrics", fake_fetch), \
-             mock.patch.object(tools, "_get_tiered_daily", lambda *a, **k: []):
+             mock.patch.object(tools, "_get_tiered_daily", lambda *a, **k: []), \
+             mock.patch.object(tools, "_fetch_raw_daily_aggregates", lambda *a, **k: []):
             return tools.get_coaching_brief()
 
     def test_no_samples_reports_none_and_refuses_recovery_claim(self):
