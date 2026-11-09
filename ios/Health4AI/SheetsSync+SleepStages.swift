@@ -58,7 +58,9 @@ extension SheetsSyncCore {
             let chunkEnd = min(calendar.date(byAdding: .day, value: Self.chunkDays - 1, to: chunkStart)!, today)
             let fresh = try await source.sleepStageRows(nights: chunkStart, through: chunkEnd)
                 .filter { !known.contains($0[SleepStageLayout.idIndex]) }
-            try await appendInPieces(id: id, range: SheetTabs.range(tab, "A:G"), rows: fresh)
+            let idColumn = SleepStageLayout.idColumn
+            try await appendInPieces(id: id, range: SheetTabs.range(tab, "A:G"), rows: fresh,
+                                     ids: (range: SheetTabs.range(tab, "\(idColumn)2:\(idColumn)"), index: SleepStageLayout.idIndex))
             known.formUnion(fresh.map { $0[SleepStageLayout.idIndex] })
             added += fresh.count
             progress.sleepStagesThrough = DayKey.string(for: chunkEnd, calendar: calendar)
@@ -68,14 +70,39 @@ extension SheetsSyncCore {
         return added
     }
 
+    /// Retries of one append piece after a Sheets 5xx, each after re-reading the IDs.
+    static let appendServerRetries = 2
+
     /// One append per `appendChunkRows` rows. A failure part-way leaves the earlier pieces in
-    /// the sheet; both callers skip rows by ID, so the next pass adds only the rest.
-    func appendInPieces(id: String, range: String, rows: [[String]]) async throws {
+    /// the sheet; both callers skip rows by ID, so the next pass adds only the rest. `ids` is
+    /// the tab's record-ID column (from row 2) and that ID's index in a row.
+    func appendInPieces(id: String, range: String, rows: [[String]], ids: (range: String, index: Int)) async throws {
         var i = 0
         while i < rows.count {
             let slice = Array(rows[i..<min(i + Self.appendChunkRows, rows.count)])
-            try await api.append(spreadsheetId: id, range: range, rows: slice)
+            try await appendOnce(id: id, range: range, rows: slice, ids: ids)
             i += slice.count
+        }
+    }
+
+    /// `values:append` is not idempotent, and a 5xx can come back after Google applied it (the
+    /// front end failed, not the write). SheetsClient therefore never resends an append blind
+    /// (SheetsReplay.unsafe); a 5xx is retried here instead, after re-reading the ID column, with
+    /// only the rows still missing, so a retry can never write a row twice (review I1, 2026-11-04).
+    private func appendOnce(id: String, range: String, rows: [[String]], ids: (range: String, index: Int)) async throws {
+        var pending = rows
+        var retries = 0
+        while true {
+            do {
+                try await api.append(spreadsheetId: id, range: range, rows: pending)
+                return
+            } catch let error where SheetsResponse.isServerError(error) && retries < Self.appendServerRetries {
+                retries += 1
+                try await Task.sleep(nanoseconds: SheetsResponse.backoffSeconds(retries) * 1_000_000_000)
+                let present = Set(try await api.readColumn(spreadsheetId: id, range: ids.range))
+                pending = pending.filter { !present.contains($0[ids.index]) }
+                if pending.isEmpty { return }
+            }
         }
     }
 }

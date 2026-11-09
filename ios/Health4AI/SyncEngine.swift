@@ -267,6 +267,10 @@ final class SyncEngine {
     /// Registers background delivery and observer queries for all HealthKit types.
     /// Call after authorization is granted.
     func startObserving() {
+        // Idempotent. Launch, sign-in and the Sheets connect flow all call this, and without
+        // the stop each call left the previous queries running beside new ones (the dictionary
+        // below only dropped its reference), so every HealthKit change fired one sync per call.
+        stopObserving()
         let types = HealthKitManager.sampleTypes()
 
         for sampleType in types {
@@ -391,8 +395,15 @@ final class SyncEngine {
                 completionHandler()
             }
         }
+        // Tracked with the per-type queries so stopObserving (sign-out, switching destination)
+        // stops it too. Untracked, it kept firing after sign-out and logged a failed
+        // "Auth failed" sync for every workout.
+        observerQueries[Self.workoutCompletionObserverKey] = query
         hkManager.store.execute(query)
     }
+
+    /// Distinct from every HealthKit type identifier, so it never replaces a per-type observer.
+    private static let workoutCompletionObserverKey = "h4ai.workoutCompletionObserver"
 
     // MARK: - Foreground sync
 
@@ -891,6 +902,10 @@ final class SyncEngine {
                 }
             } catch let syncError as SyncError {
                 if case .unauthorized = syncError { throw syncError }
+                // A 4xx thrown from the switch above lands here too. Rethrow it: retrying a
+                // request the server rejected as malformed or too large only repeats the
+                // rejection three times with 1s + 2s of backoff.
+                if case .httpError(let code) = syncError, code < 500 { throw syncError }
                 lastError = syncError
                 if attempt == maxAttempts - 1 { throw lastError }
             } catch {
