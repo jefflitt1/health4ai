@@ -298,3 +298,36 @@ final class BikeEraseTests: XCTestCase {
                        "a fresh launch after erase must not import")
     }
 }
+
+/// Runs a step (here: an erase) while the import is waiting on the bike, then answers like FakeAPI.
+final class GatedAPI: BikeRideAPI {
+    let inner = FakeAPI()
+    var beforeList: () async -> Void = {}
+    func listRides() async throws -> [BikeRideSummary] {
+        await beforeList()
+        return try await inner.listRides()
+    }
+    func ride(id: String) async throws -> BikeRide { try await inner.ride(id: id) }
+}
+
+@MainActor
+final class BikeEraseDuringImportTests: XCTestCase {
+    /// Review 2026-11-09: an import already running when the person erases must not write its result
+    /// (or anything else under h4a.bike.) back afterwards.
+    func testImportFinishingAfterEraseKeepsNothing() async {
+        let suite = "bike-erase-race-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: BikeImportCoordinator.Keys.enabled)
+        defaults.set("http://peloton-pi.local:8080", forKey: BikeImportCoordinator.Keys.url)
+
+        let api = GatedAPI()
+        let c = BikeImportCoordinator(defaults: defaults, store: FakeStore(), makeAPI: { _ in api })
+        api.beforeList = { await MainActor.run { c.eraseAll() } }
+        await c.importNow()
+
+        XCTAssertNil(c.lastResult)
+        XCTAssertFalse(c.isEnabled)
+        XCTAssertTrue(defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("h4a.bike.") }.isEmpty)
+    }
+}
