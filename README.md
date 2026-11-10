@@ -20,6 +20,11 @@
   <img src="https://img.shields.io/badge/Python-3.11%2B-blue?style=flat-square&logo=python" alt="Python 3.11+" />
   <img src="https://img.shields.io/badge/MCP-FastMCP-green?style=flat-square" alt="FastMCP" />
   <img src="https://img.shields.io/badge/backend-your%20Supabase%20project-3ecf8e?style=flat-square&logo=supabase" alt="Your own Supabase project" />
+  <a href="https://github.com/jefflitt1/health4ai"><img src="https://img.shields.io/github/stars/jefflitt1/health4ai?style=flat-square&logo=github" alt="Star health4.ai on GitHub" /></a>
+</p>
+
+<p align="center">
+  If health4.ai is useful to you, please give it a ⭐ on <a href="https://github.com/jefflitt1/health4ai">GitHub</a> — it helps others find it.
 </p>
 
 ---
@@ -247,3 +252,5 @@ Good first areas: additional metric aggregations, multi-user support with JWT/RL
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+If health4.ai has been useful, a ⭐ on [GitHub](https://github.com/jefflitt1/health4ai) helps others find it.
