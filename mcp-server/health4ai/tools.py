@@ -795,6 +795,8 @@ def get_sleep(days: int = 7) -> dict:
     Garmin > Withings > whichever other source has the most stage records that night.
     A night is listed whole if it ended inside the window. Stage segments (each stage's start
     and end) are listed for nights that ended in the last 7 days; older nights carry stage totals.
+    If the fetch reaches RAW_WINDOW_LIMIT, older nights are missing: covered_since gives the
+    oldest night listed, and avg_sleep_hours covers only the nights from then on.
     """
     days = _clamp_days(days)
     uid = current_user_id.get()
@@ -805,7 +807,8 @@ def get_sleep(days: int = 7) -> dict:
     # night half counted.
     rows = _fetch_metrics(SLEEP, uid, _since(days + 2), limit=RAW_WINDOW_LIMIT)
     by_night = _sleep_stage_rows_by_night(rows)
-    if len(rows) >= RAW_WINDOW_LIMIT and by_night:
+    capped = len(rows) >= RAW_WINDOW_LIMIT
+    if capped and by_night:
         # At the row cap the oldest fetched night may be missing its earlier stages.
         by_night.pop(min(by_night))
 
@@ -851,6 +854,11 @@ def get_sleep(days: int = 7) -> dict:
         **({"segments_note": f"Stage segments are listed only for nights that ended in the last "
                              f"{SLEEP_SEGMENT_DAYS} days; older nights carry stage totals."}
            if older else {}),
+        **({"covered_since": sorted_nights[-1]["date"] if sorted_nights else None,
+            "coverage_note": f"The fetch reached the {RAW_WINDOW_LIMIT}-row limit, so nights before "
+                             f"covered_since are missing and avg_sleep_hours covers only the nights "
+                             f"listed. Ask for fewer days to cover the whole period."}
+           if capped else {}),
     }
 
 

@@ -103,6 +103,10 @@ def test_at_the_row_cap_the_possibly_partial_oldest_night_is_dropped(monkeypatch
     _stub(monkeypatch, {tools.SLEEP: _ten_nights_two_trackers()})
     out = tools.get_sleep(14)
     assert [n["total_minutes"] for n in out["nights"]] == [350.0, 350.0]
+    # The two whole nights began at 20:00 UTC on March 19 and 18, so the listed nights start on
+    # March 18, not 14 days before T0.
+    assert out["covered_since"] == "2026-03-18"
+    assert "coverage_note" in out
 
 
 def test_long_windows_list_segments_only_for_recent_nights(monkeypatch):
@@ -115,6 +119,7 @@ def test_long_windows_list_segments_only_for_recent_nights(monkeypatch):
     assert not any("segments" in n for n in out["nights"][7:])
     assert all(n["total_minutes"] == 350.0 for n in out["nights"])
     assert "segments_note" in out
+    assert "covered_since" not in out and "coverage_note" not in out
 
 
 def test_seven_day_window_lists_every_night_with_segments(monkeypatch):
