@@ -28,6 +28,8 @@ def _stub(monkeypatch, rows_by_metric: dict):
         return rows[:limit]
     monkeypatch.setattr(tools, "_fetch_metrics", fetch)
     monkeypatch.setattr(tools, "_absence_note", lambda *a, **k: None)
+    monkeypatch.setattr(tools, "_count_sleep_rows", lambda *a, **k: (0, 0))
+    monkeypatch.setattr(tools, "_count_workouts", lambda *a, **k: (0, []))
 
 
 def _iso(dt: datetime) -> str:
@@ -62,17 +64,23 @@ def test_thirty_day_summary_counts_every_hourly_step_row(monkeypatch):
     assert out["steps"]["days_with_data"] >= 30
 
 
-def test_summary_counts_every_sleep_and_workout_row(monkeypatch):
-    # Two sleep trackers for a week (980 rows; the old default cap was 500) and 120 workouts over
-    # 90 days (old cap 50). Sleep and workouts are counted from raw rows at every window length.
-    workouts = [{"started_at": _iso(NOW - timedelta(hours=17 * i + 1)), "value": None,
-                 "metadata": {"workout_type": "walking" if i % 2 else "cycling"}} for i in range(120)]
-    _stub(monkeypatch, {tools.WORKOUT: workouts, tools.SLEEP: _two_trackers(7)})
+def test_summary_counts_sleep_and_workouts_in_sql_without_a_row_cap(monkeypatch):
+    # Sleep and workouts are never compacted, so a 5-year window counts raw rows. Two sleep
+    # trackers write ~140 rows a night: about 255,000 rows over 5 years, past any row cap. The
+    # counts come from SQL, so no sleep or workout row is fetched just to be counted.
+    _stub(monkeypatch, {})
+    fetched = []
+    real_fetch = tools._fetch_metrics
+    monkeypatch.setattr(tools, "_fetch_metrics",
+                        lambda metric_type, *a, **k: fetched.append(metric_type) or real_fetch(metric_type, *a, **k))
+    monkeypatch.setattr(tools, "_count_sleep_rows", lambda uid, since: (255_500, 250_000))
+    monkeypatch.setattr(tools, "_count_workouts", lambda uid, since: (1_200, ["cycling", "walking"]))
     monkeypatch.setattr(tools, "_get_tiered_daily", lambda *a, **k: [])
-    out = tools.get_health_summary(90)
-    assert out["sleep"]["total_records"] == 7 * 140
-    assert out["workouts"]["count"] == 120
+    out = tools.get_health_summary(1825)
+    assert out["sleep"] == {"total_records": 255_500, "stage_records": 250_000}
+    assert out["workouts"]["count"] == 1_200
     assert sorted(out["workouts"]["types"]) == ["cycling", "walking"]
+    assert tools.SLEEP not in fetched and tools.WORKOUT not in fetched
 
 
 def test_coaching_brief_counts_every_row_in_its_windows(monkeypatch):

@@ -94,8 +94,7 @@ RAW_CUTOFF_DAYS = 30  # beyond this, queries hit daily summaries
 MAX_DAYS = 1825       # 5 years
 MAX_MONTHS = 120      # 10 years
 MAX_LIMIT = 1000
-# Row ceiling for fetches that feed an aggregate over a raw window (at most RAW_CUTOFF_DAYS),
-# and for get_health_summary's sleep and workout counts, which stay raw at every window length.
+# Row ceiling for fetches that feed an aggregate over a raw window (at most RAW_CUTOFF_DAYS).
 # The 500-row default is far too small there: steps sync as one merged row per hour, so 30 days
 # is 720 rows before any per-device ones, and two sleep trackers write ~140 stage rows a night.
 RAW_WINDOW_LIMIT = 100000
@@ -294,6 +293,59 @@ def _fetch_metrics_range(metric_type: str, user_id: str,
         conn.close()
 
     return all_rows
+
+
+def _count_sleep_rows(user_id: str, since: str) -> tuple[int, int]:
+    """(all sleep rows, rows whose metadata mentions sleep) since `since`, counted in SQL.
+
+    Counted, not fetched: two sleep trackers write ~140 stage rows a night, so a long window
+    would pass any row cap and the count would stop at it.
+    """
+    conn = _connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT count(*),
+                       count(*) FILTER (WHERE lower(metadata::text) LIKE '%%sleep%%')
+                FROM {TABLE}
+                WHERE user_id = %s
+                  AND metric_type = %s
+                  AND started_at >= %s
+                """,
+                (user_id, SLEEP, since),
+            )
+            total, stages = cur.fetchone()
+    finally:
+        conn.close()
+    return total, stages
+
+
+def _count_workouts(user_id: str, since: str) -> tuple[int, list]:
+    """(workout count, distinct workout types) since `since`, counted in SQL.
+
+    A workout without a workout_type key counts as "unknown".
+    """
+    conn = _connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT count(*),
+                       array_agg(DISTINCT CASE WHEN metadata ? 'workout_type'
+                                               THEN metadata->>'workout_type'
+                                               ELSE 'unknown' END)
+                FROM {TABLE}
+                WHERE user_id = %s
+                  AND metric_type = %s
+                  AND started_at >= %s
+                """,
+                (user_id, WORKOUT, since),
+            )
+            count, types = cur.fetchone()
+    finally:
+        conn.close()
+    return count, types or []
 
 
 def _fetch_metrics_snapshot(user_id: str, day_start: str, day_end: str,
@@ -665,10 +717,8 @@ def get_health_summary(days: int = 7) -> dict:
     uid = current_user_id.get()
     since = _since(days)
 
-    # Counted, so not capped at the 500-row default: two sleep trackers write ~140 stage rows a
-    # night, and a workout cap of 50 reported 50 for any longer history.
-    sleep_rows = _fetch_metrics(SLEEP, uid, since, limit=RAW_WINDOW_LIMIT)
-    workout_rows = _fetch_metrics(WORKOUT, uid, since, limit=RAW_WINDOW_LIMIT)
+    sleep_total, sleep_stage_count = _count_sleep_rows(uid, since)
+    workout_count, workout_types = _count_workouts(uid, since)
 
     def avg(rows: list[dict]) -> float | None:
         vals = [r["value"] for r in rows if r.get("value") is not None]
@@ -706,12 +756,6 @@ def get_health_summary(days: int = 7) -> dict:
     steps_daily_avg = _daily_total_avg(steps_points)
     steps_days_with_data = len(steps_points)
 
-    # Sleep: sum duration of "asleep" stages per day
-    sleep_stages = [
-        r for r in sleep_rows
-        if r.get("metadata", {}) and "sleep" in str(r.get("metadata", {})).lower()
-    ]
-
     # Steps is the headline figure an assistant quotes first, and it is one of the
     # metrics that can be silently unshared. A bare zero here becomes "you were
     # inactive" in the answer the user actually reads.
@@ -736,12 +780,12 @@ def get_health_summary(days: int = 7) -> dict:
             "latest": rhr_latest,
         },
         "sleep": {
-            "total_records": len(sleep_rows),
-            "stage_records": len(sleep_stages),
+            "total_records": sleep_total,
+            "stage_records": sleep_stage_count,
         },
         "workouts": {
-            "count": len(workout_rows),
-            "types": list({(r.get("metadata") or {}).get("workout_type", "unknown") for r in workout_rows}),
+            "count": workout_count,
+            "types": workout_types,
         },
         **({"tier": tier} if tier else {}),
         "data_as_of": datetime.now(timezone.utc).isoformat(),
