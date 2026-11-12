@@ -77,13 +77,15 @@ def _stage(device: str, start: datetime, minutes: int, value: float = 3.0) -> di
     }
 
 
-# Recent, not a fixed date: get_sleep keeps only nights that end inside its window, and a real
-# query never returns rows from outside it. A fixed March date only worked while the stub ignored
-# the window.
-NIGHT = (datetime.now(timezone.utc) - timedelta(days=3)).replace(hour=23, minute=0, second=0, microsecond=0)
+NIGHT = datetime(2026, 3, 10, 23, 0, tzinfo=timezone.utc)
+# get_sleep keeps only nights that end inside its window, so these tests run on a fixed clock in
+# UTC with "now" 2 days after NIGHT, whenever the suite runs and whatever HEALTH4AI_TZ is.
+NOW_FOR_NIGHT = NIGHT + timedelta(days=2, hours=4)
 
 
 def _sleep_with(monkeypatch, rows):
+    monkeypatch.setattr(tools, "_since", lambda days: (NOW_FOR_NIGHT - timedelta(days=days)).isoformat())
+    monkeypatch.setattr(tools, "TZ", timezone.utc)
     monkeypatch.setattr(tools, "_fetch_metrics", lambda *a, **k: list(rows))
     return tools.get_sleep(7)
 
