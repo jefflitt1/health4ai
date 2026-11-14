@@ -45,7 +45,7 @@ get_health_summary(days=30)
 **Parameters:**
 - `days` (int, default 7)
 
-**Returns:** Average sleep hours across the window, and a list of nights with per-stage durations (in minutes), total minutes, and individual segment records.
+**Returns:** Average sleep hours across the window, and a list of nights with per-stage durations (in minutes) and total minutes. A night is listed whole if it ended inside the window. Nights that ended in the last 7 days also list their individual segment records; for a longer window, older nights carry only stage totals and a `segments_note` says so. If a very long window reaches the row limit, `covered_since` gives the oldest night listed.
 
 **When to use:** Any sleep-specific question. More detailed than the sleep summary in `get_health_summary`. Note: only returns stage data if a source that writes sleep stages to HealthKit is present (Apple Watch in watchOS 9+, Oura, etc.).
 
