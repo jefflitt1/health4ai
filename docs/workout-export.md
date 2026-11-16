@@ -56,5 +56,7 @@ Run `xcodebuild test -project ios/Health4AI.xcodeproj -scheme Health4AI
 -destination 'platform=iOS Simulator,id=<simulator UUID>'
 -only-testing:Health4AITests/HealthKitTypeTests -parallel-testing-enabled NO`.
 Use normal simulator signing; unsigned test artifacts built but stalled at launch.
-The full iOS XCTest suite also passed: 114 tests, zero failures.
+The initial full iOS XCTest suite passed: 114 tests, zero failures. After integrating
+main `00775bbb` (including protected-data deferral and alcohol metric support), the
+combined suite passed: 119 tests, zero failures (verified 2026-11-16).
 Physical-device recorded-workout export remains a release acceptance check.

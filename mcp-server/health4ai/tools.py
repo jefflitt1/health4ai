@@ -295,6 +295,59 @@ def _fetch_metrics_range(metric_type: str, user_id: str,
     return all_rows
 
 
+def _count_sleep_rows(user_id: str, since: str) -> tuple[int, int]:
+    """(all sleep rows, rows whose metadata mentions sleep) since `since`, counted in SQL.
+
+    Counted, not fetched: two sleep trackers write ~140 stage rows a night, so a long window
+    would pass any row cap and the count would stop at it.
+    """
+    conn = _connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT count(*),
+                       count(*) FILTER (WHERE lower(metadata::text) LIKE '%%sleep%%')
+                FROM {TABLE}
+                WHERE user_id = %s
+                  AND metric_type = %s
+                  AND started_at >= %s
+                """,
+                (user_id, SLEEP, since),
+            )
+            total, stages = cur.fetchone()
+    finally:
+        conn.close()
+    return total, stages
+
+
+def _count_workouts(user_id: str, since: str) -> tuple[int, list]:
+    """(workout count, distinct workout types) since `since`, counted in SQL.
+
+    A workout without a workout_type key counts as "unknown".
+    """
+    conn = _connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT count(*),
+                       array_agg(DISTINCT CASE WHEN metadata ? 'workout_type'
+                                               THEN metadata->>'workout_type'
+                                               ELSE 'unknown' END)
+                FROM {TABLE}
+                WHERE user_id = %s
+                  AND metric_type = %s
+                  AND started_at >= %s
+                """,
+                (user_id, WORKOUT, since),
+            )
+            count, types = cur.fetchone()
+    finally:
+        conn.close()
+    return count, types or []
+
+
 def _fetch_metrics_snapshot(user_id: str, day_start: str, day_end: str,
                             limit: int = 1000) -> list[dict]:
     """All metric rows for a single calendar day (both bounds inclusive on started_at)."""
@@ -664,8 +717,8 @@ def get_health_summary(days: int = 7) -> dict:
     uid = current_user_id.get()
     since = _since(days)
 
-    sleep_rows = _fetch_metrics(SLEEP, uid, since)
-    workout_rows = _fetch_metrics(WORKOUT, uid, since, limit=50)
+    sleep_total, sleep_stage_count = _count_sleep_rows(uid, since)
+    workout_count, workout_types = _count_workouts(uid, since)
 
     def avg(rows: list[dict]) -> float | None:
         vals = [r["value"] for r in rows if r.get("value") is not None]
@@ -703,12 +756,6 @@ def get_health_summary(days: int = 7) -> dict:
     steps_daily_avg = _daily_total_avg(steps_points)
     steps_days_with_data = len(steps_points)
 
-    # Sleep: sum duration of "asleep" stages per day
-    sleep_stages = [
-        r for r in sleep_rows
-        if r.get("metadata", {}) and "sleep" in str(r.get("metadata", {})).lower()
-    ]
-
     # Steps is the headline figure an assistant quotes first, and it is one of the
     # metrics that can be silently unshared. A bare zero here becomes "you were
     # inactive" in the answer the user actually reads.
@@ -733,12 +780,12 @@ def get_health_summary(days: int = 7) -> dict:
             "latest": rhr_latest,
         },
         "sleep": {
-            "total_records": len(sleep_rows),
-            "stage_records": len(sleep_stages),
+            "total_records": sleep_total,
+            "stage_records": sleep_stage_count,
         },
         "workouts": {
-            "count": len(workout_rows),
-            "types": list({(r.get("metadata") or {}).get("workout_type", "unknown") for r in workout_rows}),
+            "count": workout_count,
+            "types": workout_types,
         },
         **({"tier": tier} if tier else {}),
         "data_as_of": datetime.now(timezone.utc).isoformat(),
@@ -748,6 +795,7 @@ def get_health_summary(days: int = 7) -> dict:
 # HKCategoryValueSleepAnalysis: 0=InBed, 1=AsleepUnspecified, 2=Awake,
 # 3=AsleepCore, 4=AsleepDeep, 5=AsleepREM. Only 3/4/5 are true sleep stages.
 _SLEEP_STAGE_NAMES = {3.0: "core", 4.0: "deep", 5.0: "rem"}
+SLEEP_SEGMENT_DAYS = 7  # get_sleep lists stage segments for nights that ended this many days back
 # Highest priority first. Anything not listed ranks below all of these and competes on
 # record count. This used to be an ALLOW list of the author's two devices, which gave
 # every Whoop / Garmin / Withings / iPhone-only user a null sleep total.
@@ -792,17 +840,36 @@ def get_sleep(days: int = 7) -> dict:
     Returns per-night breakdown with stage durations (REM, Deep/Core, Light, Awake).
     One source per night (see _sleep_stage_rows_by_night): Oura > Apple Watch > Whoop >
     Garmin > Withings > whichever other source has the most stage records that night.
+    A night is listed whole if it ended inside the window. Stage segments (each stage's start
+    and end) are listed for nights that ended in the last 7 days; older nights carry stage totals.
+    If the fetch reaches RAW_WINDOW_LIMIT, older nights are missing: covered_since gives the
+    oldest night listed, and avg_sleep_hours covers only the nights from then on.
     """
     days = _clamp_days(days)
     uid = current_user_id.get()
-    since = _since(days)
-    rows = _fetch_metrics(SLEEP, uid, since, limit=1000)
+    since_dt = _parse_ts(_since(days))
+    segments_since = since_dt if days <= SLEEP_SEGMENT_DAYS else _parse_ts(_since(SLEEP_SEGMENT_DAYS))
+    # Two days further back, so a night that began before the window edge is fetched whole; a
+    # night is then kept only if it ends inside the window. Cutting at the edge left the oldest
+    # night half counted.
+    rows = _fetch_metrics(SLEEP, uid, _since(days + 2), limit=RAW_WINDOW_LIMIT)
+    by_night = _sleep_stage_rows_by_night(rows)
+    capped = len(rows) >= RAW_WINDOW_LIMIT
+    if capped and by_night:
+        # At the row cap the oldest fetched night may be missing its earlier stages.
+        by_night.pop(min(by_night))
 
     nights: dict[str, dict] = {}
-    for night_key, (device, stage_rows) in _sleep_stage_rows_by_night(rows).items():
+    older: list[dict] = []  # nights that ended before segments_since
+    for night_key, (device, stage_rows) in by_night.items():
+        night_end = max(_parse_ts(r["ended_at"]) for r in stage_rows)
+        if night_end <= since_dt:
+            continue
         night = nights[night_key] = {
             "date": night_key, "source": device, "stages": {}, "total_minutes": 0, "segments": [],
         }
+        if night_end <= segments_since:
+            older.append(night)
         for row in stage_rows:
             start_dt = _parse_ts(row["started_at"])
             end_dt = _parse_ts(row["ended_at"])
@@ -822,10 +889,23 @@ def get_sleep(days: int = 7) -> dict:
     total_hours = [n["total_minutes"] / 60 for n in sorted_nights if n["total_minutes"] > 0]
     avg_hours = round(sum(total_hours) / len(total_hours), 1) if total_hours else None
 
+    # Segments are 5-minute rows from some trackers: a long window listed in full would flood an
+    # AI client's context. Older nights keep their stage totals.
+    for night in older:
+        night.pop("segments")
+
     return {
         "period_days": days,
         "avg_sleep_hours": avg_hours,
         "nights": sorted_nights,
+        **({"segments_note": f"Stage segments are listed only for nights that ended in the last "
+                             f"{SLEEP_SEGMENT_DAYS} days; older nights carry stage totals."}
+           if older else {}),
+        **({"covered_since": sorted_nights[-1]["date"] if sorted_nights else None,
+            "coverage_note": f"The fetch reached the {RAW_WINDOW_LIMIT}-row limit, so nights before "
+                             f"covered_since are missing and avg_sleep_hours covers only the nights "
+                             f"listed. Ask for fewer days to cover the whole period."}
+           if capped else {}),
     }
 
 

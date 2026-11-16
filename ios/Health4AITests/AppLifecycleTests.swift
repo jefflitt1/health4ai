@@ -64,4 +64,118 @@ final class AppLifecycleTests: XCTestCase {
         XCTAssertFalse(delegate.responds(to: #selector(UIApplicationDelegate.applicationDidEnterBackground(_:))))
         XCTAssertFalse(delegate.responds(to: #selector(UIApplicationDelegate.applicationWillEnterForeground(_:))))
     }
+
+    func testLockedFullPassDoesNotClaimSuccessOrChangeAnchors() async {
+        let state = SyncEngine.sharedSyncState
+        let oldDeferred = state.deferredHealthWork
+        let oldError = state.syncError
+        let oldAuth = state.isAuthenticated
+        state.isAuthenticated = true
+        let lastSync = state.lastSyncDate
+        let anchors = UserDefaults.standard.data(forKey: "hkb.syncAnchors")
+        let count = state.lastSyncRecordCount
+        ProtectedHealthData.availabilityOverride = false
+        state.syncError = "Existing network error"
+        defer {
+            ProtectedHealthData.availabilityOverride = nil
+            state.isAuthenticated = oldAuth
+            state.deferredHealthWork = oldDeferred
+            state.syncError = oldError
+        }
+        let outcome = await SyncEngine.shared.runFullPass(trigger: .launch)
+        XCTAssertEqual(outcome, .deferred)
+        XCTAssertTrue(state.deferredHealthWork.contains(.sync))
+        XCTAssertEqual(state.lastSyncDate, lastSync)
+        XCTAssertEqual(state.lastSyncRecordCount, count)
+        XCTAssertEqual(state.syncError, "Existing network error")
+        XCTAssertEqual(UserDefaults.standard.data(forKey: "hkb.syncAnchors"), anchors)
+    }
+
+    func testProtectedDataRetryWiringRequiresDeferredWorkAndAvailability() {
+        let state = SyncEngine.sharedSyncState
+        let old = state.deferredHealthWork
+        AppDelegate.sceneWorkDryRun = true
+        AppDelegate.destinationConnectedOverride = true
+        AppDelegate.recordedSceneWork = []
+        defer {
+            AppDelegate.destinationConnectedOverride = nil
+            state.deferredHealthWork = old
+            ProtectedHealthData.availabilityOverride = nil
+            AppDelegate.sceneWorkDryRun = false
+            AppDelegate.recordedSceneWork = []
+        }
+        state.deferredHealthWork = [.launch]
+        ProtectedHealthData.availabilityOverride = false
+        AppDelegate.retryDeferredHealthData()
+        XCTAssertEqual(AppDelegate.recordedSceneWork, [])
+        ProtectedHealthData.availabilityOverride = true
+        AppDelegate.retryDeferredHealthData()
+        XCTAssertEqual(AppDelegate.recordedSceneWork, ["protectedDataAvailable"])
+        AppDelegate.destinationConnectedOverride = false
+        AppDelegate.retryDeferredHealthData()
+        XCTAssertEqual(AppDelegate.recordedSceneWork.count, 1)
+        AppDelegate.destinationConnectedOverride = true
+        state.deferredHealthWork = []
+        AppDelegate.retryDeferredHealthData()
+        XCTAssertEqual(AppDelegate.recordedSceneWork.count, 1)
+        XCTAssertTrue(AppDelegate().responds(to: #selector(UIApplicationDelegate.applicationProtectedDataDidBecomeAvailable(_:))))
+    }
+
+    func testTypedProtectionErrorStopsTypeScanAndRetainsRealFailures() async throws {
+        var calls = 0
+        SyncEngine.syncTypeOverride = { _ in
+            calls += 1
+            if calls == 1 { throw URLError(.notConnectedToInternet) }
+            throw ProtectedHealthData.unavailableError
+        }
+        defer { SyncEngine.syncTypeOverride = nil }
+        let result = try await SyncEngine.shared.performFullSync()
+        XCTAssertEqual(calls, 2)
+        XCTAssertEqual(result.attempted, 2)
+        XCTAssertTrue(result.deferred)
+        XCTAssertEqual(result.failures.count, 1)
+        XCTAssertEqual((result.failures[0].error as NSError).domain, NSURLErrorDomain)
+    }
+
+    func testProtectionClassificationNeverUsesErrorText() {
+        XCTAssertTrue(ProtectedHealthData.isUnavailable(ProtectedHealthData.unavailableError))
+        XCTAssertFalse(ProtectedHealthData.isUnavailable(NSError(domain: "Other", code: 6,
+            userInfo: [NSLocalizedDescriptionKey: "Protected health data is inaccessible"])))
+        XCTAssertFalse(ProtectedHealthData.isUnavailable(URLError(.notConnectedToInternet)))
+    }
+
+    func testSignOutAndDestinationChangeInvalidateDeferredCallbacks() {
+        let state = SyncEngine.sharedSyncState
+        let oldAuth = state.isAuthenticated
+        let oldType = state.connectionType
+        let oldDeferred = state.deferredHealthWork
+        defer {
+            state.connectionType = oldType
+            state.isAuthenticated = oldAuth
+            state.deferredHealthWork = oldDeferred
+        }
+        state.isAuthenticated = true
+        state.connectionType = .supabase
+        let prior = state.healthWorkGeneration
+        state.deferHealthWork(.history, generation: prior)
+        XCTAssertTrue(state.healthDataDeferred)
+        state.isAuthenticated = false
+        XCTAssertFalse(state.healthDataDeferred)
+        state.deferHealthWork(.history, generation: state.healthWorkGeneration)
+        XCTAssertFalse(state.healthDataDeferred)
+        state.isAuthenticated = true
+        state.deferHealthWork(.history, generation: prior)
+        XCTAssertFalse(state.healthDataDeferred)
+        let next = state.healthWorkGeneration
+        state.deferHealthWork(.history, generation: next)
+        state.connectionType = oldType == .rest ? .supabase : .rest
+        XCTAssertFalse(state.healthDataDeferred)
+        state.deferHealthWork(.history, generation: next)
+        XCTAssertFalse(state.healthDataDeferred)
+        #if H4A_SHEETS
+        state.connectionType = .googleSheets
+        state.deferHealthWork(.history, generation: state.healthWorkGeneration)
+        XCTAssertFalse(state.healthDataDeferred)
+        #endif
+    }
 }
