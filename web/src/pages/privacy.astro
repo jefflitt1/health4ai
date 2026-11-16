@@ -23,13 +23,13 @@ const hasClarity = Boolean(import.meta.env.PUBLIC_CLARITY_PROJECT_ID);
     <p class="text-neutral-500 text-xs mb-10">Last updated: {lastUpdated}</p>
 
     <p class="text-neutral-300 leading-relaxed mb-8">
-      health4.ai ("we", "us") provides an iOS app and MCP server that facilitate the transfer of Apple HealthKit data to a destination <em>you configure and control</em>: a spreadsheet in your own Google Drive or a Postgres/Supabase database. We do not operate a shared health-data backend or collect, store, or have access to your health data. This policy explains what limited data we do collect and your rights.
+      health4.ai ("we", "us") provides an iOS app and MCP server that facilitate the transfer of Apple HealthKit data to a destination <em>you configure and control</em>: a spreadsheet in your own Google Drive, a Supabase project, a Netlify site you deploy, or another REST endpoint you choose. We do not operate a shared health-data backend or receive a copy through this sync service. This policy explains what limited data we do collect and your rights.
     </p>
 
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">1. What data we collect</h2>
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0">
-        <li><strong class="text-neutral-200">Health data: we do not collect it.</strong> HealthKit metrics you authorize flow directly from your device to a spreadsheet in your own Google Drive (if you choose Save to Google Sheets; see section 4) or to a Supabase project you create and own. health4.ai never receives, stores, or has access to your health data. A cloud AI provider you separately connect to may process data you choose to send to it.</li>
+        <li><strong class="text-neutral-200">Health data: we do not collect it.</strong> HealthKit metrics you authorize flow directly from your device to a spreadsheet in your own Google Drive (if you choose Save to Google Sheets; see section 4) or to the database or REST endpoint you configure, including your own Supabase project or Netlify deployment. health4.ai does not receive a copy through this sync service. A cloud AI provider you separately connect to may process data you choose to send to it.</li>
         <li><strong class="text-neutral-200">Bike on your network (optional, version 1.0.6 and later).</strong> If you turn this on, the app reads finished rides from a ride server on your own home Wi-Fi, at a local address you enter, and saves each ride to the Apple Health app on your iPhone as an indoor cycling workout with active energy, cycling distance, power, cadence and, if you allow it, heart rate. This needs two permissions you can refuse or withdraw at any time: writing those types to Health, and iOS Local Network access. The app only connects to local network addresses for this feature and never to any internet server. Nothing is sent to health4.ai, and nothing is written to Health unless you turn the feature on. Rides you import stay in Health if you turn it off or erase the app's data; you can delete them in the Health app.</li>
         <li><strong class="text-neutral-200">Account data</strong>: before launch, we collected email addresses from pre-launch waitlist sign-ups to notify people when the app shipped and, for those who opted in, to send a TestFlight beta invitation. The app is now live on the App Store and we no longer collect waitlist emails.</li>
         <li><strong class="text-neutral-200">Website usage data</strong>: the website tools enabled for this build are described in section 8. These are separate from the iOS app's HealthKit sync. Do not send health records, passwords or database credentials in a support message.</li>
@@ -51,7 +51,10 @@ const hasClarity = Boolean(import.meta.env.PUBLIC_CLARITY_PROJECT_ID);
     <section class="mb-8">
       <h2 class="text-white font-semibold text-base mb-3">3. Where data is stored</h2>
       <p class="text-neutral-400 text-sm leading-relaxed">
-        Your health data lives in the destination <em>you</em> choose: a spreadsheet in your own Google Drive (see section 4), or a Supabase project you create and own. You control the destination credentials and sharing settings. People or services you authorize, and the destination provider, may be able to access the data under those settings. We do not receive a copy through the sync service.
+        Your health data lives in the destination <em>you</em> choose: a spreadsheet in your own Google Drive (see section 4), your Supabase project, your Netlify deployment, or another REST endpoint you configure. You control the destination credentials, sharing settings and deletion. People or services you authorize, and the destination provider, may be able to access the data under those settings and their own policies. We do not receive a copy through the sync service.
+      </p>
+      <p class="text-neutral-400 text-sm leading-relaxed mt-3">
+        For Netlify, health records are associated with an owner/person identifier in your deployment's database. Device keys authorize uploads; the deployment stores a hash of each key, its label and usage timestamps. Revoking a key stops uploads with that key but does not delete previously stored records. Delete those records in your destination database. Netlify and other hosting or database providers have their own access, retention and backup practices. Before connecting another REST endpoint, review who operates it and how it handles your data.
       </p>
     </section>
 
