@@ -78,3 +78,16 @@ for (const [route, label] of [
   });
 }
 
+
+// Posts flagged legacySetup carry a banner saying where the app sends data now. It said "syncs
+// only to a Supabase project you own" after 1.0.2 made a Google Sheet in the reader's own Drive
+// the default destination, so the one sentence about data flow on those pages named the wrong
+// place. Both destinations are the reader's own; the banner must name both.
+test('legacy-setup banner names both destinations the app writes to', () => {
+  const page = html('blog/apple-health-mcp-server');
+  const banner = page.match(/<aside role="note"[\s\S]*?<\/aside>/)?.[0];
+  assert.ok(banner, 'legacy post renders the setup banner');
+  assert.ok(!/syncs only to a Supabase project/.test(banner), 'banner must not say Supabase is the only destination');
+  assert.match(banner, /Google Sheet in your own Google Drive/);
+  assert.match(banner, /Supabase project you own/);
+});
