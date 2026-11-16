@@ -12,13 +12,22 @@ import os
 import pathlib
 import sys
 from datetime import datetime, timedelta, timezone
+import pytest
 
 os.environ.setdefault("DATABASE_URL", "postgresql://unused:unused@localhost:1/unused")
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import tools  # noqa: E402
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime(2026, 11, 16, 10, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def fixed_clock(monkeypatch):
+    # Keep the fresh fixture before noon, after the preceding night's sleep.
+    monkeypatch.setattr(tools, "_now", lambda: NOW)
+    monkeypatch.setattr(tools, "TZ", timezone.utc)
+    monkeypatch.setattr(tools, "TZ_NAME", "UTC")
 
 
 def _row(hours_ago: float, value: float, unit: str = "") -> dict:
@@ -80,9 +89,9 @@ def test_steps_and_energy_are_summed_in_sql_over_seven_whole_days(monkeypatch):
              "source": "raw"} for d in (14, 15, 16)]
     newest = NOW - timedelta(hours=1)
     steps = [_row(h, 10.0, "count") for h in (30, 5, 1)]
-    before = datetime.now(tools.TZ).date()
+    before = tools._today_local()
     out = _brief(monkeypatch, {tools.STEPS: steps}, {tools.STEPS: days}, calls)
-    after = datetime.now(tools.TZ).date()
+    after = tools._today_local()
     row_fetches = [c for c in calls if len(c) == 2]
     # Step rows are read only for freshness, one row; energy rows not at all.
     assert [c for c in row_fetches if c[0] in (tools.STEPS, tools.ACTIVE_ENERGY)] == [(tools.STEPS, 1)]

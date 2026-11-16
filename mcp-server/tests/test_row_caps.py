@@ -14,12 +14,23 @@ import pathlib
 import sys
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 os.environ.setdefault("DATABASE_URL", "postgresql://unused:unused@localhost:1/unused")
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import tools  # noqa: E402
 
-NOW = datetime.now(timezone.utc)
+# Six in the morning UTC, at most a day ago, with the tools' clock fixed there and their zone UTC
+# (whatever HEALTH4AI_TZ says): a fixture night (bedtime 8 h before NOW, 5 h 50 min long) then runs
+# 22:00-03:50 UTC and never straddles the noon boundary between nights, whatever time the suite runs.
+NOW = (datetime.now(timezone.utc) - timedelta(hours=6)).replace(hour=6, minute=0, second=0, microsecond=0)
+
+
+@pytest.fixture(autouse=True)
+def _fixed_clock_in_utc(monkeypatch):
+    monkeypatch.setattr(tools, "_now", lambda: NOW)
+    monkeypatch.setattr(tools, "TZ", timezone.utc)
 
 
 def _stub(monkeypatch, rows_by_metric: dict):
@@ -61,7 +72,7 @@ T0 = datetime(2026, 3, 20, 3, 0, tzinfo=timezone.utc)
 
 
 def _fixed_clock(monkeypatch):
-    monkeypatch.setattr(tools, "_since", lambda days: _iso(T0 - timedelta(days=days)))
+    monkeypatch.setattr(tools, "_now", lambda: T0)
     monkeypatch.setattr(tools, "TZ", timezone.utc)
 
 
