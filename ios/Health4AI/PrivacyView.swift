@@ -5,6 +5,10 @@ struct PrivacyView: View {
     #if H4A_SHEETS
     private var isSheets: Bool { syncState.connectionType == .googleSheets }
     #endif
+    /// A Netlify site is a database the person deployed on their own Netlify account, reached
+    /// with the Device key the site issued to this phone.
+    private var isNetlify: Bool { syncState.connectionType == .netlify }
+    private var netlifySiteHost: String? { URL(string: syncState.netlifySiteBaseURL)?.host }
 
     var body: some View {
         NavigationStack {
@@ -61,10 +65,19 @@ struct PrivacyView: View {
 
     @ViewBuilder
     private var databaseFlow: some View {
-        FlowArrow(label: "HTTPS (your endpoint only)")
-        FlowNode(icon: "server.rack", label: "Your Supabase / API", color: .green)
-        FlowArrow(label: "MCP protocol")
-        FlowNode(icon: "brain", label: "Your AI agent (Claude, etc.)", color: .blue)
+        if isNetlify {
+            FlowArrow(label: "HTTPS (your site only)")
+            FlowNode(icon: "server.rack",
+                     label: netlifySiteHost.map { "Your Netlify site (\($0))" } ?? "Your Netlify site",
+                     color: .green)
+            FlowArrow(label: "MCP protocol")
+            FlowNode(icon: "brain", label: "Your AI agent (Claude, etc.)", color: .blue)
+        } else {
+            FlowArrow(label: "HTTPS (your endpoint only)")
+            FlowNode(icon: "server.rack", label: "Your Supabase / API", color: .green)
+            FlowArrow(label: "MCP protocol")
+            FlowNode(icon: "brain", label: "Your AI agent (Claude, etc.)", color: .blue)
+        }
     }
 
     private var flowCaption: String {
@@ -73,6 +86,9 @@ struct PrivacyView: View {
             return "health4ai is not a shared health-data backend. Google and your AI provider remain separate privacy decisions."
         }
         #endif
+        if isNetlify {
+            return "health4ai is not a shared health-data backend. The site runs on your own Netlify account. Netlify and your AI provider remain separate privacy decisions."
+        }
         return "health4ai is not a shared health-data backend. Your chosen database and AI provider remain separate privacy decisions."
     }
 
@@ -82,6 +98,9 @@ struct PrivacyView: View {
             return "health4ai does not operate a shared health-data backend. Your health data goes only to the Google Sheet you connect, in your own Drive."
         }
         #endif
+        if isNetlify {
+            return "health4ai does not operate a shared health-data backend. Your health data goes only to the Netlify site you connected."
+        }
         return "health4ai does not operate a shared health-data backend. Your health data goes only to the database endpoint you configure."
     }
 
@@ -91,6 +110,9 @@ struct PrivacyView: View {
             return "The app contains no analytics or crash-reporting SDKs. Google and any cloud AI provider have their own privacy practices."
         }
         #endif
+        if isNetlify {
+            return "The app contains no analytics or crash-reporting SDKs. Netlify, which hosts your site, and any cloud AI provider have their own privacy practices."
+        }
         return "The app contains no analytics or crash-reporting SDKs. Your chosen database and any cloud AI provider have their own privacy practices."
     }
 

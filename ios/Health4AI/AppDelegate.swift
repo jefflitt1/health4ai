@@ -142,6 +142,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         let syncState = SyncEngine.sharedSyncState
         syncState.isAuthenticated = true
         syncState.userEmail = authManager.storedEmail
+        SyncEngine.shared.recordSyncPositionIfUnset(endpoint: syncState.resolvedEndpointURL)
 
         guard HKHealthStore.isHealthDataAvailable() else { return }
         Task { @MainActor in

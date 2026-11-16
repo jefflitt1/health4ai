@@ -1141,7 +1141,11 @@ struct MCPSetupView: View {
                     privacyNoteCard
                     stepsCard
                     exampleQuestionsCard
-                    githubCard
+                    if isNetlify {
+                        siteCard
+                    } else {
+                        githubCard
+                    }
                 }
                 .padding()
             }
@@ -1155,22 +1159,50 @@ struct MCPSetupView: View {
         }
     }
 
+    // MARK: Netlify site
+
+    /// A Netlify site is read by the same local Python MCP server as Supabase; only where the
+    /// database lives, and where its connection details come from, differ. Every Netlify string
+    /// below is derived from the configured Site URL, never a fixed address.
+    private var isNetlify: Bool { syncState.connectionType == .netlify }
+
+    /// The Site URL when it has a host, else nil. Every Netlify string falls back to its
+    /// placeholder on this one test, so a missing or half-typed URL never shows "https://"
+    /// beside "your site".
+    private var siteURL: URL? {
+        guard let url = URL(string: syncState.netlifySiteBaseURL), url.host != nil else { return nil }
+        return url
+    }
+
+    private var siteHost: String { siteURL?.host ?? "your site" }
+
+    private var serverSublabel: String {
+        let year = syncState.backfillEarliestDate.map { Calendar.current.component(.year, from: $0) }
+        if isNetlify, siteURL != nil {
+            return year.map { "\(siteHost) · data since \($0)" } ?? siteHost
+        }
+        return year.map { "Your data since \($0)" } ?? "your health records"
+    }
+
     // MARK: How it works
 
     private var howItWorksCard: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("How it works")
                 .font(.headline)
-            Text("Your synced health data lives in your own database. The health4ai MCP server connects it to any AI you choose. Local models like Ollama stay fully on-device. No SQL required.")
+            Text(isNetlify
+                 ? "Your synced health data lives in your Netlify site's database. The health4ai MCP server connects it to any AI you choose. No SQL required."
+                 : "Your synced health data lives in your own database. The health4ai MCP server connects it to any AI you choose. Local models like Ollama stay fully on-device. No SQL required.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
             VStack(spacing: 0) {
-                MCPFlowRow(icon: "iphone", label: "This app", sublabel: "syncs HealthKit → your database", color: .pink)
+                MCPFlowRow(icon: "iphone", label: "This app",
+                           sublabel: isNetlify ? "syncs HealthKit → your Netlify site" : "syncs HealthKit → your database",
+                           color: .pink)
                 MCPFlowArrow()
-                MCPFlowRow(icon: "server.rack", label: "Your Supabase DB",
-                           sublabel: syncState.backfillEarliestDate.map { "Your data since \(Calendar.current.component(.year, from: $0))" } ?? "your health records",
-                           color: .green)
+                MCPFlowRow(icon: "server.rack", label: isNetlify ? "Your Netlify site" : "Your Supabase DB",
+                           sublabel: serverSublabel, color: .green)
                 MCPFlowArrow()
                 MCPFlowRow(icon: "hammer", label: "health4ai MCP server", sublabel: "runs on your Mac (open source)", color: .orange)
                 MCPFlowArrow()
@@ -1195,11 +1227,20 @@ struct MCPSetupView: View {
                 detail: "github.com/jefflitt1/health4ai (the MCP server is in the mcp-server/ folder)."
             )
             Divider().padding(.leading, 36)
-            MCPStep(
-                number: 2,
-                title: "Add your Supabase credentials",
-                detail: "Copy SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from your Supabase project settings into mcp-server/.env"
-            )
+            if isNetlify {
+                // The values backends/netlify/README.md tells the MCP server to use.
+                MCPStep(
+                    number: 2,
+                    title: "Add your site's database",
+                    detail: "Open \(siteHost) with your setup secret and copy your person ID into HEALTHKIT_USER_ID in mcp-server/.env. Copy DATABASE_URL from your site's Data & Storage → Database page on Netlify."
+                )
+            } else {
+                MCPStep(
+                    number: 2,
+                    title: "Add your Supabase credentials",
+                    detail: "Copy SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from your Supabase project settings into mcp-server/.env"
+                )
+            }
             Divider().padding(.leading, 36)
             MCPStep(
                 number: 3,
@@ -1221,9 +1262,13 @@ struct MCPSetupView: View {
                 .foregroundStyle(.green)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Fully private with a local model")
+                // "Never leaves your Mac" would be false for a Netlify site: the data lives in
+                // the site's database on the person's own Netlify account.
+                Text(isNetlify ? "On your own Netlify account" : "Fully private with a local model")
                     .font(.subheadline.weight(.semibold))
-                Text("Run Ollama locally and your health data never leaves your Mac. The app syncs to your own database, and the AI runs on your own hardware.")
+                Text(isNetlify
+                     ? "Your health data is stored in your own site's database. Run Ollama locally and the AI runs on your own hardware too."
+                     : "Run Ollama locally and your health data never leaves your Mac. The app syncs to your own database, and the AI runs on your own hardware.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1273,6 +1318,33 @@ struct MCPSetupView: View {
             }
         }
         .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    // MARK: Your site
+
+    /// Netlify's counterpart to `githubCard`: the site's setup page is where the person ID is
+    /// shown and Device keys are issued and revoked.
+    private var siteCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Your site")
+                .font(.headline)
+            Text("Open your site with your setup secret to find your person ID, or to issue and revoke Device keys.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            if let siteURL {
+                Link(destination: siteURL) {
+                    HStack {
+                        Image(systemName: "arrow.up.right.square")
+                        Text("Open \(siteHost)")
+                            .fontWeight(.medium)
+                    }
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }

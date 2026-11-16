@@ -58,6 +58,8 @@ struct ContentView: View {
         if args.contains("-h4aiScreenshotSyncHistory") { return AnyView(SyncHistoryView()) }
         if args.contains("-h4aiScreenshotSources") { return AnyView(SourcesView()) }
         if args.contains("-h4aiScreenshotConnectAI") { return AnyView(ConnectAIView()) }
+        if args.contains("-h4aiScreenshotMCPSetup") { return AnyView(MCPSetupView()) }
+        if args.contains("-h4aiScreenshotPrivacy") { return AnyView(PrivacyView()) }
         if args.contains("-h4aiScreenshotSetupChecklist") { return AnyView(ConnectionView()) }
         #if H4A_SHEETS
         if args.contains("-h4aiScreenshotSheetsConnect") { return AnyView(ConnectionView()) }
@@ -117,6 +119,7 @@ enum CredentialKeychain {
         "hkb.restBearerToken",
         "hkb.restApiKeyValue",
         "hkb.googleRefreshToken",
+        AuthManager.netlifyDeviceKey,
     ]
 
     static func save(_ value: String, forKey key: String) {
@@ -295,11 +298,19 @@ struct SignInView: View {
         error = nil
         Task {
             do {
+                let endpoint = syncState.resolvedEndpointURL
+                let type = syncState.connectionType
                 let response = try await authManager.signIn(
                     email: email,
                     password: password,
-                    serverURL: syncState.resolvedEndpointURL
+                    serverURL: endpoint
                 )
+                // Before anything syncs: a different database than the anchors were built
+                // against gets the whole history. Only for the destination signed in to, in case
+                // the picker changed while the sign-in was in flight.
+                if syncState.connectionType == type, syncState.resolvedEndpointURL == endpoint {
+                    await SyncEngine.shared.adoptSyncPosition(endpoint: endpoint, isSupabase: type == .supabase)
+                }
                 await MainActor.run {
                     syncState.isAuthenticated = true
                     syncState.userEmail = response.user.email
