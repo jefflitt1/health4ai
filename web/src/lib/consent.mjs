@@ -9,7 +9,11 @@
 
 export const CONSENT_KEY = 'h4a.consent';
 /** Bump when the vendor list or what they do changes: every visitor is asked again. */
-export const CONSENT_VERSION = 1;
+export const CONSENT_VERSION = 2;
+
+export function browserStorage(win) {
+  try { return win.localStorage; } catch { return null; }
+}
 
 // Non-production hosts never load the vendors (local dev and preview deployments would
 // otherwise pollute the shared PostHog project 367354). Same rule the inline snippets had.
@@ -63,6 +67,13 @@ export function saveChoice(storage, choice, now = new Date()) {
     storage.setItem(CONSENT_KEY, JSON.stringify({ v: CONSENT_VERSION, choice, at: now.toISOString() }));
     return true;
   } catch {
+    if (choice === 'denied') {
+      // A full/read-only store must never preserve an earlier grant across reload.
+      try {
+        storage.removeItem(CONSENT_KEY);
+        return storage.getItem(CONSENT_KEY) === null;
+      } catch { return false; }
+    }
     return false;
   }
 }
@@ -77,13 +88,14 @@ function loadPostHog(win, doc, { key, host }) {
     capture_pageview: true,
     capture_pageleave: true,
     persistence: 'localStorage',
-    session_recording: { maskAllInputs: true, maskTextSelector: '[data-ph-mask]' },
+    disable_session_recording: true,
     loaded: (ph) => ph.register({ site: 'health4ai' }),
   });
 }
 
 function loadClarity(win, doc, id) {
   (function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y)})(win,doc,"clarity","script",id);
+  win.clarity('consentv2', { ad_Storage: 'denied', analytics_Storage: 'granted' });
 }
 
 /** Loads every configured vendor, once per page. Returns the names loaded. */
@@ -104,22 +116,27 @@ const VENDOR_STORAGE_PREFIXES = ['ph_', '__ph_', '_clck', '_clsk'];
  * Withdrawing consent after the vendors ran on this page: tell each one to stop, remove the
  * first-party cookies and storage they set, and reload so none of their code keeps running.
  */
-export function withdraw(win, doc, storage) {
-  win.posthog?.opt_out_capturing?.();
-  win.clarity?.('consent', false);
+export function withdraw(win, doc, storage, reload = true) {
+  // One vendor's failure must not prevent the other opt-out or local cleanup.
+  try { win.posthog?.opt_out_capturing?.(); } catch { win.console?.warn('PostHog opt-out could not be confirmed'); }
+  try { win.clarity?.('consentv2', { ad_Storage: 'denied', analytics_Storage: 'denied' }); }
+  catch { win.console?.warn('Clarity opt-out could not be confirmed'); }
   const host = win.location.hostname;
   const domains = ['', `; domain=${host}`, `; domain=.${host.replace(/^www\./, '')}`];
   for (const name of VENDOR_COOKIES) {
-    for (const domain of domains) doc.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/${domain}`;
+    for (const domain of domains) {
+      try { doc.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/${domain}`; }
+      catch { win.console?.warn('Analytics cookie removal could not be confirmed'); }
+    }
   }
   try {
     const keys = [];
     for (let i = 0; i < storage.length; i++) keys.push(storage.key(i));
     for (const k of keys) if (VENDOR_STORAGE_PREFIXES.some((p) => k.startsWith(p))) storage.removeItem(k);
   } catch {
-    // Storage unreadable: there is nothing of theirs in it to remove.
+    win.console?.warn('Analytics storage removal could not be confirmed');
   }
-  win.location.reload();
+  if (reload) win.location.reload();
 }
 
 /**
@@ -132,6 +149,7 @@ export function startConsent({ root, win, doc, storage }) {
   const production = isProductionHost(win.location.hostname);
   const banner = root.querySelector('[data-consent-banner]');
   const change = root.querySelector('[data-consent="change"]');
+  const failure = root.querySelector('[data-consent-error]');
   const show = (asking) => {
     banner.hidden = !asking;
     change.hidden = asking;
@@ -140,6 +158,7 @@ export function startConsent({ root, win, doc, storage }) {
   const grant = () => { if (production) state.loaded = loadVendors(config, win, doc); };
 
   root.querySelector('[data-consent="accept"]').addEventListener('click', () => {
+    if (failure) failure.hidden = true;
     state.choice = 'granted';
     saveChoice(storage, 'granted');
     show(false);
@@ -148,9 +167,13 @@ export function startConsent({ root, win, doc, storage }) {
   root.querySelector('[data-consent="decline"]').addEventListener('click', () => {
     const wasLoaded = win.__h4aVendorsLoaded === true;
     state.choice = 'denied';
-    saveChoice(storage, 'denied');
-    show(false);
-    if (wasLoaded) withdraw(win, doc, storage);
+    const saved = saveChoice(storage, 'denied');
+    // If even removal fails, reloading could honor the old grant again. Keep the
+    // error visible and ask for browser-level cleanup instead of claiming success.
+    const blocked = wasLoaded && !saved;
+    show(blocked);
+    if (failure) failure.hidden = !blocked;
+    if (wasLoaded) withdraw(win, doc, storage, !blocked);
   });
   change.addEventListener('click', () => show(true));
 

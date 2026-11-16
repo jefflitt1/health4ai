@@ -2,7 +2,7 @@
 // and after a choice, what is stored, and what withdrawing removes (review W1, 2026-11-04).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CONSENT_KEY, CONSENT_VERSION, readChoice, startConsent } from '../src/lib/consent.mjs';
+import { CONSENT_KEY, CONSENT_VERSION, browserStorage, readChoice, startConsent } from '../src/lib/consent.mjs';
 
 class FakeElement {
   constructor(doc, tag, attrs = {}) {
@@ -48,12 +48,14 @@ function setup({ host = 'health4.ai', attrs = ALL, storage = fakeStorage() } = {
   const button = (name) => new FakeElement(doc, 'button', { 'data-consent': name });
   root.parts = {
     '[data-consent-banner]': new FakeElement(doc, 'section'),
+    '[data-consent-error]': new FakeElement(doc, 'p'),
     '[data-consent="accept"]': button('accept'),
     '[data-consent="decline"]': button('decline'),
     '[data-consent="change"]': button('change'),
   };
   const ui = {
     banner: root.parts['[data-consent-banner]'],
+    error: root.parts['[data-consent-error]'],
     accept: root.parts['[data-consent="accept"]'],
     decline: root.parts['[data-consent="decline"]'],
     change: root.parts['[data-consent="change"]'],
@@ -91,6 +93,9 @@ test('accept loads every configured vendor once and remembers the choice', () =>
   assert.equal(t.ui.change.hidden, false);
   assert.equal(readChoice(t.storage), 'granted');
   assert.deepEqual(t.win.posthog._i[0].slice(0, 1), ['phc_test'], 'PostHog initialised with the project key');
+  assert.equal(t.win.posthog._i[0][1].disable_session_recording, true);
+  assert.equal(t.win.posthog._i[0][1].session_recording, undefined);
+  assert.deepEqual([...t.win.clarity.q.at(-1)], ['consentv2', { ad_Storage: 'denied', analytics_Storage: 'granted' }]);
   assert.equal(t.win.fbq, undefined, 'the Meta Pixel is never loaded');
   t.ui.accept.click();
   assert.equal(t.loaded().length, 2, 'a second accept does not load anything twice');
@@ -174,13 +179,66 @@ test('withdrawing after accept stops each vendor, removes their storage and relo
   assert.equal(t.ui.banner.hidden, false, 'Cookie choices reopens the banner');
   t.ui.decline.click();
   assert.ok(t.win.posthog.some((call) => call[0] === 'opt_out_capturing'), 'PostHog told to stop capturing');
-  assert.deepEqual([...t.win.clarity.q.at(-1)], ['consent', false], 'Clarity consent withdrawn');
+  assert.deepEqual([...t.win.clarity.q.at(-1)], ['consentv2', { ad_Storage: 'denied', analytics_Storage: 'denied' }], 'Clarity consent withdrawn');
   for (const name of ['_clck', '_clsk']) {
     assert.ok(t.doc.cookies.some((c) => c.startsWith(`${name}=;`) && c.includes('expires=Thu, 01 Jan 1970')), `${name} cookie expired`);
   }
   assert.deepEqual([...storage.map.keys()].sort(), [CONSENT_KEY, 'unrelated'].sort(), 'vendor storage removed, choice kept');
   assert.equal(readChoice(storage), 'denied');
   assert.equal(t.win.reloads, 1, 'reloaded so no vendor code keeps running');
+});
+
+test('blocked localStorage property remains fail-closed and still renders choices', () => {
+  const win = { get localStorage() { throw new Error('SecurityError'); } };
+  const t = setup({ storage: browserStorage(win) });
+  t.start();
+  assert.equal(t.ui.banner.hidden, false);
+  assert.deepEqual(t.loaded(), []);
+});
+
+test('a throwing vendor cannot stop other opt-out, cleanup, or reload', () => {
+  for (const vendor of ['posthog', 'clarity']) {
+    const t = setup({ storage: saved('granted') });
+    t.start();
+    let otherStopped = false;
+    t.win.posthog.opt_out_capturing = () => {
+      if (vendor === 'posthog') throw new Error('provider detail must stay private');
+      otherStopped = true;
+    };
+    t.win.clarity = () => {
+      if (vendor === 'clarity') throw new Error('provider detail must stay private');
+      otherStopped = true;
+    };
+    t.ui.decline.click();
+    assert.equal(otherStopped, true);
+    assert.equal(t.win.reloads, 1);
+    assert.equal(readChoice(t.storage), 'denied');
+  }
+});
+
+test('denial write failure removes stale grant before reload', () => {
+  const storage = saved('granted');
+  const t = setup({ storage });
+  t.start();
+  storage.setItem = () => { throw new Error('quota'); };
+  t.ui.decline.click();
+  assert.equal(readChoice(storage), null);
+  assert.equal(t.win.reloads, 1);
+  const next = setup({ storage });
+  next.start();
+  assert.deepEqual(next.loaded(), []);
+});
+
+test('fully read-only choice storage displays failure and never reloads into old grant', () => {
+  const storage = saved('granted');
+  const t = setup({ storage });
+  t.start();
+  storage.setItem = storage.removeItem = () => { throw new Error('read only'); };
+  t.ui.decline.click();
+  assert.equal(t.win.reloads, 0);
+  assert.equal(t.ui.banner.hidden, false);
+  assert.equal(t.ui.error.hidden, false);
+  assert.equal(readChoice(storage), 'granted', 'visible error must not falsely claim persistent denial');
 });
 
 test('the Meta Pixel is not supported: a stray pixel id loads nothing and asks about nothing', () => {

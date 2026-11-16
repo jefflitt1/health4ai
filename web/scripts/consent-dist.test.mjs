@@ -46,8 +46,8 @@ test('no page starts a tracker in inline HTML, so nothing can run before consent
   }
 });
 
-const configured = ['PUBLIC_POSTHOG_PROJECT_TOKEN', 'PUBLIC_CLARITY_PROJECT_ID']
-  .some((name) => process.env[name]);
+const configured = Boolean((process.env.PUBLIC_POSTHOG_PROJECT_TOKEN && process.env.PUBLIC_POSTHOG_HOST)
+  || process.env.PUBLIC_CLARITY_PROJECT_ID);
 
 // Pages rendered through Layout.astro (every one has a canonical link). Files copied as-is from
 // public/, such as the Search Console verification file, run no scripts.
@@ -75,4 +75,14 @@ test('the vendor loaders ship only inside the consent module', { skip: !configur
   assert.ok(loader, 'the consent module is bundled and referenced by the page');
   assert.match(loader, /clarity\.ms\/tag\//, 'Clarity is loaded from the consent module');
   assert.doesNotMatch(loader, /fbevents|fbq|facebook/, 'the Meta Pixel is not in the consent module');
+});
+
+test('Clarity second-stage script is allowed by CSP without restoring Meta Pixel', () => {
+  for (const { path, html } of layoutPages) {
+    const csp = html.match(/http-equiv="Content-Security-Policy"[^>]*content="([^"]+)"/)?.[1];
+    assert.ok(csp, `${path}: CSP emitted`);
+    const scripts = csp.split(';').find((rule) => rule.trim().startsWith('script-src '));
+    assert.ok(scripts.includes('https://scripts.clarity.ms'), `${path}: Clarity bootstrap can load`);
+    assert.ok(!scripts.includes('facebook'), `${path}: no Meta script permission`);
+  }
 });
