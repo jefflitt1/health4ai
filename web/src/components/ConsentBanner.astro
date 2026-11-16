@@ -27,10 +27,12 @@ const list = vendors.length < 2
         health4.ai would like to use {list}. They set cookies or browser storage and record how you
         use this site. Nothing from them loads unless you accept. <a href="/privacy/">Privacy policy</a>
       </p>
-      <p data-consent-error role="alert" hidden>
+      <div data-consent-error role="alert" hidden>
+        <p>
         Your browser blocked saving this choice. We requested analytics opt-out, but cannot confirm
-        it stopped. Close this tab and clear this site's data in your browser before returning.
-      </p>
+        it stopped.</p>
+        <ol><li>Close this tab.</li><li>Clear this site's data in your browser before returning.</li></ol>
+      </div>
       <div class="consent-actions">
         <button type="button" data-consent="decline">Decline</button>
         <button type="button" data-consent="accept">Accept</button>
@@ -52,15 +54,23 @@ const list = vendors.length < 2
     max-width: 720px; margin: 0 auto; padding: 16px;
     display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
     background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-    color: #e5e7eb; font-size: 14px; line-height: 1.5;
+    color: var(--text); font-size: 14px; line-height: 1.5;
   }
   .consent-banner[hidden], .consent-change button[hidden], [data-consent-error][hidden] { display: none; }
   .consent-banner p { margin: 0; flex: 1 1 320px; }
+  .consent-banner [data-consent-error] {
+    flex: 1 1 100%; border-left: 3px solid var(--attention);
+    background: color-mix(in srgb, var(--attention) 12%, transparent); padding: 8px 12px;
+  }
+  .consent-banner [data-consent-error] ol { margin: 8px 0 0; padding-left: 20px; list-style: decimal; }
+  .consent-banner button:focus-visible, .consent-change button:focus-visible {
+    outline: 2px solid var(--accent-light); outline-offset: 3px;
+  }
   .consent-banner a { color: var(--accent-light); text-decoration: underline; }
   .consent-actions { display: flex; gap: 8px; }
   .consent-actions button {
     min-width: 96px; min-height: 44px; padding: 8px 16px; border-radius: 8px; font: inherit; cursor: pointer;
-    border: 1px solid var(--border); background: transparent; color: #fff;
+    border: 1px solid var(--muted); background: transparent; color: var(--text);
   }
   .consent-change { margin: 0; padding: 12px 16px 24px; text-align: center; }
   .consent-change button {

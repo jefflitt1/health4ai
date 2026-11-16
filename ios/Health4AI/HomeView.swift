@@ -446,6 +446,7 @@ struct HomeView: View {
     private var statusColor: Color {
         if syncState.isSyncing { return .blue }
         if syncState.syncError != nil { return .red }
+        if syncState.healthDataDeferred && syncState.isAuthenticated { return .secondary }
         // Sheets mode: one signal for a problem only the person can fix. The Sheets card
         // carries the message and the action; this headline only says it needs attention.
         if sheetsNeedsAttention { return .orange }
@@ -480,6 +481,10 @@ struct HomeView: View {
             Label(error, systemImage: "exclamationmark.circle.fill")
                 .font(.caption)
                 .foregroundStyle(statusColor)
+        } else if syncState.healthDataDeferred && syncState.isAuthenticated {
+            Label("Waiting for device unlock", systemImage: "lock")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.primary)
         } else if sheetsNeedsAttention {
             // Colour on the symbol only: orange headline text is 2.31:1 (design.md rule 1).
             Label {

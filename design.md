@@ -48,7 +48,7 @@ and increased-contrast for free.
 
 `statusColor` in `HomeView.swift` is the one place that maps state to colour. The status
 card's icon and border read from it; its title and caption stay `.primary` and `.secondary`
-(rule 1 above). Precedence, highest first: syncing → error → **Sheets needs attention** →
+(rule 1 above). Precedence, highest first: syncing → error → **connected, deferred Health data** → **Sheets needs attention** →
 **partial data** → **server update needed** → **background sync unavailable** → connection
 health. Sheets needs attention (Google access removed, sheet missing, no Health data readable)
 is a problem only the person can fix. It is never also recorded as `syncError`. The status card
@@ -58,6 +58,10 @@ server update needed and background sync unavailable are shown, and coloured, on
 connection is healthy. Background sync unavailable means `enableBackgroundDelivery` failed for
 at least one type on this device; the app still syncs on every open, so it is attention, not
 failure.
+
+Deferred Health data uses a neutral `.secondary` status border and a `.primary` lock symbol
+and headline “Waiting for device unlock”. It appears only while authenticated and pending;
+an existing sync error retains priority. Unlock/foreground retries the pending work.
 
 **Never add a second, independent colour path for the same state.** The bug this ordering
 exists to prevent: the headline said green "Active" while the card below it named four
@@ -126,3 +130,19 @@ visibly changes size between states.
 
 Run the Sasha Kim gate. It renders the real states rather than reading the diff, which is
 how every finding above was actually caught.
+
+## Website (2026-11-16)
+
+The website shares the pink accent; its dark surfaces use the tokens in
+`web/src/layouts/Layout.astro`: `--accent` #ff2d78, `--accent-light` #ff6b9d,
+`--surface` #0f1225, `--border` rgba(255,45,120,0.14), `--muted` #9ba5c4,
+`--text` #e5e7eb, and `--attention` #fbbf24. Use tokens for new components.
+
+The consent panel sits fixed at the bottom with 16px gutters and a 720px maximum
+width. Accept and Decline always have equal weight, neither pink, and minimum
+44px touch height. Neutral muted borders distinguish both controls; keyboard
+focus uses an accent-light outline. A persistence failure keeps normal body text
+inside a 3px attention border with a faint matching tint and 8px by 12px padding.
+Number its recovery steps: close the tab, then clear this site's browser data.
+Review normal and failure states at 375px plus the normal 1440px layout.
+Further website patterns live in `web/design.md`.
