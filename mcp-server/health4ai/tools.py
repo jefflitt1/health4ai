@@ -460,13 +460,18 @@ def _fetch_raw_daily_aggregates(metric_type: str, user_id: str,
 # Internal helpers (no DB calls — pure logic unchanged from prior version)
 # ---------------------------------------------------------------------------
 
+def _now() -> datetime:
+    """The current instant, in UTC. Every "now" in this module comes from here, so tests can fix it."""
+    return datetime.now(timezone.utc)
+
+
 def _since(days: int) -> str:
-    dt = datetime.now(timezone.utc) - timedelta(days=days)
+    dt = _now() - timedelta(days=days)
     return dt.isoformat()
 
 
 def _today_local() -> date:
-    return datetime.now(TZ).date()
+    return _now().astimezone(TZ).date()
 
 
 def _local_date(iso: str) -> str:
@@ -788,7 +793,7 @@ def get_health_summary(days: int = 7) -> dict:
             "types": workout_types,
         },
         **({"tier": tier} if tier else {}),
-        "data_as_of": datetime.now(timezone.utc).isoformat(),
+        "data_as_of": _now().isoformat(),
     }
 
 
@@ -807,8 +812,9 @@ def _parse_ts(value) -> datetime:
 
 
 def _sleep_night_key(started_at) -> str:
-    """A night belongs to the local day it began minus 6h (so 01:00 counts as the previous night)."""
-    return (_parse_ts(started_at).astimezone(TZ) - timedelta(hours=6)).strftime("%Y-%m-%d")
+    """A night belongs to the local day it began minus 12h (noon to noon): 01:00, and a morning
+    until noon, both count as the previous night."""
+    return (_parse_ts(started_at).astimezone(TZ) - timedelta(hours=12)).strftime("%Y-%m-%d")
 
 
 def _sleep_source_rank(device: str) -> int:
@@ -840,6 +846,8 @@ def get_sleep(days: int = 7) -> dict:
     Returns per-night breakdown with stage durations (REM, Deep/Core, Light, Awake).
     One source per night (see _sleep_stage_rows_by_night): Oura > Apple Watch > Whoop >
     Garmin > Withings > whichever other source has the most stage records that night.
+    A night's date is the evening it began (sleep before noon belongs to the previous date),
+    so last night is yesterday's date; today's night is left out until it has happened.
     A night is listed whole if it ended inside the window. Stage segments (each stage's start
     and end) are listed for nights that ended in the last 7 days; older nights carry stage totals.
     If the fetch reaches RAW_WINDOW_LIMIT, older nights are missing: covered_since gives the
@@ -859,11 +867,14 @@ def get_sleep(days: int = 7) -> dict:
         # At the row cap the oldest fetched night may be missing its earlier stages.
         by_night.pop(min(by_night))
 
+    # A night dated today has not happened yet: after noon it holds only naps, with tonight's
+    # sleep still to come, so it is not a night to list or average.
+    tonight = _today_local().isoformat()
     nights: dict[str, dict] = {}
     older: list[dict] = []  # nights that ended before segments_since
     for night_key, (device, stage_rows) in by_night.items():
         night_end = max(_parse_ts(r["ended_at"]) for r in stage_rows)
-        if night_end <= since_dt:
+        if night_key >= tonight or night_end <= since_dt:
             continue
         night = nights[night_key] = {
             "date": night_key, "source": device, "stages": {}, "total_minutes": 0, "segments": [],
@@ -1221,7 +1232,7 @@ def get_daily_snapshot(date: str = "") -> dict:
         vals = [r["value"] for r in by_type.get(metric, []) if r.get("value")]
         return round(sum(vals), 0) if vals else None
 
-    cutoff_date = (datetime.now(timezone.utc).date() - timedelta(days=RAW_CUTOFF_DAYS)).isoformat()
+    cutoff_date = (_now().date() - timedelta(days=RAW_CUTOFF_DAYS)).isoformat()
     is_historical = date < cutoff_date
     highlights_fallback_used = False
 
@@ -1355,7 +1366,7 @@ def _data_status(hrv: list[dict], rhr: list[dict], sleep: list[dict], workouts: 
     answered "Recovery stable" with hrv null and zero workouts, which a coaching skill read
     as a clean bill of health. Every consumer now gets the newest sample age up front.
     """
-    now = now or datetime.now(timezone.utc)
+    now = now or _now()
     newest = _newest_started_at(hrv, rhr, sleep, workouts, steps)
     hours = round((now - newest).total_seconds() / 3600, 1) if newest else None
     if newest is None:
@@ -1433,8 +1444,12 @@ def get_coaching_brief() -> dict:
 
     # Sleep: Core+Deep+REM only (value 3/4/5), one source per night — same selection
     # as get_sleep, instead of the hard Oura filter that nulled sleep for everyone else.
+    # Today's night is left out, as get_sleep leaves it out: it has not happened yet.
+    tonight = _today_local().isoformat()
     nights: dict[str, float] = {}
     for night_key, (_device, stage_rows) in _sleep_stage_rows_by_night(sleep_14d).items():
+        if night_key >= tonight:
+            continue
         nights[night_key] = sum(
             (_parse_ts(r["ended_at"]) - _parse_ts(r["started_at"])).total_seconds() / 3600
             for r in stage_rows
@@ -1453,7 +1468,7 @@ def get_coaching_brief() -> dict:
         total_workout_min += meta.get("duration_seconds", 0) / 60
 
     return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": _now().isoformat(),
         "data_status": data_status,
         "recovery": {
             "hrv_latest_ms": latest(hrv_14d),

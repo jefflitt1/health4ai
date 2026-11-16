@@ -83,9 +83,11 @@ NIGHT = datetime(2026, 3, 10, 23, 0, tzinfo=timezone.utc)
 NOW_FOR_NIGHT = NIGHT + timedelta(days=2, hours=4)
 
 
-def _sleep_with(monkeypatch, rows):
-    monkeypatch.setattr(tools, "_since", lambda days: (NOW_FOR_NIGHT - timedelta(days=days)).isoformat())
-    monkeypatch.setattr(tools, "TZ", timezone.utc)
+def _sleep_with(monkeypatch, rows, pin_clock: bool = True):
+    """get_sleep(7) over `rows`. pin_clock=False keeps a clock and zone the test set itself."""
+    if pin_clock:
+        monkeypatch.setattr(tools, "_now", lambda: NOW_FOR_NIGHT)
+        monkeypatch.setattr(tools, "TZ", timezone.utc)
     monkeypatch.setattr(tools, "_fetch_metrics", lambda *a, **k: list(rows))
     return tools.get_sleep(7)
 
@@ -142,7 +144,8 @@ def test_selection_is_per_night(monkeypatch):
 
 
 def test_coaching_brief_sleep_no_longer_requires_oura(monkeypatch):
-    recent = datetime.now(timezone.utc) - timedelta(days=2)
+    # 01:00 UTC two days ago: the 150 minutes stay clear of the noon boundary between night dates.
+    recent = (datetime.now(timezone.utc) - timedelta(days=2)).replace(hour=1, minute=0, second=0, microsecond=0)
     rows = {tools.SLEEP: [_stage("iPhone", recent, 90), _stage("iPhone", recent + timedelta(minutes=90), 60)]}
     def fake_fetch(metric_type, user_id, since, limit=500, source_filter=None):
         # Honour the filter: the old brief passed source_filter="Oura", which must now be gone.
@@ -154,3 +157,61 @@ def test_coaching_brief_sleep_no_longer_requires_oura(monkeypatch):
     brief = tools.get_coaching_brief()
     assert brief["sleep"]["nights_tracked"] == 1
     assert brief["sleep"]["avg_hours_last_7_nights"] == 2.5
+
+
+def _at(monkeypatch, t, iso: str):
+    """Fix the tools' clock at an instant."""
+    monkeypatch.setattr(t, "_now", lambda: datetime.fromisoformat(iso))
+
+
+def _oct24(h: int, m: int) -> datetime:
+    return datetime(2026, 10, 24, h, m, tzinfo=timezone.utc)
+
+
+# America/Toronto (EDT, UTC-4): asleep 01:12-08:35 on 2026-10-24, which the noon rule dates to the
+# 23rd: 108 + 60 + 144 + 131 = 443 minutes (core 239, deep 60, REM 144).
+LAST_NIGHT = [
+    _stage("Apple Watch", _oct24(5, 12), 108, value=3.0),   # core 01:12-03:00
+    _stage("Apple Watch", _oct24(7, 0), 60, value=4.0),     # deep
+    _stage("Apple Watch", _oct24(8, 0), 144, value=5.0),    # REM to 06:24
+    _stage("Apple Watch", _oct24(10, 24), 131, value=3.0),  # core 06:24-08:35
+]
+
+
+def test_a_night_runs_noon_to_noon(reload_tools, monkeypatch):
+    # The next day at noon: a 15:00 nap on the 24th belongs to the (now finished) night of the 24th.
+    t = reload_tools("America/Toronto")
+    _at(monkeypatch, t, "2026-10-25T16:00:00+00:00")
+    out = _sleep_with(monkeypatch, LAST_NIGHT + [_stage("Apple Watch", _oct24(19, 0), 30, value=3.0)],
+                      pin_clock=False)
+    assert [(n["date"], n["total_minutes"], n["stages"]) for n in out["nights"]] == [
+        ("2026-10-24", 30, {"core": 30}),
+        ("2026-10-23", 443, {"core": 239, "deep": 60, "rem": 144}),
+    ]
+
+
+def test_todays_night_is_left_out_until_it_has_happened(reload_tools, monkeypatch):
+    t = reload_tools("America/Toronto")
+    nap = _stage("Apple Watch", _oct24(17, 0), 30, value=3.0)  # 13:00-13:30 on the 24th
+    # 16:00 on the 24th: the nap is in the night of the 24th, which has not happened yet.
+    _at(monkeypatch, t, "2026-10-24T20:00:00+00:00")
+    out = _sleep_with(monkeypatch, LAST_NIGHT + [nap], pin_clock=False)
+    assert [(n["date"], n["total_minutes"]) for n in out["nights"]] == [("2026-10-23", 443)]
+    assert out["avg_sleep_hours"] == 7.4  # 443 / 60 = 7.38
+    # 09:00 on the 24th: last night, dated the 23rd, is listed.
+    _at(monkeypatch, t, "2026-10-24T13:00:00+00:00")
+    out = _sleep_with(monkeypatch, LAST_NIGHT, pin_clock=False)
+    assert [(n["date"], n["total_minutes"]) for n in out["nights"]] == [("2026-10-23", 443)]
+
+
+def test_coaching_brief_leaves_todays_night_out(reload_tools, monkeypatch):
+    t = reload_tools("America/Toronto")
+    _at(monkeypatch, t, "2026-10-24T20:00:00+00:00")  # 16:00, after a 13:00 nap
+    sleep = LAST_NIGHT + [_stage("Apple Watch", _oct24(17, 0), 30, value=3.0)]
+    monkeypatch.setattr(t, "_fetch_metrics", lambda metric, *a, **k: list(sleep) if metric == t.SLEEP else [])
+    monkeypatch.setattr(t, "_get_tiered_daily", lambda *a, **k: [])
+    monkeypatch.setattr(t, "_fetch_raw_daily_aggregates", lambda *a, **k: [])
+    monkeypatch.setattr(t, "_absence_note", lambda *a, **k: None)
+    out = t.get_coaching_brief()
+    assert out["sleep"]["nights_tracked"] == 1
+    assert out["sleep"]["avg_hours_last_7_nights"] == 7.4
