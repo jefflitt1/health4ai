@@ -68,6 +68,10 @@ struct SyncHistoryEntry: Codable, Identifiable, Equatable {
     }
 
     var totalCount: Int { counts.values.reduce(0, +) }
+
+    fileprivate var isEmptyObserverCheck: Bool {
+        trigger == .backgroundDelivery && success && counts.isEmpty && errorText == nil
+    }
 }
 
 // MARK: - SyncHistoryStore
@@ -92,10 +96,9 @@ final class SyncHistoryStore: @unchecked Sendable {
     private var entries: [SyncHistoryEntry]
     private let fileURL: URL
 
-    private init() {
-        let dir = Self.applicationSupportDirectory()
-        self.fileURL = dir.appendingPathComponent("sync-history.json")
-        self.entries = Self.load(from: fileURL)
+    init(fileURL: URL? = nil) {
+        self.fileURL = fileURL ?? Self.applicationSupportDirectory().appendingPathComponent("sync-history.json")
+        self.entries = Self.load(from: self.fileURL)
     }
 
     static func applicationSupportDirectory() -> URL {
@@ -133,10 +136,15 @@ final class SyncHistoryStore: @unchecked Sendable {
         try? data.write(to: fileURL, options: .atomic)
     }
 
-    /// Appends one run, most-recent-first, trimmed to `cap`. Safe from any thread.
+    /// Keep the latest consecutive empty observer check without letting a burst of callbacks
+    /// evict uploads or failures. Full passes and meaningful observer results stay separate.
+    /// Most-recent-first, trimmed to `cap`. Safe from any thread.
     func record(_ entry: SyncHistoryEntry) {
         lock.lock()
         defer { lock.unlock() }
+        if entry.isEmptyObserverCheck, entries.first?.isEmptyObserverCheck == true {
+            entries.removeFirst()
+        }
         entries.insert(entry, at: 0)
         if entries.count > Self.cap {
             entries.removeLast(entries.count - Self.cap)
