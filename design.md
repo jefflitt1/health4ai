@@ -106,6 +106,9 @@ The app reports on data it does not own, so a number on screen is a claim.
 
 ## Type
 
+At accessibility Dynamic Type sizes, the Netlify connected-status row stacks its
+status symbol, status text, and Disconnect action vertically so words stay intact.
+
 System font throughout. `.largeTitle` nav title, `.headline` card titles, `.subheadline`
 primary values, `.caption`/`.caption2` support text. **Numbers get `.monospacedDigit()`**
 so live counters do not jitter.

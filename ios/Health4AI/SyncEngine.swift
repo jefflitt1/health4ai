@@ -1004,12 +1004,54 @@ final class SyncEngine {
     /// already in flight, which would write its own anchor back immediately afterwards and
     /// quietly defeat the reset.
     func resetAnchors() {
-        Task {
-            await Self.serialized {
-                self.syncAnchors.removeAll()
-                UserDefaults.standard.removeObject(forKey: Self.anchorsKey)
-            }
+        Task { await resetAnchorsNow() }
+    }
+
+    /// `resetAnchors`, finished before it returns, for a caller that starts syncing next.
+    func resetAnchorsNow() async {
+        await Self.serialized {
+            self.syncAnchors.removeAll()
+            UserDefaults.standard.removeObject(forKey: Self.anchorsKey)
         }
+    }
+
+    /// Called after a database connection succeeds and before syncing starts. If the anchors
+    /// and import progress were built against another database, restarts them so this one gets
+    /// the whole history (SyncPosition), then records `endpoint` as their owner.
+    ///
+    /// On the main actor like every other BulkExportManager caller. An import still running for
+    /// the old database is awaited to a stop first: startBackfill right after a bare
+    /// cancelBackfill would run two imports at once (see cancelAndWait).
+    @MainActor
+    func adoptSyncPosition(endpoint: String, isSupabase: Bool,
+                           isCurrent: @escaping @MainActor () -> Bool) async -> Bool {
+        let defaults = UserDefaults.standard
+        let reset = SyncPosition.needsReset(recorded: defaults.string(forKey: SyncPosition.endpointKey),
+                                            connecting: endpoint, connectingIsSupabase: isSupabase)
+        return await SyncPosition.adopt(isCurrent: isCurrent, waitForStop: {
+            if reset { await BulkExportManager.shared.cancelAndWait() }
+        }, exclusively: { commit in
+            await Self.serialized { await MainActor.run { commit() } }
+        }, commit: {
+            // No suspension between the current-attempt check and these writes. The sync
+            // mutex is held, so old queued syncs cannot repopulate anchors during the reset.
+            if reset {
+                self.syncAnchors.removeAll()
+                defaults.removeObject(forKey: Self.anchorsKey)
+                BulkExportManager.shared.resetBackfill()
+                self.syncState.resetSyncProgress()
+                self.syncState.serverLacksMergedHours = false
+            }
+            defaults.set(endpoint, forKey: SyncPosition.endpointKey)
+        })
+    }
+
+    /// An install from before SyncPosition that is still signed in records the database it
+    /// syncs to, so a later sign-in to a different Supabase project is recognised as one.
+    func recordSyncPositionIfUnset(endpoint: String) {
+        let defaults = UserDefaults.standard
+        guard defaults.string(forKey: SyncPosition.endpointKey) == nil, !endpoint.isEmpty else { return }
+        defaults.set(endpoint, forKey: SyncPosition.endpointKey)
     }
 }
 

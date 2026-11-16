@@ -5,6 +5,7 @@ import SwiftUI
 struct ConnectionView: View {
     @EnvironmentObject var syncState: SyncState
     @EnvironmentObject var authManager: AuthManager
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var showSignIn = false
     @State private var showSignOut = false
@@ -17,10 +18,54 @@ struct ConnectionView: View {
     /// show "not yet" while the field right above it plainly held a key — exactly the kind
     /// of contradiction a checklist exists to prevent.
     @State private var anonKeyPresent = false
+    /// Same reason as `anonKeyPresent`, for the Netlify Device key field.
+    @State private var deviceKeyPresent = false
+    @State private var isConnecting = false
+    @State private var connectError: String? = nil
+    /// Changed on Disconnect to rebuild the Device key field, whose text is @State seeded from
+    /// the Keychain at creation and would otherwise keep showing the key Disconnect just erased.
+    @State private var deviceKeyFieldID = UUID()
     /// The in-flight Last year → Everything switch, so a second flip cancels the first
     /// instead of running two cancel/re-arm sequences over each other.
     @State private var horizonSwitchTask: Task<Void, Never>? = nil
+    #if DEBUG
+    /// Renders the production section in an isolated simulator, without a server request.
+    var netlifyDesignFixture: some View {
+        ScrollViewReader { proxy in
+            List { netlifyConfigSection }
+                .onAppear {
+                    let args = ProcessInfo.processInfo.arguments
+                    syncState.connectionType = .netlify
+                    syncState.netlifySiteURL = "https://fixture.invalid"
+                    deviceKeyPresent = true
+                    deviceKeyFieldID = UUID()
+                    syncState.isAuthenticated = args.contains("-fixtureConnected")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        connectError = args.contains("-fixtureError")
+                            ? "This Device key was not accepted. Issue a new key on your site's setup page, then try again." : nil
+                    }
+                    if args.contains("-fixtureControls") {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            proxy.scrollTo("netlify-action", anchor: .top)
+                        }
+                    }
+                }
+        }
+    }
+    #endif
     var body: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-h4aiScreenshotNetlifySection") {
+            netlifyDesignFixture
+        } else {
+            connectionBody
+        }
+        #else
+        connectionBody
+        #endif
+    }
+
+    private var connectionBody: some View {
         NavigationStack {
             List {
                 #if H4A_SHEETS
@@ -28,6 +73,8 @@ struct ConnectionView: View {
                 if syncState.connectionType == .googleSheets {
                     SheetsConnectSection()
                     privacySection
+                } else if syncState.connectionType == .netlify {
+                    netlifySections
                 } else {
                     databaseSections
                 }
@@ -48,7 +95,13 @@ struct ConnectionView: View {
             // lives in; the field's own onChange still keeps it live while visible.
             .onAppear {
                 anonKeyPresent = !(CredentialKeychain.load(forKey: "hkb.supabaseAnonKey") ?? "").isEmpty
+                deviceKeyPresent = authManager.deviceKey != nil
             }
+        }
+        // Switching destination signs out, which removes the Device key; Connect must not stay
+        // enabled for a key that is gone.
+        .onChange(of: syncState.connectionType) { _, _ in
+            deviceKeyPresent = authManager.deviceKey != nil
         }
         .onChange(of: syncState.importHorizon) { oldValue, newValue in
             guard oldValue == .lastYear, newValue == .everything else {
@@ -78,9 +131,11 @@ struct ConnectionView: View {
                 .environmentObject(authManager)
                 .environmentObject(syncState)
         }
-        .alert("Sign Out", isPresented: $showSignOut) {
-            Button("Sign Out", role: .destructive) {
+        .alert(syncState.connectionType == .netlify ? "Disconnect" : "Sign Out", isPresented: $showSignOut) {
+            Button(syncState.connectionType == .netlify ? "Disconnect" : "Sign Out", role: .destructive) {
                 authManager.signOut()
+                deviceKeyPresent = false
+                deviceKeyFieldID = UUID()
                 SyncEngine.shared.stopObserving()
                 Task { @MainActor in
                     syncState.isAuthenticated = false
@@ -92,7 +147,9 @@ struct ConnectionView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("You will need to sign in again to resume syncing.")
+            Text(syncState.connectionType == .netlify
+                 ? "This removes the Device key from this phone. To sync again, issue a new key on your site's setup page."
+                 : "You will need to sign in again to resume syncing.")
         }
         .alert("Erase Local Data and Configuration?", isPresented: $showErase) {
             Button("Erase", role: .destructive) {
@@ -138,6 +195,16 @@ struct ConnectionView: View {
         privacySection
     }
 
+    /// The Netlify destination's sections. No setup checklist and no AI section: both are
+    /// written for a Supabase project (anon key, pooler connection string).
+    @ViewBuilder
+    private var netlifySections: some View {
+        netlifyConfigSection
+        historySection
+        testSection
+        privacySection
+    }
+
     @ViewBuilder
     private var configSection: some View {
         switch syncState.connectionType {
@@ -147,6 +214,8 @@ struct ConnectionView: View {
             // Unreachable: SyncState.init coerces a stored `.rest` back to `.supabase`.
             // The case stays only to keep the switch exhaustive.
             supabaseConfigSection
+        case .netlify:
+            netlifyConfigSection
         #if H4A_SHEETS
         case .googleSheets:
             // Unreachable: the body shows SheetsConnectSection instead in Sheets mode.
@@ -186,6 +255,119 @@ struct ConnectionView: View {
             } else {
                 Text("Endpoint: \(syncState.resolvedEndpointURL)")
                     .font(.caption2)
+            }
+        }
+    }
+
+    private var netlifyConfigSection: some View {
+        Section {
+            AdaptiveLabeledField("Site URL") {
+                TextField("Site URL", text: $syncState.netlifySiteURL)
+                    .autocapitalization(.none)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .font(.system(.caption, design: .monospaced))
+            }
+            .disabled(syncState.isAuthenticated || isConnecting)
+            AdaptiveLabeledField("Device key") {
+                SecureFieldToggle(placeholder: "h4a_…", userDefaultsKey: AuthManager.netlifyDeviceKey) { newValue in
+                    // Trimmed like AuthManager.deviceKey, so a pasted newline alone does not enable Connect.
+                    deviceKeyPresent = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    connectError = nil
+                }
+                .id(deviceKeyFieldID)
+            }
+            .disabled(syncState.isAuthenticated || isConnecting)
+            if syncState.isAuthenticated {
+                (dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                    Text("Connected")
+                        .fontWeight(.medium)
+                    if !dynamicTypeSize.isAccessibilitySize { Spacer() }
+                    Button("Disconnect") { showSignOut = true }
+                        .tint(.red)
+                }
+                .id("netlify-action")
+            } else {
+                Button {
+                    connectNetlify()
+                } label: {
+                    HStack {
+                        if isConnecting {
+                            ProgressView().scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "link")
+                        }
+                        Text(isConnecting ? "Connecting…" : "Connect")
+                            .fontWeight(.medium)
+                    }
+                }
+                .disabled(isConnecting || !deviceKeyPresent
+                          || URL(string: syncState.resolvedEndpointURL)?.scheme != "https")
+                .id("netlify-action")
+                if let connectError {
+                    Label {
+                        Text(connectError)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                    } icon: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+        } header: {
+            Text("Your Netlify site")
+        } footer: {
+            Text("Open your site, unlock it with your setup secret, and issue a Device key for this "
+                 + "phone. Paste the site's address (https://…) and the key here.")
+        }
+    }
+
+    /// Checks the key with the site, then starts syncing the way a Supabase sign-in does.
+    private func connectNetlify() {
+        isConnecting = true
+        connectError = nil
+        let endpoint = syncState.resolvedEndpointURL
+        let revision = syncState.connectionRevision
+        let generation = authManager.signOutGeneration
+        let key = authManager.deviceKey
+        @MainActor func stillThisSite() -> Bool {
+            !Task.isCancelled && syncState.connectionRevision == revision
+                && authManager.signOutGeneration == generation && authManager.deviceKey == key
+                && syncState.connectionType == .netlify && syncState.resolvedEndpointURL == endpoint
+        }
+        Task { @MainActor in
+            defer { isConnecting = false }
+            do {
+                try await authManager.connectDeviceKey(endpoint: endpoint)
+                guard await SyncEngine.shared.adoptSyncPosition(
+                    endpoint: endpoint, isSupabase: false, isCurrent: stillThisSite),
+                      stillThisSite() else { return }
+                authManager.markDeviceKeyConnected()
+                syncState.isAuthenticated = true
+                syncState.userEmail = nil
+                try? await HealthKitManager.shared.requestAuthorization()
+                guard stillThisSite() else { return }
+                SyncEngine.shared.startObserving()
+                if BulkExportManager.shared.backfillNeeded {
+                    BulkExportManager.shared.startBackfill(syncState: syncState)
+                } else {
+                    SyncEngine.shared.performForegroundSync()
+                }
+            } catch {
+                await MainActor.run {
+                    isConnecting = false
+                    switch (error as? URLError)?.code {
+                    case .cannotFindHost, .cannotConnectToHost, .timedOut,
+                         .networkConnectionLost, .notConnectedToInternet:
+                        connectError = "Could not reach your site. Check the Site URL."
+                    default:
+                        connectError = error.localizedDescription
+                    }
+                }
             }
         }
     }
@@ -261,7 +443,8 @@ struct ConnectionView: View {
         } header: {
             Text("Health History")
         } footer: {
-            Text("A free Supabase project fills up after about a year of Apple Watch data. "
+            Text((syncState.connectionType == .netlify
+                  ? "" : "A free Supabase project fills up after about a year of Apple Watch data. ")
                  + "Switching to Everything imports your older history now, which can take hours. "
                  + "Switching back to Last year leaves what is already imported in place.")
         }
@@ -435,9 +618,14 @@ struct ConnectionView: View {
         isTesting = true
         testResult = nil
         let url = syncState.resolvedEndpointURL
+        let isNetlify = syncState.connectionType == .netlify
+        let place = isNetlify ? "site" : "project"
+        let urlName = isNetlify ? "Site URL" : "Project URL"
         guard let endpoint = URL(string: url) else {
             testResult = TestResult(kind: .failure,
-                message: "That Project URL isn't valid. It should look like https://abc123.supabase.co")
+                message: isNetlify
+                    ? "That Site URL isn't valid. It should look like https://your-site.netlify.app"
+                    : "That Project URL isn't valid. It should look like https://abc123.supabase.co")
             isTesting = false
             return
         }
@@ -449,8 +637,9 @@ struct ConnectionView: View {
         // Send the same credential the sync will send. Unauthenticated, this pinged the
         // ingest endpoint bare and every correctly-configured project came back 401, so
         // the test could report "authentication is required" for a connection that works.
-        if let token = authManager.currentToken {
-            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let credential = authManager.bearerForTest
+        if let credential {
+            req.setValue("Bearer \(credential)", forHTTPHeaderField: "Authorization")
         }
 
         Task {
@@ -468,14 +657,22 @@ struct ConnectionView: View {
                 case 401, 403:
                     // "Sign in above" names a control that exists, is visible, and is
                     // enabled — the Sign In button is two sections up this same screen.
-                    result = authManager.currentToken == nil
-                        ? TestResult(kind: .info,
-                            message: "Your project answered. Sign in above to finish the check.")
-                        : TestResult(kind: .failure,
-                            message: "Your project rejected your sign-in. Sign out and sign in again.")
+                    if isNetlify {
+                        result = credential == nil
+                            ? TestResult(kind: .info,
+                                message: "Your site answered. Enter a Device key above to finish the check.")
+                            : TestResult(kind: .failure,
+                                message: "Your site rejected this Device key. Issue a new one on your site's setup page.")
+                    } else {
+                        result = credential == nil
+                            ? TestResult(kind: .info,
+                                message: "Your project answered. Sign in above to finish the check.")
+                            : TestResult(kind: .failure,
+                                message: "Your project rejected your sign-in. Sign out and sign in again.")
+                    }
                 default:
                     result = TestResult(kind: .failure,
-                        message: "Your project answered with HTTP \(code). Check the Project URL.")
+                        message: "Your \(place) answered with HTTP \(code). Check the \(urlName).")
                 }
                 await MainActor.run {
                     testResult = result
@@ -490,7 +687,7 @@ struct ConnectionView: View {
                     switch (error as? URLError)?.code {
                     case .cannotFindHost, .cannotConnectToHost, .timedOut,
                          .networkConnectionLost, .notConnectedToInternet:
-                        message = "Could not reach your project. Check the Project URL."
+                        message = "Could not reach your \(place). Check the \(urlName)."
                     default:
                         message = error.localizedDescription
                     }
