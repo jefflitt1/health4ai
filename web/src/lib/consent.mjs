@@ -58,6 +58,10 @@ export function readChoice(storage) {
     return null; // not a value this code wrote: ask again
   }
   if (saved?.v !== CONSENT_VERSION) return null;
+  if (saved.choice === 'granted') {
+    // Do not honor an old grant when this browser cannot save a withdrawal.
+    try { storage.setItem(CONSENT_KEY, raw); } catch { return null; }
+  }
   return saved.choice === 'granted' || saved.choice === 'denied' ? saved.choice : null;
 }
 
@@ -78,33 +82,48 @@ export function saveChoice(storage, choice, now = new Date()) {
   }
 }
 
-function loadPostHog(win, doc, { key, host }) {
+function loadPostHog(win, doc, { key, host }, permitted) {
   // PostHog's own stub loader, unchanged apart from taking win/doc: it queues calls until
   // array.js arrives.
   !function(t,e){var o,n,p,r;e.__SV||(win.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys getNextSurveyStep onSessionId".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(doc,win.posthog||[]);
   win.posthog.init(key, {
     api_host: host,
     defaults: '2026-01-30',
-    capture_pageview: true,
-    capture_pageleave: true,
-    persistence: 'localStorage',
+    capture_pageview: false,
+    capture_pageleave: false,
+    autocapture: false,
+    persistence: 'memory',
+    person_profiles: 'never',
     disable_session_recording: true,
-    loaded: (ph) => ph.register({ site: 'health4ai' }),
+    before_send(event) {
+      if (!permitted()) return null;
+      const props = event.properties || {};
+      event.properties = { site: 'health4ai', $current_url: win.location.origin + win.location.pathname, $process_person_profile: false };
+      for (const key of ['token', 'distinct_id', '$device_id', '$session_id', '$window_id', 'form', 'status', 'testflight_consent', 'checked']) {
+        if (['string', 'number', 'boolean'].includes(typeof props[key])) event.properties[key] = props[key];
+      }
+      return event;
+    },
+    loaded: (ph) => {
+      if (!permitted()) { ph.opt_out_capturing(); return; }
+      ph.register({ site: 'health4ai' }); ph.capture('$pageview');
+    },
   });
 }
 
-function loadClarity(win, doc, id) {
-  (function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y)})(win,doc,"clarity","script",id);
+function loadClarity(win, doc, id, permitted) {
+  (function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;t.onload=()=>{if(!permitted())c[a]('stop');};y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y)})(win,doc,"clarity","script",id);
   win.clarity('consentv2', { ad_Storage: 'denied', analytics_Storage: 'granted' });
 }
 
 /** Loads every configured vendor, once per page. Returns the names loaded. */
-export function loadVendors(config, win, doc) {
+export function loadVendors(config, win, doc, permitted) {
+  if (!permitted()) return [];
   if (win.__h4aVendorsLoaded) return [];
   win.__h4aVendorsLoaded = true;
   const loaded = [];
-  if (config.posthog) { loadPostHog(win, doc, config.posthog); loaded.push('PostHog'); }
-  if (config.clarityId) { loadClarity(win, doc, config.clarityId); loaded.push('Microsoft Clarity'); }
+  if (config.posthog) { loadPostHog(win, doc, config.posthog, permitted); loaded.push('PostHog'); }
+  if (config.clarityId) { loadClarity(win, doc, config.clarityId, permitted); loaded.push('Microsoft Clarity'); }
   return loaded;
 }
 
@@ -119,6 +138,7 @@ const VENDOR_STORAGE_PREFIXES = ['ph_', '__ph_', '_clck', '_clsk'];
 export function withdraw(win, doc, storage, reload = true) {
   // One vendor's failure must not prevent the other opt-out or local cleanup.
   try { win.posthog?.opt_out_capturing?.(); } catch { win.console?.warn('PostHog opt-out could not be confirmed'); }
+  try { win.clarity?.('stop'); } catch { win.console?.warn('Clarity stop could not be confirmed'); }
   try { win.clarity?.('consentv2', { ad_Storage: 'denied', analytics_Storage: 'denied' }); }
   catch { win.console?.warn('Clarity opt-out could not be confirmed'); }
   const host = win.location.hostname;
@@ -150,22 +170,37 @@ export function startConsent({ root, win, doc, storage }) {
   const banner = root.querySelector('[data-consent-banner]');
   const change = root.querySelector('[data-consent="change"]');
   const failure = root.querySelector('[data-consent-error]');
+  const gpcNotice = root.querySelector('[data-consent-gpc]');
+  const accept = root.querySelector('[data-consent="accept"]');
+  const gpc = () => win.navigator?.globalPrivacyControl === true;
   const show = (asking) => {
     banner.hidden = !asking;
     change.hidden = asking;
+    accept.disabled = gpc();
+    if (gpcNotice) gpcNotice.hidden = !gpc();
   };
-  const state = { choice: readChoice(storage), loaded: [] };
-  const grant = () => { if (production) state.loaded = loadVendors(config, win, doc); };
+  const state = { choice: gpc() ? 'denied' : readChoice(storage), loaded: [], stopped: false };
+  const saveDenial = () => readChoice(storage) === 'denied' || saveChoice(storage, 'denied');
+  const permitted = () => production && !gpc() && !state.stopped && state.choice === 'granted';
+  const grant = () => { if (permitted()) state.loaded = loadVendors(config, win, doc, permitted); };
 
   root.querySelector('[data-consent="accept"]').addEventListener('click', () => {
     if (failure) failure.hidden = true;
-    state.choice = 'granted';
-    saveChoice(storage, 'granted');
+    state.choice = gpc() ? 'denied' : 'granted';
+    if (!saveChoice(storage, state.choice)) {
+      state.choice = 'denied'; state.stopped = true;
+      show(true); if (failure) failure.hidden = false;
+      if (win.__h4aVendorsLoaded) withdraw(win, doc, storage, false);
+      return;
+    }
     show(false);
+    if (state.stopped && win.__h4aVendorsLoaded) { win.location.reload(); return; }
+    state.stopped = false;
     grant();
   });
   root.querySelector('[data-consent="decline"]').addEventListener('click', () => {
     const wasLoaded = win.__h4aVendorsLoaded === true;
+    state.stopped = wasLoaded;
     state.choice = 'denied';
     const saved = saveChoice(storage, 'denied');
     // If even removal fails, reloading could honor the old grant again. Keep the
@@ -176,6 +211,23 @@ export function startConsent({ root, win, doc, storage }) {
     if (wasLoaded) withdraw(win, doc, storage, !blocked);
   });
   change.addEventListener('click', () => show(true));
+  win.addEventListener('pageshow', () => {
+    if (!gpc()) return;
+    state.choice = 'denied'; state.stopped = true;
+    const saved = saveDenial(); show(!saved);
+    if (failure) failure.hidden = saved;
+    if (win.__h4aVendorsLoaded) withdraw(win, doc, storage, saved);
+  });
+  win.addEventListener('storage', event => {
+    if (event.key !== CONSENT_KEY && event.key !== null) return;
+    if (!win.__h4aVendorsLoaded) {
+      state.choice = gpc() ? 'denied' : readChoice(storage); show(state.choice === null); return;
+    }
+    state.choice = 'denied'; state.stopped = true;
+    // Another tab's updated choice is read afresh after all old SDKs are stopped.
+    withdraw(win, doc, storage);
+  });
+  if (gpc()) saveDenial();
 
   root.hidden = false;
   show(state.choice === null);

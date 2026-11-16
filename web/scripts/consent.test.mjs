@@ -3,7 +3,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONSENT_KEY, CONSENT_VERSION, browserStorage, readChoice, startConsent } from '../src/lib/consent.mjs';
-
 class FakeElement {
   constructor(doc, tag, attrs = {}) {
     Object.assign(this, { doc, tagName: tag.toUpperCase(), attrs, hidden: false, listeners: {}, parentNode: null });
@@ -14,7 +13,6 @@ class FakeElement {
   insertBefore(node) { node.parentNode = this; this.doc.inserted.push(node); }
   querySelector(selector) { return this.parts?.[selector] ?? null; }
 }
-
 function fakeStorage(initial = {}, { throws = false } = {}) {
   const map = new Map(Object.entries(initial));
   const guard = () => { if (throws) throw new Error('SecurityError: storage disabled'); };
@@ -27,7 +25,6 @@ function fakeStorage(initial = {}, { throws = false } = {}) {
     removeItem(k) { guard(); map.delete(k); },
   };
 }
-
 const ALL = {
   'data-posthog-key': 'phc_test',
   'data-posthog-host': 'https://us.i.posthog.com',
@@ -42,13 +39,14 @@ function setup({ host = 'health4.ai', attrs = ALL, storage = fakeStorage() } = {
   firstScript.parentNode = head;
   doc.createElement = (tag) => new FakeElement(doc, tag);
   doc.getElementsByTagName = (tag) => (tag === 'script' ? [firstScript] : []);
-  const win = { reloads: 0, location: { hostname: host, reload() { win.reloads += 1; } } };
+  const win = { events: {}, addEventListener(name, fn) { this.events[name] = fn; }, navigator: {}, reloads: 0, location: { hostname: host, origin: 'https://' + host, pathname: '/', reload() { win.reloads += 1; } } };
   const root = new FakeElement(doc, 'div', attrs);
   root.hidden = true;
   const button = (name) => new FakeElement(doc, 'button', { 'data-consent': name });
   root.parts = {
     '[data-consent-banner]': new FakeElement(doc, 'section'),
     '[data-consent-error]': new FakeElement(doc, 'p'),
+    '[data-consent-gpc]': new FakeElement(doc, 'p'),
     '[data-consent="accept"]': button('accept'),
     '[data-consent="decline"]': button('decline'),
     '[data-consent="change"]': button('change'),
@@ -122,13 +120,14 @@ test('decline loads nothing, is remembered, and is not asked again', () => {
   assert.equal(next.ui.banner.hidden, true);
 });
 
-test('unreadable storage: ask, load nothing until accepted, and accept still works for the page', () => {
+test('unreadable storage: ask and keep optional tools off even after accept', () => {
   const t = setup({ storage: fakeStorage({}, { throws: true }) });
   t.start();
   assert.equal(t.ui.banner.hidden, false);
   assert.deepEqual(t.loaded(), []);
   t.ui.accept.click();
-  assert.deepEqual(t.loaded(), VENDOR_SCRIPTS);
+  assert.deepEqual(t.loaded(), []);
+  assert.equal(t.ui.error.hidden, false);
 });
 
 test('a choice from an older consent version, or a value this code did not write, is asked again', () => {
@@ -238,7 +237,52 @@ test('fully read-only choice storage displays failure and never reloads into old
   assert.equal(t.win.reloads, 0);
   assert.equal(t.ui.banner.hidden, false);
   assert.equal(t.ui.error.hidden, false);
-  assert.equal(readChoice(storage), 'granted', 'visible error must not falsely claim persistent denial');
+  assert.equal(readChoice(storage), null, 'unwritable saved grants cannot be honored');
+});
+
+test('GPC overrides saved and newly requested grants without loading vendors', () => {
+  const t = setup({ storage: saved('granted') }); t.win.navigator.globalPrivacyControl = true;
+  const state = t.start(); t.ui.accept.click();
+  assert.equal(state.choice, 'denied'); assert.deepEqual(t.loaded(), []);
+  assert.equal(t.ui.accept.disabled, true);
+  assert.equal(t.root.parts['[data-consent-gpc]'].hidden, false);
+  const restored = setup({ storage: saved('granted') }); restored.start();
+  restored.win.navigator.globalPrivacyControl = true; restored.win.events.pageshow();
+  assert.equal(restored.win.reloads, 1); assert.equal(readChoice(restored.storage), 'denied');
+  const other = setup({ storage: saved('granted') }); other.start();
+  other.storage.setItem(CONSENT_KEY, JSON.stringify({ v: CONSENT_VERSION, choice: 'denied' }));
+  other.win.events.storage({ key: CONSENT_KEY }); assert.equal(other.win.reloads, 1);
+});
+test('denied GPC tabs do not rewrite choices or reload each other', () => {
+  const t = setup({ storage: saved('denied') }); t.win.navigator.globalPrivacyControl = true;
+  const denial = t.storage.getItem(CONSENT_KEY); t.start(); t.win.events.pageshow();
+  assert.equal(t.storage.getItem(CONSENT_KEY), denial);
+  t.win.events.storage({ key: CONSENT_KEY }); assert.equal(t.win.reloads, 0);
+});
+test('PostHog minimizes collection while preserving personless ingestion identifiers', () => {
+  const t = setup({ storage: saved('granted') }); t.start(); const cfg = t.win.posthog._i[0][1];
+  assert.equal(cfg.capture_pageview, false); assert.equal(cfg.capture_pageleave, false);
+  assert.equal(cfg.autocapture, false); assert.equal(cfg.persistence, 'memory'); assert.equal(cfg.person_profiles, 'never');
+  const event = cfg.before_send({ properties: { distinct_id: 'fixture', $process_person_profile: true, email: 'private', $referrer: 'private' } });
+  assert.deepEqual(event.properties, { site: 'health4ai', $current_url: 'https://health4.ai/', distinct_id: 'fixture', $process_person_profile: false });
+});
+
+test('delayed vendor callbacks cannot resume collection after withdrawal', () => {
+  const t = setup({ storage: saved('granted') }); t.start(); const cfg = t.win.posthog._i[0][1];
+  t.ui.decline.click(); let captured = 0; let stopped = 0;
+  cfg.loaded({ register() {}, capture() { captured++; }, opt_out_capturing() { stopped++; } });
+  assert.equal(captured, 0); assert.equal(stopped, 1); assert.equal(cfg.before_send({ properties: {} }), null);
+  const clarity = t.doc.inserted.find(s => s.src.includes('clarity')); clarity.onload();
+  assert.deepEqual([...t.win.clarity.q.at(-1)], ['stop']);
+});
+
+test('storage recovery reloads previously stopped SDKs after saving renewed permission', () => {
+  const storage = saved('granted'); const t = setup({ storage }); t.start();
+  const set = storage.setItem; const remove = storage.removeItem;
+  storage.setItem = storage.removeItem = () => { throw Error('blocked'); };
+  t.ui.decline.click(); assert.equal(t.win.reloads, 0);
+  storage.setItem = set; storage.removeItem = remove; t.ui.accept.click();
+  assert.equal(readChoice(storage), 'granted'); assert.equal(t.win.reloads, 1);
 });
 
 test('the Meta Pixel is not supported: a stray pixel id loads nothing and asks about nothing', () => {

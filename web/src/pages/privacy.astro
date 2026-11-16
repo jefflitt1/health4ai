@@ -108,16 +108,18 @@ const hasClarity = Boolean(import.meta.env.PUBLIC_CLARITY_PROJECT_ID);
         this website build's configuration; they are website tools, not part of the HealthKit sync.
       </p>
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0 mt-3">
-        {hasPostHog && <li><strong class="text-neutral-200">PostHog (US-hosted)</strong> receives website page views and interactions and uses a browser identifier in local storage. PostHog session recording is disabled.</li>}
+        {hasPostHog && <li><strong class="text-neutral-200">PostHog (US-hosted)</strong> receives limited website page views and interactions and uses an in-memory browser identifier. PostHog session recording, automatic interaction capture and person-profile creation are disabled. Event properties exclude URL queries, fragments and referrers.</li>}
         {hasClarity && <li><strong class="text-neutral-200">Microsoft Clarity</strong> receives website interaction data, session recordings and heatmaps under Microsoft's privacy policy. Page content and browser identifiers should not be treated as anonymous. We deny advertising storage consent.</li>}
         {!hasPostHog && !hasClarity && <li>No optional analytics integration is enabled in this website build.</li>}
       </ul>
       {(hasPostHog || hasClarity) && <p class="text-neutral-400 text-sm leading-relaxed mt-3">
         These tools load only after you accept the cookie banner. Before acceptance, neither runs
-        nor sets cookies or browser storage. Use Cookie choices on any page to change your decision.
+        nor sets cookies or browser storage. Global Privacy Control overrides saved permission and
+        keeps optional analytics off. Use Cookie choices on any page to change your decision.
         Declining after acceptance sends an opt-out, removes accessible first-party analytics
         storage and reloads without the tools. If your browser prevents saving or clearing the
         old choice, we display an error with instructions to close the tab and clear site data.
+        A saved acceptance is not honored if this browser cannot save a new choice.
         Browser restrictions may limit storage access;
         this site cannot remove cookies on a provider's own domain. We do not load Meta Pixel.
       </p>}
