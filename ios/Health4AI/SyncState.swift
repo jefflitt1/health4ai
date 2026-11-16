@@ -187,8 +187,14 @@ final class SyncState: ObservableObject {
 
     // MARK: - Connection configuration
 
+    /// Changes invalidate in-flight connection attempts, including switching away and back.
+    private(set) var connectionRevision = 0
+
     @Published var connectionType: ConnectionType {
-        didSet { UserDefaults.standard.set(connectionType.rawValue, forKey: Keys.connectionType) }
+        didSet {
+            if connectionType != oldValue { connectionRevision += 1 }
+            UserDefaults.standard.set(connectionType.rawValue, forKey: Keys.connectionType)
+        }
     }
 
     /// Supabase: base project URL, e.g. https://abc123.supabase.co
@@ -196,7 +202,10 @@ final class SyncState: ObservableObject {
         didSet {
             UserDefaults.standard.set(supabaseProjectURL, forKey: Keys.supabaseProjectURL)
             // A verdict about the previous server says nothing about this one; the next sync asks.
-            if supabaseProjectURL != oldValue { serverLacksMergedHours = false }
+            if supabaseProjectURL != oldValue {
+                connectionRevision += 1
+                serverLacksMergedHours = false
+            }
         }
     }
 
@@ -204,7 +213,10 @@ final class SyncState: ObservableObject {
     @Published var netlifySiteURL: String {
         didSet {
             UserDefaults.standard.set(netlifySiteURL, forKey: Keys.netlifySiteURL)
-            if netlifySiteURL != oldValue { serverLacksMergedHours = false }
+            if netlifySiteURL != oldValue {
+                connectionRevision += 1
+                serverLacksMergedHours = false
+            }
         }
     }
 
@@ -212,7 +224,10 @@ final class SyncState: ObservableObject {
     @Published var serverURL: String {
         didSet {
             UserDefaults.standard.set(serverURL, forKey: Keys.serverURL)
-            if serverURL != oldValue { serverLacksMergedHours = false }
+            if serverURL != oldValue {
+                connectionRevision += 1
+                serverLacksMergedHours = false
+            }
         }
     }
 

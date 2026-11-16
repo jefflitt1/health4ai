@@ -92,6 +92,9 @@ struct DestinationPickerSection: View {
         if syncState.isAuthenticated {
             pending = type
         } else {
+            // A successful auth request may still be waiting to adopt its sync position.
+            // Switching before that commit must also invalidate and clear its credentials.
+            authManager.signOut()
             syncState.connectionType = type
         }
     }

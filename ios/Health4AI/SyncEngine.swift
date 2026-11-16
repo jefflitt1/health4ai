@@ -959,19 +959,27 @@ final class SyncEngine {
     /// the old database is awaited to a stop first: startBackfill right after a bare
     /// cancelBackfill would run two imports at once (see cancelAndWait).
     @MainActor
-    func adoptSyncPosition(endpoint: String, isSupabase: Bool) async {
+    func adoptSyncPosition(endpoint: String, isSupabase: Bool,
+                           isCurrent: @escaping @MainActor () -> Bool) async -> Bool {
         let defaults = UserDefaults.standard
-        if SyncPosition.needsReset(recorded: defaults.string(forKey: SyncPosition.endpointKey),
-                                   connecting: endpoint, connectingIsSupabase: isSupabase) {
-            await BulkExportManager.shared.cancelAndWait()
-            await resetAnchorsNow()
-            BulkExportManager.shared.resetBackfill()
-            syncState.resetSyncProgress()
-            // The old server's merged-hours verdict says nothing about this one; the next sync
-            // asks it afresh.
-            syncState.serverLacksMergedHours = false
-        }
-        defaults.set(endpoint, forKey: SyncPosition.endpointKey)
+        let reset = SyncPosition.needsReset(recorded: defaults.string(forKey: SyncPosition.endpointKey),
+                                            connecting: endpoint, connectingIsSupabase: isSupabase)
+        return await SyncPosition.adopt(isCurrent: isCurrent, waitForStop: {
+            if reset { await BulkExportManager.shared.cancelAndWait() }
+        }, exclusively: { commit in
+            await Self.serialized { await MainActor.run { commit() } }
+        }, commit: {
+            // No suspension between the current-attempt check and these writes. The sync
+            // mutex is held, so old queued syncs cannot repopulate anchors during the reset.
+            if reset {
+                self.syncAnchors.removeAll()
+                defaults.removeObject(forKey: Self.anchorsKey)
+                BulkExportManager.shared.resetBackfill()
+                self.syncState.resetSyncProgress()
+                self.syncState.serverLacksMergedHours = false
+            }
+            defaults.set(endpoint, forKey: SyncPosition.endpointKey)
+        })
     }
 
     /// An install from before SyncPosition that is still signed in records the database it

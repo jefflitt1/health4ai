@@ -211,7 +211,9 @@ final class AuthManager: ObservableObject {
 
     // MARK: - Sign in
 
-    func signIn(email: String, password: String, serverURL: String) async throws -> AuthResponse {
+    func signIn(email: String, password: String, serverURL: String,
+                isCurrent: @MainActor () -> Bool = { true }) async throws -> AuthResponse {
+        let generation = signOutGeneration
         let baseURL = supabaseBaseURL(from: serverURL)
         guard let url = URL(string: "\(baseURL)/auth/v1/token?grant_type=password") else {
             throw AuthManagerError.invalidURL
@@ -240,6 +242,9 @@ final class AuthManager: ObservableObject {
             throw AuthManagerError.serverError("No HTTP response")
         }
 
+        guard !Task.isCancelled, generation == signOutGeneration, isCurrent() else {
+            throw CancellationError()
+        }
         if httpResponse.statusCode == 200 {
             let decoder = JSONDecoder()
             let authResponse = try decoder.decode(AuthResponse.self, from: data)
@@ -304,7 +309,7 @@ final class AuthManager: ObservableObject {
     // MARK: - Sign out
 
     /// Bumped by every sign-out, so a token refresh already in flight does not save its tokens afterwards.
-    private var signOutGeneration = 0
+    private(set) var signOutGeneration = 0
 
     func signOut() {
         signOutGeneration += 1

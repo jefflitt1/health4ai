@@ -35,3 +35,23 @@ enum SyncPosition {
         return parts.string ?? value
     }
 }
+
+/// Waits may resume after a destination switch. Check at the exclusive commit, not before it.
+/// Foundation-only so the actual transaction is exercised with suspended waits off-device.
+extension SyncPosition {
+    @MainActor
+    static func adopt(
+        isCurrent: @escaping @MainActor () -> Bool,
+        waitForStop: @MainActor () async -> Void,
+        exclusively: (@escaping @MainActor () -> Bool) async -> Bool,
+        commit: @escaping @MainActor () -> Void
+    ) async -> Bool {
+        guard isCurrent(), !Task.isCancelled else { return false }
+        await waitForStop()
+        return await exclusively {
+            guard isCurrent(), !Task.isCancelled else { return false }
+            commit()
+            return true
+        }
+    }
+}

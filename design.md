@@ -126,3 +126,6 @@ visibly changes size between states.
 
 Run the Sasha Kim gate. It renders the real states rather than reading the diff, which is
 how every finding above was actually caught.
+
+At accessibility Dynamic Type sizes, the Netlify connected-status row stacks its
+status symbol, status text, and Disconnect action vertically so words stay intact.

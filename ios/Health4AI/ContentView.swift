@@ -62,6 +62,7 @@ struct ContentView: View {
         if args.contains("-h4aiScreenshotPrivacy") { return AnyView(PrivacyView()) }
         if args.contains("-h4aiScreenshotSetupChecklist") { return AnyView(ConnectionView()) }
         #if H4A_SHEETS
+        if args.contains("-h4aiScreenshotNetlifySection") { return AnyView(ConnectionView()) }
         if args.contains("-h4aiScreenshotSheetsConnect") { return AnyView(ConnectionView()) }
         // At accessibility sizes the Sheets section sits below the fold of the full
         // Connection screen, and simctl cannot scroll; this shows the section on its own.
@@ -191,9 +192,17 @@ struct SecureFieldToggle: View {
         self.userDefaultsKey = userDefaultsKey
         self.onValueChange = onValueChange
         let sensitive = CredentialKeychain.sensitiveKeys.contains(userDefaultsKey)
-        _value = State(initialValue: sensitive
+        let storedValue = sensitive
             ? CredentialKeychain.load(forKey: userDefaultsKey) ?? ""
-            : UserDefaults.standard.string(forKey: userDefaultsKey) ?? "")
+            : UserDefaults.standard.string(forKey: userDefaultsKey) ?? ""
+        #if DEBUG
+        // A render-only value: never stored or passed to the authentication manager.
+        let fixture = userDefaultsKey == AuthManager.netlifyDeviceKey
+            && ProcessInfo.processInfo.arguments.contains("-h4aiScreenshotNetlifySection")
+        _value = State(initialValue: fixture ? "h4a_SYNTHETIC_UI_FIXTURE" : storedValue)
+        #else
+        _value = State(initialValue: storedValue)
+        #endif
     }
 
     var body: some View {
@@ -240,6 +249,7 @@ struct SignInView: View {
     @State private var email: String = ""
     @State private var password: String = ""
     @State private var isSigningIn = false
+    @State private var signInTask: Task<Void, Never>?
     @State private var error: String? = nil
 
     var body: some View {
@@ -287,40 +297,47 @@ struct SignInView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        signInTask?.cancel()
+                        if isSigningIn { authManager.signOut() }
+                        dismiss()
+                    }
                 }
             }
+        }
+        .onDisappear {
+            signInTask?.cancel()
+            if isSigningIn { authManager.signOut() }
         }
     }
 
     private func signIn() {
         isSigningIn = true
         error = nil
-        Task {
+        let endpoint = syncState.resolvedEndpointURL
+        let type = syncState.connectionType
+        let revision = syncState.connectionRevision
+        let generation = authManager.signOutGeneration
+        @MainActor func isCurrent() -> Bool {
+            !Task.isCancelled && syncState.connectionRevision == revision
+                && authManager.signOutGeneration == generation
+                && syncState.connectionType == type && syncState.resolvedEndpointURL == endpoint
+        }
+        signInTask = Task { @MainActor in
+            defer { isSigningIn = false }
             do {
-                let endpoint = syncState.resolvedEndpointURL
-                let type = syncState.connectionType
                 let response = try await authManager.signIn(
-                    email: email,
-                    password: password,
-                    serverURL: endpoint
-                )
-                // Before anything syncs: a different database than the anchors were built
-                // against gets the whole history. Only for the destination signed in to, in case
-                // the picker changed while the sign-in was in flight.
-                if syncState.connectionType == type, syncState.resolvedEndpointURL == endpoint {
-                    await SyncEngine.shared.adoptSyncPosition(endpoint: endpoint, isSupabase: type == .supabase)
-                }
-                await MainActor.run {
-                    syncState.isAuthenticated = true
-                    syncState.userEmail = response.user.email
-                    // Not a secret (a Supabase Auth user id), and the only place ConnectAIView
-                    // can get it to prefill HEALTHKIT_USER_ID without asking the user to dig
-                    // it out of the Supabase dashboard themselves.
-                    UserDefaults.standard.set(response.user.id, forKey: "hkb.healthkitUserID")
-                    isSigningIn = false
-                }
+                    email: email, password: password, serverURL: endpoint, isCurrent: isCurrent)
+                guard await SyncEngine.shared.adoptSyncPosition(
+                    endpoint: endpoint, isSupabase: type == .supabase, isCurrent: isCurrent),
+                      isCurrent() else { return }
+                syncState.isAuthenticated = true
+                syncState.userEmail = response.user.email
+                // The account id belongs to the destination whose attempt just committed.
+                UserDefaults.standard.set(response.user.id, forKey: "hkb.healthkitUserID")
+                isSigningIn = false
                 try? await HealthKitManager.shared.requestAuthorization()
+                guard isCurrent() else { return }
                 SyncEngine.shared.startObserving()
                 if BulkExportManager.shared.backfillNeeded {
                     BulkExportManager.shared.startBackfill(syncState: syncState)

@@ -5,6 +5,7 @@ import SwiftUI
 struct ConnectionView: View {
     @EnvironmentObject var syncState: SyncState
     @EnvironmentObject var authManager: AuthManager
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var showSignIn = false
     @State private var showSignOut = false
@@ -27,7 +28,44 @@ struct ConnectionView: View {
     /// The in-flight Last year → Everything switch, so a second flip cancels the first
     /// instead of running two cancel/re-arm sequences over each other.
     @State private var horizonSwitchTask: Task<Void, Never>? = nil
+    #if DEBUG
+    /// Renders the production section in an isolated simulator, without a server request.
+    var netlifyDesignFixture: some View {
+        ScrollViewReader { proxy in
+            List { netlifyConfigSection }
+                .onAppear {
+                    let args = ProcessInfo.processInfo.arguments
+                    syncState.connectionType = .netlify
+                    syncState.netlifySiteURL = "https://fixture.invalid"
+                    deviceKeyPresent = true
+                    deviceKeyFieldID = UUID()
+                    syncState.isAuthenticated = args.contains("-fixtureConnected")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        connectError = args.contains("-fixtureError")
+                            ? "This Device key was not accepted. Issue a new key on your site's setup page, then try again." : nil
+                    }
+                    if args.contains("-fixtureControls") {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            proxy.scrollTo("netlify-action", anchor: .top)
+                        }
+                    }
+                }
+        }
+    }
+    #endif
     var body: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-h4aiScreenshotNetlifySection") {
+            netlifyDesignFixture
+        } else {
+            connectionBody
+        }
+        #else
+        connectionBody
+        #endif
+    }
+
+    private var connectionBody: some View {
         NavigationStack {
             List {
                 #if H4A_SHEETS
@@ -241,15 +279,17 @@ struct ConnectionView: View {
             }
             .disabled(syncState.isAuthenticated || isConnecting)
             if syncState.isAuthenticated {
-                HStack {
+                (dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())) {
                     Image(systemName: "checkmark.seal.fill")
                         .foregroundStyle(.green)
                     Text("Connected")
                         .fontWeight(.medium)
-                    Spacer()
+                    if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                     Button("Disconnect") { showSignOut = true }
-                        .foregroundStyle(.red)
+                        .tint(.red)
                 }
+                .id("netlify-action")
             } else {
                 Button {
                     connectNetlify()
@@ -266,6 +306,7 @@ struct ConnectionView: View {
                 }
                 .disabled(isConnecting || !deviceKeyPresent
                           || URL(string: syncState.resolvedEndpointURL)?.scheme != "https")
+                .id("netlify-action")
                 if let connectError {
                     Label {
                         Text(connectError)
@@ -290,28 +331,26 @@ struct ConnectionView: View {
         isConnecting = true
         connectError = nil
         let endpoint = syncState.resolvedEndpointURL
-        Task {
+        let revision = syncState.connectionRevision
+        let generation = authManager.signOutGeneration
+        let key = authManager.deviceKey
+        @MainActor func stillThisSite() -> Bool {
+            !Task.isCancelled && syncState.connectionRevision == revision
+                && authManager.signOutGeneration == generation && authManager.deviceKey == key
+                && syncState.connectionType == .netlify && syncState.resolvedEndpointURL == endpoint
+        }
+        Task { @MainActor in
+            defer { isConnecting = false }
             do {
                 try await authManager.connectDeviceKey(endpoint: endpoint)
-                // The person may have switched destination while the check (or the reset below)
-                // was in flight; a late success must not connect anything but the site that
-                // answered. Checked again in the same main-actor step that marks it connected.
-                @MainActor func stillThisSite() -> Bool {
-                    syncState.connectionType == .netlify && syncState.resolvedEndpointURL == endpoint
-                }
-                if await stillThisSite() {
-                    await SyncEngine.shared.adoptSyncPosition(endpoint: endpoint, isSupabase: false)
-                }
-                let connected = await MainActor.run { () -> Bool in
-                    isConnecting = false
-                    guard stillThisSite() else { return false }
-                    authManager.markDeviceKeyConnected()
-                    syncState.isAuthenticated = true
-                    syncState.userEmail = nil
-                    return true
-                }
-                guard connected else { return }
+                guard await SyncEngine.shared.adoptSyncPosition(
+                    endpoint: endpoint, isSupabase: false, isCurrent: stillThisSite),
+                      stillThisSite() else { return }
+                authManager.markDeviceKeyConnected()
+                syncState.isAuthenticated = true
+                syncState.userEmail = nil
                 try? await HealthKitManager.shared.requestAuthorization()
+                guard stillThisSite() else { return }
                 SyncEngine.shared.startObserving()
                 if BulkExportManager.shared.backfillNeeded {
                     BulkExportManager.shared.startBackfill(syncState: syncState)
