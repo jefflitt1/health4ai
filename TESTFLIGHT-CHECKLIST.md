@@ -42,12 +42,17 @@ Updated: 2026-09-12.
 
 ---
 
-## STEP 1 — Release through GitHub (recommended)
+## STEP 1 — Release through Xcode Cloud (live path, verified 2026-11-16)
 
-Use the protected, manual/tagged GitHub Action described in
-[`docs/GITHUB-TESTFLIGHT.md`](docs/GITHUB-TESTFLIGHT.md). It creates a unique
-UTC build number, records the commit that shipped, and uploads a build eligible
-for both internal and external TestFlight groups.
+The enabled Xcode Cloud workflow archives pushes to `main` that change files under
+`ios/`, then distributes eligible builds to the Internal Testers group. Web-only
+and documentation-only changes do not match its file filter. Bump `MARKETING_VERSION` first if the current
+version is already approved (build 64 at 1.0.3 failed App Store Connect
+preparation with ITMS-90186/90062 after 1.0.3 was approved), merge, and wait.
+
+The GitHub Action in [`docs/GITHUB-TESTFLIGHT.md`](docs/GITHUB-TESTFLIGHT.md)
+last failed with Xcode 16.4 lacking the iOS 27 SDK (run 39282845533).
+It has not been requalified; do not dispatch it as the release path.
 
 ## Manual fallback — Archive and Upload (Xcode, ~15 min)
 

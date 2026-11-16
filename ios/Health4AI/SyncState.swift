@@ -131,6 +131,28 @@ final class SyncState: ObservableObject {
 
     @Published var isSyncing: Bool = false
     @Published var syncError: String? = nil
+    /// Deferred work is retried on unlock/foreground; it never advances lastSyncDate.
+    @Published var deferredHealthWork: Set<ProtectedHealthData.Work> = []
+    var healthDataDeferred: Bool { !deferredHealthWork.isEmpty }
+    private(set) var healthWorkGeneration = 0
+
+    func deferHealthWork(_ work: ProtectedHealthData.Work, generation: Int) {
+        guard generation == healthWorkGeneration, isAuthenticated || work == .launch else { return }
+        #if H4A_SHEETS
+        guard work != .history || connectionType != .googleSheets else { return }
+        #endif
+        deferredHealthWork.insert(work)
+    }
+
+    func resumeHealthWork(_ work: ProtectedHealthData.Work, generation: Int) {
+        guard generation == healthWorkGeneration else { return }
+        deferredHealthWork.remove(work)
+    }
+
+    private func resetDeferredHealthWork() {
+        healthWorkGeneration += 1
+        deferredHealthWork.removeAll()
+    }
     #if H4A_SHEETS
     /// Sheets mode only: a problem only the person can fix (Google access removed, sheet
     /// deleted). Distinct from `syncError`, which a later pass may clear on its own.
@@ -192,7 +214,10 @@ final class SyncState: ObservableObject {
 
     @Published var connectionType: ConnectionType {
         didSet {
-            if connectionType != oldValue { connectionRevision += 1 }
+            if connectionType != oldValue {
+                connectionRevision += 1
+                resetDeferredHealthWork()
+            }
             UserDefaults.standard.set(connectionType.rawValue, forKey: Keys.connectionType)
         }
     }
@@ -204,6 +229,7 @@ final class SyncState: ObservableObject {
             // A verdict about the previous server says nothing about this one; the next sync asks.
             if supabaseProjectURL != oldValue {
                 connectionRevision += 1
+                resetDeferredHealthWork()
                 serverLacksMergedHours = false
             }
         }
@@ -215,6 +241,7 @@ final class SyncState: ObservableObject {
             UserDefaults.standard.set(netlifySiteURL, forKey: Keys.netlifySiteURL)
             if netlifySiteURL != oldValue {
                 connectionRevision += 1
+                resetDeferredHealthWork()
                 serverLacksMergedHours = false
             }
         }
@@ -226,6 +253,7 @@ final class SyncState: ObservableObject {
             UserDefaults.standard.set(serverURL, forKey: Keys.serverURL)
             if serverURL != oldValue {
                 connectionRevision += 1
+                resetDeferredHealthWork()
                 serverLacksMergedHours = false
             }
         }
@@ -250,7 +278,9 @@ final class SyncState: ObservableObject {
 
     // MARK: - Auth
 
-    @Published var isAuthenticated: Bool = false
+    @Published var isAuthenticated: Bool = false {
+        didSet { if !isAuthenticated { resetDeferredHealthWork() } }
+    }
     @Published var userEmail: String? = nil
 
     // MARK: - Computed endpoint
@@ -378,6 +408,11 @@ final class SyncState: ObservableObject {
         }
 
         #if DEBUG
+        // Render the real deferred status without a device session or Health queries.
+        if ProcessInfo.processInfo.arguments.contains("-h4aiScreenshotHealthDeferred") {
+            self.isAuthenticated = true
+            self.deferredHealthWork = [.sync]
+        }
         // Every screenshot fixture forces the SAME metric-types scope, regardless of which
         // simulator or how many prior runs installed the app on it. `healthScope` in HomeView
         // reads `HealthKitManager.selectedScope`, which falls back on `hkb.onboardingComplete`
@@ -542,6 +577,7 @@ final class SyncState: ObservableObject {
     /// Removes all locally retained account, endpoint, progress, and credential state.
     /// Use this before handing a device to another person or switching backends.
     func eraseLocalDataAndConfiguration() {
+        resetDeferredHealthWork()
         let defaults = UserDefaults.standard
         for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("hkb.") {
             defaults.removeObject(forKey: key)

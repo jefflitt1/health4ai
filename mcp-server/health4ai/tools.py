@@ -1144,7 +1144,8 @@ def query_metric(
 
 def get_workouts(days: int = 30, limit: int = 20) -> dict:
     """
-    Recent workouts with type, duration, distance, and calories.
+    Recent workouts with totals, HealthKit UUID, and recorded events when exported.
+    Event truncation is explicit; older exports have no event completeness information.
     """
     days = _clamp_days(days)
     limit = _clamp_limit(limit)
@@ -1162,6 +1163,10 @@ def get_workouts(days: int = 30, limit: int = 20) -> dict:
             "duration_minutes": round(meta.get("duration_seconds", 0) / 60, 1),
             "distance_km": round(meta.get("total_distance_meters", 0) / 1000, 2) if meta.get("total_distance_meters") else None,
             "calories_burned": meta.get("total_energy_burned_cal"),
+            "workout_uuid": meta.get("workout_uuid"),
+            "events": meta.get("workout_events"),
+            "events_total": meta.get("workout_events_total"),
+            "events_truncated": meta.get("workout_events_truncated"),
             "source": r.get("source_device"),
         })
 

@@ -3,20 +3,21 @@
   "type": "module",
   "version": "0.1.0",
   "engines": {
-    "node": ">=22.22.0"
+    "node": ">=22.23.4"
   },
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "postbuild": "node seo-foundation/lib/agent-readiness/build-markdown-mirror.mjs dist --origin https://health4.ai && npm run test:performance && npm run test:agent-readiness",
+    "postbuild": "node seo-foundation/lib/agent-readiness/build-markdown-mirror.mjs dist --origin https://health4.ai && npm run test:performance && npm run test:consent && npm run test:agent-readiness",
     "test:performance": "node --test scripts/performance.test.mjs",
+    "test:consent": "node --test scripts/consent.test.mjs scripts/consent-dist.test.mjs",
     "test:agent-readiness": "node --test seo-foundation/tests/agent-readiness.test.mjs seo-foundation/tests/mcp-server-card.test.mjs",
     "preview": "astro preview"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.4.1",
     "@tailwindcss/vite": "^4.1.8",
-    "astro": "^7.2.0",
+    "astro": "^7.4.12",
     "tailwindcss": "^4.1.8"
   },
   "devDependencies": {

@@ -67,7 +67,8 @@ final class HealthKitManager {
             // Results
             .bloodGlucose, .electrodermalActivity, .forcedExpiratoryVolume1,
             .forcedVitalCapacity, .peakExpiratoryFlowRate, .inhalerUsage,
-            .insulinDelivery, .bloodAlcoholContent, .numberOfTimesFallen,
+            .insulinDelivery, .bloodAlcoholContent, .numberOfAlcoholicBeverages,
+            .numberOfTimesFallen,
             .uvExposure, .atrialFibrillationBurden,
             // Nutrition
             .dietaryFatTotal, .dietaryFatPolyunsaturated, .dietaryFatMonounsaturated,
@@ -413,7 +414,7 @@ final class HealthKitManager {
             sourceDevice: device,
             startedAt: workout.startDate,
             endedAt: workout.endDate,
-            metadata: meta
+            metadata: WorkoutExport.metadata(for: workout, preserving: meta)
         )
     }
 
@@ -535,6 +536,7 @@ final class HealthKitManager {
             HKQuantityTypeIdentifier.peakExpiratoryFlowRate.rawValue:     HKUnit(from: "L/min"),
             HKQuantityTypeIdentifier.inhalerUsage.rawValue:               .count(),
             HKQuantityTypeIdentifier.bloodAlcoholContent.rawValue:        .percent(),
+            HKQuantityTypeIdentifier.numberOfAlcoholicBeverages.rawValue: .count(),
             HKQuantityTypeIdentifier.numberOfTimesFallen.rawValue:        .count(),
             HKQuantityTypeIdentifier.atrialFibrillationBurden.rawValue:   .percent(),
             // iOS 17+ cycling / running (Watts, m/s, ms, cm)

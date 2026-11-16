@@ -131,6 +131,10 @@ final class SyncEngine {
     /// guard exists to prevent. MainActor-isolated so the claim below can be a single
     /// atomic hop.
     @MainActor private static var fullSyncInFlight = false
+    #if DEBUG
+    /// Fixtures exercise the real pass/deferral branches without HealthKit or network I/O.
+    @MainActor static var syncTypeOverride: ((HKSampleType) async throws -> Int)?
+    #endif
 
     /// Runs `body` with no other sync in flight.
     private static func serialized<T>(_ body: () async throws -> T) async rethrows -> T {
@@ -252,7 +256,9 @@ final class SyncEngine {
                 // assertion until it finishes so iOS does not suspend it half way.
                 await self.waitForInFlightPass()
             }
-            completion.finish(success: outcome != .failed)
+            // A launch pass we waited for may itself have deferred after its preflight.
+            let deferred = await MainActor.run { self.syncState.deferredHealthWork.contains(.sync) }
+            completion.finish(success: outcome != .failed && outcome != .deferred && !deferred)
         }
     }
 
@@ -298,6 +304,7 @@ final class SyncEngine {
                 }
                 // Perform incremental sync for this type only
                 Task {
+                    let generation = await MainActor.run { self.syncState.healthWorkGeneration }
                     // Determined before the (possibly slow) sync runs: this is what fired the
                     // observer, and an app that returns to the foreground mid-sync must not
                     // relabel a background-delivery-triggered run as merely foreground.
@@ -326,10 +333,15 @@ final class SyncEngine {
                             counts: count > 0 ? [BulkExportManager.displayName(for: sampleType.identifier): count] : [:],
                             success: true))
                     } catch {
-                        print("[SyncEngine] Sync error for \(sampleType.identifier): \(error)")
-                        SyncHistoryStore.shared.record(SyncHistoryEntry(
-                            trigger: trigger, counts: [:], success: false,
-                            errorText: error.localizedDescription))
+                        if ProtectedHealthData.isUnavailable(error) {
+                            await MainActor.run { self.syncState.deferHealthWork(.sync, generation: generation) }
+                            print("[SyncEngine] Observer sync deferred until unlock")
+                        } else {
+                            print("[SyncEngine] Sync error for \(sampleType.identifier): \(error)")
+                            SyncHistoryStore.shared.record(SyncHistoryEntry(
+                                trigger: trigger, counts: [:], success: false,
+                                errorText: error.localizedDescription))
+                        }
                     }
                     // This path both records refused hours (a page can record them, then fail
                     // to post) and clears them on a retry, so the Home notice follows the ledger
@@ -365,6 +377,7 @@ final class SyncEngine {
             if error != nil { completionHandler(); return }
 
             Task {
+                let generation = await MainActor.run { self.syncState.healthWorkGeneration }
                 let trigger: SyncTrigger = await MainActor.run {
                     UIApplication.shared.applicationState == .background ? .backgroundDelivery : .foreground
                 }
@@ -387,10 +400,15 @@ final class SyncEngine {
                         counts: count > 0 ? ["Workouts": count] : [:],
                         success: true))
                 } catch {
-                    print("[SyncEngine] Workout sync error: \(error)")
-                    SyncHistoryStore.shared.record(SyncHistoryEntry(
-                        trigger: trigger, counts: [:], success: false,
-                        errorText: error.localizedDescription))
+                    if ProtectedHealthData.isUnavailable(error) {
+                        await MainActor.run { self.syncState.deferHealthWork(.sync, generation: generation) }
+                        print("[SyncEngine] Observer sync deferred until unlock")
+                    } else {
+                        print("[SyncEngine] Workout sync error: \(error)")
+                        SyncHistoryStore.shared.record(SyncHistoryEntry(
+                            trigger: trigger, counts: [:], success: false,
+                            errorText: error.localizedDescription))
+                    }
                 }
                 completionHandler()
             }
@@ -417,6 +435,8 @@ final class SyncEngine {
         /// Another pass was already in flight; nothing was run.
         case skipped
         case succeeded
+        /// HealthKit is locked; no success timestamp or anchor is invented.
+        case deferred
         /// At least one type failed, or the pass was cancelled before finishing.
         case failed
     }
@@ -426,6 +446,15 @@ final class SyncEngine {
     /// refresh whatever the outcome, so a failed pass is retried rather than orphaned.
     @discardableResult
     func runFullPass(trigger: SyncTrigger = .foreground) async -> FullPassOutcome {
+        let generation = await MainActor.run { self.syncState.healthWorkGeneration }
+        guard await MainActor.run(body: { ProtectedHealthData.isAvailable }) else {
+            await MainActor.run {
+                self.syncState.deferHealthWork(.sync, generation: generation)
+                self.scheduleBackgroundSync()
+            }
+            print("[SyncEngine] Sync deferred until device unlock")
+            return .deferred
+        }
         // Test AND set in ONE MainActor hop. Reading the flag, awaiting, then writing
         // it is check-then-act: both cold-launch callers (didFinishLaunching and
         // the scene becoming active, which fire within moments of each other) could
@@ -435,13 +464,14 @@ final class SyncEngine {
             guard !Self.fullSyncInFlight else { return false }
             Self.fullSyncInFlight = true
             self.syncState.isSyncing = true
+            self.syncState.resumeHealthWork(.sync, generation: generation)
             return true
         }
         guard claimed else { return .skipped }
 
         #if H4A_SHEETS
         if await MainActor.run(body: { self.syncState.connectionType == .googleSheets }) {
-            return await runSheetsPass(trigger: trigger)
+            return await runSheetsPass(trigger: trigger, generation: generation)
         }
         #endif
 
@@ -456,7 +486,16 @@ final class SyncEngine {
                 Self.fullSyncInFlight = false
                 defer { self.scheduleBackgroundSync() }
                 self.syncState.refusedHourMetricNames = refusedNames
-                if outcome.failures.isEmpty {
+                if outcome.deferred {
+                    self.syncState.deferHealthWork(.sync, generation: generation)
+                    self.syncState.isSyncing = false
+                    if let first = outcome.failures.first {
+                        let message = "Sync interrupted: " + first.error.localizedDescription
+                        self.syncState.recordSyncError(message)
+                        return (.failed, message)
+                    }
+                    return (.deferred, nil)
+                } else if outcome.failures.isEmpty {
                     self.syncState.recordSyncComplete(count: outcome.count)
                     return (.succeeded, nil)
                 } else if outcome.failures.count == outcome.attempted {
@@ -474,6 +513,10 @@ final class SyncEngine {
                         ofTypes: outcome.attempted)
                     return (.failed, "\(outcome.failures.count) of \(outcome.attempted) data types failed to sync.")
                 }
+            }
+            if result == .deferred {
+                print("[SyncEngine] HealthKit locked during sync; checkpoints retained for retry")
+                return result
             }
             SyncHistoryStore.shared.record(SyncHistoryEntry(
                 trigger: trigger, counts: outcome.perTypeCounts,
@@ -525,7 +568,7 @@ final class SyncEngine {
     /// Runs SheetsSink with the in-flight flag already claimed by runFullPass. Outcomes are
     /// published exactly like the database pass, so Home, Sync History and the review
     /// prompt's success history all read the same way in both modes.
-    private func runSheetsPass(trigger: SyncTrigger) async -> FullPassOutcome {
+    private func runSheetsPass(trigger: SyncTrigger, generation: Int) async -> FullPassOutcome {
         do {
             // A history rebuild is only for a pass the person is present for. The trigger label
             // cannot say so (a background-delivery relaunch is labelled .launch), so ask the app:
@@ -551,6 +594,15 @@ final class SyncEngine {
                 self.scheduleBackgroundSync()
             }
             return .failed
+        } catch let error where ProtectedHealthData.isUnavailable(error) {
+            await MainActor.run {
+                Self.fullSyncInFlight = false
+                self.syncState.isSyncing = false
+                self.syncState.deferHealthWork(.sync, generation: generation)
+                self.scheduleBackgroundSync()
+            }
+            print("[SyncEngine] Sheets sync deferred until unlock")
+            return .deferred
         } catch {
             // Problems only the person can fix get ONE owner: the "needs attention" state,
             // which Home and the Sheets card show once, with its own action. They are not
@@ -582,7 +634,7 @@ final class SyncEngine {
     /// caller's error branch went dead and 107-of-107 failures reported as a clean sync.
     @discardableResult
     func performFullSync() async throws
-        -> (count: Int, failures: [(type: String, error: Error)], attempted: Int, perTypeCounts: [String: Int]) {
+        -> (count: Int, failures: [(type: String, error: Error)], attempted: Int, perTypeCounts: [String: Int], deferred: Bool) {
         let types = HealthKitManager.sampleTypes()
         var totalCount = 0
         // Human-readable name -> records sent, for the sync history log. Only types that
@@ -596,10 +648,13 @@ final class SyncEngine {
         // mid-pass, a single bad HealthKit query — abandoned every type after it in
         // iteration order, and an abandoned pass is not retried until the next pass.
         //
-        // Cancellation is the one thing that does stop the loop: it means iOS is reclaiming
-        // background time, and pressing on would only get the process suspended mid-post.
+        // Cancellation and protected-data lock stop the loop. Neither may advance an
+        // unposted checkpoint; other errors remain visible while later types are tried.
         var failures: [(type: String, error: Error)] = []
+        var deferred = false
+        var attempted = 0
         for sampleType in types {
+            attempted += 1
             try Task.checkCancellation()
             do {
                 let count = try await syncType(sampleType)
@@ -608,6 +663,7 @@ final class SyncEngine {
                     perTypeCounts[BulkExportManager.displayName(for: sampleType.identifier)] = count
                 }
             } catch {
+                if ProtectedHealthData.isUnavailable(error) { deferred = true; break }
                 failures.append((sampleType.identifier, error))
                 print("[SyncEngine] Sync failed for \(sampleType.identifier): \(error)")
             }
@@ -615,7 +671,7 @@ final class SyncEngine {
         if !failures.isEmpty {
             print("[SyncEngine] \(failures.count) of \(types.count) types failed this pass")
         }
-        return (totalCount, failures, types.count, perTypeCounts)
+        return (totalCount, failures, attempted, perTypeCounts, deferred)
     }
 
     // MARK: - Merged hourly totals
@@ -638,12 +694,20 @@ final class SyncEngine {
     /// Queries new samples since the last anchor for `sampleType`, posts them,
     /// and saves the new anchor.
     func syncType(_ sampleType: HKSampleType) async throws -> Int {
-        try await Self.serialized { try await self.syncTypeLocked(sampleType) }
+        #if DEBUG
+        if let fixture = await MainActor.run(body: { Self.syncTypeOverride }) {
+            return try await fixture(sampleType)
+        }
+        #endif
+        return try await Self.serialized { try await self.syncTypeLocked(sampleType) }
     }
 
     /// The body of `syncType`. Only ever called while `syncMutex` is held, which is what
     /// makes the `syncAnchors` reads and writes below safe.
     private func syncTypeLocked(_ sampleType: HKSampleType) async throws -> Int {
+        guard await MainActor.run(body: { ProtectedHealthData.isAvailable }) else {
+            throw ProtectedHealthData.unavailableError
+        }
         let (serverURL, horizon) = await MainActor.run {
             (syncState.resolvedEndpointURL, syncState.importHorizon)
         }
