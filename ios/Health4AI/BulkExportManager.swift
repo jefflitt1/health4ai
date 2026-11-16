@@ -313,6 +313,20 @@ final class BulkExportManager {
 
         currentTask = Task { [weak self] in
             guard let self = self else { return }
+            let generation = await MainActor.run { syncState.healthWorkGeneration }
+            let available = await MainActor.run { () -> Bool in
+                guard ProtectedHealthData.isAvailable else {
+                    syncState.deferHealthWork(.history, generation: generation)
+                    return false
+                }
+                syncState.resumeHealthWork(.history, generation: generation)
+                return true
+            }
+            guard available else {
+                print("[BulkExport] History import deferred until device unlock")
+                self.currentTask = nil
+                return
+            }
             await MainActor.run {
                 syncState.isBackfilling = true
                 syncState.backfillError = nil
@@ -322,7 +336,7 @@ final class BulkExportManager {
                 // false forever. The detector would miss the total failure it exists for.
                 syncState.backfillLastBatchAt = Date()
             }
-            await self.runBackfill(syncState: syncState)
+            await self.runBackfill(syncState: syncState, generation: generation)
             self.currentTask = nil
         }
     }
@@ -349,7 +363,7 @@ final class BulkExportManager {
 
     // MARK: - Backfill execution
 
-    private func runBackfill(syncState: SyncState) async {
+    private func runBackfill(syncState: SyncState, generation: Int) async {
         let allTypes = HealthKitManager.sampleTypes()
         let remainingTypes = allTypes
             .filter { !completedTypes.contains($0.identifier) }
@@ -363,6 +377,8 @@ final class BulkExportManager {
         var storedCountUnreliable = false
         let totalTypes = remainingTypes.count
         var typesCompleted = 0
+        var deferred = false
+        var failuresThisPass = 0
 
         let (serverURL, horizon) = await MainActor.run {
             (syncState.resolvedEndpointURL, syncState.importHorizon)
@@ -447,6 +463,13 @@ final class BulkExportManager {
                 // postSamples' final attempt surfaces as URLError(.cancelled), with no retry sleep
                 // left to convert it. Recording that as a failure would warn about a user's Cancel.
                 if Task.isCancelled { break }
+                if ProtectedHealthData.isUnavailable(error) {
+                    deferred = true
+                    await MainActor.run { syncState.deferHealthWork(.history, generation: generation) }
+                    print("[BulkExport] HealthKit locked; retaining import checkpoints until unlock")
+                    break
+                }
+                failuresThisPass += 1
                 print("[BulkExport] Error on \(sampleType.identifier): \(error)")
                 var failed = failedImportTypes
                 failed.insert(sampleType.identifier)
@@ -474,7 +497,7 @@ final class BulkExportManager {
             let historyCounts: [String: Int] = totalPosted > 0
                 ? ["History import": storedCountUnreliable ? totalPosted : totalStored]
                 : [:]
-            if !Task.isCancelled {
+            if !Task.isCancelled && (!deferred || failuresThisPass > 0) {
                 SyncHistoryStore.shared.record(SyncHistoryEntry(
                     trigger: .importHistory,
                     counts: historyCounts,
@@ -485,7 +508,7 @@ final class BulkExportManager {
         }
 
         if !Task.isCancelled {
-            if typesCompleted == totalTypes {
+            if typesCompleted == totalTypes && !deferred {
                 // Every outstanding type actually succeeded this run — safe to latch
                 // the global "done" flag so future launches skip backfill entirely.
                 await MainActor.run {
@@ -699,7 +722,7 @@ final class BulkExportManager {
             }
             self.startBackfill(syncState: syncState)
             await self.currentTask?.value
-            completion.finish(success: syncState.backfillError == nil)
+            completion.finish(success: syncState.backfillError == nil && !syncState.deferredHealthWork.contains(.history))
         }
     }
 

@@ -44,7 +44,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         #endif
         #endif
         Task { @MainActor in
-            self.reconnectIfAuthenticated(trigger: .launch)
+            Self.reconnectIfAuthenticated(trigger: .launch)
         }
         return true
     }
@@ -62,6 +62,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     @MainActor static var recordedSceneWork: [String] = []
     /// Test-only: record and stop, so the wiring test does not sync or schedule tasks in the host.
     @MainActor static var sceneWorkDryRun = false
+    @MainActor static var destinationConnectedOverride: Bool?
     #endif
 
     @MainActor
@@ -72,6 +73,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         #endif
         BulkExportManager.shared.endBackgroundTime()
         guard destinationConnected else { return }
+        if SyncEngine.sharedSyncState.healthDataDeferred {
+            reconnectIfAuthenticated(trigger: .foreground)
+            return
+        }
         SyncEngine.shared.performForegroundSync(trigger: .foreground)
         #if H4A_SHEETS
         // Sheets checks for widened Health access on every pass (SheetsSink).
@@ -107,6 +112,22 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         BulkExportManager.shared.scheduleBackgroundBackfill()
     }
 
+    @MainActor
+    func applicationProtectedDataDidBecomeAvailable(_ application: UIApplication) {
+        Self.retryDeferredHealthData()
+    }
+
+    @MainActor
+    static func retryDeferredHealthData() {
+        guard destinationConnected, ProtectedHealthData.isAvailable,
+              SyncEngine.sharedSyncState.healthDataDeferred else { return }
+        #if DEBUG
+        recordedSceneWork.append("protectedDataAvailable")
+        if sceneWorkDryRun { return }
+        #endif
+        reconnectIfAuthenticated(trigger: .foreground)
+    }
+
     // MARK: - Private helpers
 
     #if H4A_SHEETS
@@ -119,6 +140,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     /// the Supabase session otherwise (unchanged for every existing install).
     @MainActor
     private static var destinationConnected: Bool {
+        #if DEBUG
+        if let destinationConnectedOverride { return destinationConnectedOverride }
+        #endif
         #if H4A_SHEETS
         if isSheetsMode { return GoogleTokenStore.shared.isSignedIn }
         #endif
@@ -126,7 +150,15 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     @MainActor
-    private func reconnectIfAuthenticated(trigger: SyncTrigger) {
+    private static func reconnectIfAuthenticated(trigger: SyncTrigger) {
+        guard destinationConnected else { return }
+        let generation = SyncEngine.sharedSyncState.healthWorkGeneration
+        guard ProtectedHealthData.isAvailable else {
+            SyncEngine.sharedSyncState.deferHealthWork(.launch, generation: generation)
+            print("[HealthData] Launch work deferred until device unlock")
+            return
+        }
+        SyncEngine.sharedSyncState.resumeHealthWork(.launch, generation: generation)
         #if H4A_SHEETS
         if Self.isSheetsMode {
             guard GoogleTokenStore.shared.isSignedIn, HKHealthStore.isHealthDataAvailable() else { return }
@@ -145,6 +177,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
         guard HKHealthStore.isHealthDataAvailable() else { return }
         Task { @MainActor in
+            guard destinationConnected, syncState.healthWorkGeneration == generation else { return }
             SyncEngine.shared.startObserving()
             SyncEngine.shared.performForegroundSync(trigger: trigger)
             await BulkExportManager.shared.applyStuckTypeMigrationIfNeeded(syncState: syncState)

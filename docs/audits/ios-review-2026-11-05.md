@@ -1,10 +1,12 @@
 # iOS review, 2026-11-05
 
-Scope: `ios/Health4AI` (all Swift, Info.plist, entitlements, privacy manifest), checked against `web/src/pages/privacy.astro`. This was a read-only review. No Swift toolchain was available in the review environment (Linux, no `swiftc`, no Docker daemon). Nothing below was compiled or run, including `ios/scripts/test_sheets_logic.sh`, which needs `xcrun`. Every fix in this branch needs an Xcode build and a device pass before merge.
+Scope: `ios/Health4AI` (all Swift, Info.plist, entitlements, privacy manifest), checked against `web/src/pages/privacy.astro`. This was a read-only review. No Swift toolchain was available in the review environment (Linux, no `swiftc`, no Docker daemon). Nothing below was compiled or run, including `ios/scripts/test_sheets_logic.sh`, which needs `xcrun`. This document preserves that historical review, not a fresh verification of current code. It adds no Swift changes; proposed future fixes need their own code review, build and appropriate runtime acceptance.
 
 Severity reflects user impact (lost or duplicated data, privacy, App Review) times likelihood.
 
-Status update 2026-11-09: the five fixes first proposed in PR #43, plus H1 and the H2 remainder, shipped in #51 (iOS 1.0.6). Their status lines below say so. Every other item is unchanged since the review.
+Status update 2026-11-09: the five fixes first proposed in PR #43, plus H1 and the H2 remainder, shipped in #51 (iOS 1.0.6). Their status lines below say so.
+
+Status reconciliation (verified 2026-11-16 against main `00775bbb`): M4 was subsequently fixed by [PR #52](https://github.com/jefflitt1/health4ai/pull/52). The current `web/src/pages/privacy.astro` explicitly covers optional bike import, writes to Apple Health and Local Network permission. Other OPEN labels below are historical reports awaiting separate current-source validation, not newly reproduced defects. File/line references describe the original snapshot.
 
 ## Architecture map
 
@@ -42,7 +44,7 @@ Status update 2026-11-09: the five fixes first proposed in PR #43, plus H1 and t
 
 ## Findings, ranked
 
-Status: **FIXED** means the fix is on main (shipped in #51). **OPEN** means it is reported only.
+Status: **FIXED** names the resolving PR on main. **OPEN** means reported in the original audit, not revalidated by this documentation update.
 
 ### High
 
@@ -77,9 +79,9 @@ Status: **FIXED** means the fix is on main (shipped in #51). **OPEN** means it i
 - "to sync them to the backend you configure" is accurate for the database path, but Google Sheets is the default destination for new installs. Guideline 5.1.1 asks purpose strings to say clearly where data goes.
 - Suggested: "health4ai reads only the Health data you allow, to save it to the destination you choose: your own Google Sheet or your own database."
 
-**M4. Privacy policy omits the bike import (writing to Apple Health, local-network access).** OPEN
+**M4. Privacy policy omitted the bike import (writing to Apple Health, local-network access).** FIXED in #52; verified 2026-11-16
 - Where: `web/src/pages/privacy.astro`.
-- The policy describes only data leaving the phone. The app also writes workouts, energy, distance, power, cadence and heart rate to Health (`NSHealthUpdateUsageDescription`) and reads rides from a host on the local network. HealthKit apps that write data should say so (5.1.3).
+- Historical finding: the policy described only data leaving the phone. The app also writes workouts, energy, distance, power, cadence and heart rate to Health (`NSHealthUpdateUsageDescription`) and reads rides from a host on the local network. HealthKit apps that write data should say so (5.1.3).
 - Fix: add a short section, e.g. "Bike on your network: optional; reads rides from a device on your Wi-Fi and saves them to Apple Health on your phone; nothing is sent to health4.ai."
 
 **M5. A Supabase password and JWT can go over cleartext HTTP to a local host.** OPEN

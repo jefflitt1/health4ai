@@ -42,12 +42,17 @@ Updated: 2026-09-12.
 
 ---
 
-## STEP 1 — Release through GitHub (recommended)
+## STEP 1 — Release through Xcode Cloud (live path, verified 2026-11-16)
 
-Use the protected, manual/tagged GitHub Action described in
-[`docs/GITHUB-TESTFLIGHT.md`](docs/GITHUB-TESTFLIGHT.md). It creates a unique
-UTC build number, records the commit that shipped, and uploads a build eligible
-for both internal and external TestFlight groups.
+The enabled Xcode Cloud workflow archives pushes to `main` that change files under
+`ios/`, then distributes eligible builds to the Internal Testers group. Web-only
+and documentation-only changes do not match its file filter. Bump `MARKETING_VERSION` first if the current
+version is already approved (build 64 at 1.0.3 failed App Store Connect
+preparation with ITMS-90186/90062 after 1.0.3 was approved), merge, and wait.
+
+The GitHub Action in [`docs/GITHUB-TESTFLIGHT.md`](docs/GITHUB-TESTFLIGHT.md)
+last failed with Xcode 16.4 lacking the iOS 27 SDK (run 39282845533).
+It has not been requalified; do not dispatch it as the release path.
 
 ## Manual fallback — Archive and Upload (Xcode, ~15 min)
 
@@ -125,4 +130,4 @@ Pair with the health4ai MCP server to give Claude, ChatGPT, or any AI assistant 
 **Category:** Health & Fitness | **Price:** Free | **Age Rating:** 4+
 
 **Review Notes:**
-health4ai requires HealthKit access to read Apple Health data and sync it to a user-configured Postgres database endpoint. The app does not write health data. To test, the reviewer can configure any Supabase project (free tier at supabase.com). No special test credentials are needed.
+health4ai requires HealthKit access to read Apple Health data and sync it to a user-configured Postgres database endpoint. Since 1.0.6 it writes to Health only when the user turns on the optional Bike on your network feature (indoor cycling workouts imported from a ride server on their own local network); otherwise it writes nothing. To test, the reviewer can configure any Supabase project (free tier at supabase.com). No special test credentials are needed.
