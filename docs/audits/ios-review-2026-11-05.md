@@ -56,7 +56,7 @@ Status: **FIXED** names the resolving PR on main. **OPEN** means reported in the
 
 **H2. Erase Local Data left sync history and device names behind.** FIXED in #51
 - Where: `SyncState.swift:494`, `ConnectionView.swift:97-107`.
-- The dialog promises to remove sync history. The function swept only `hkb.` defaults and the Keychain, so `sync-history.json` and `sources.json` survived. `sources.json` holds names such as "Jeff's Apple Watch" with sample counts.
+- The dialog promises to remove sync history. The function swept only `hkb.` defaults and the Keychain, so `sync-history.json` and `sources.json` survived. `sources.json` holds user-assigned device names with sample counts.
 - Fix: call `SyncHistoryStore.shared.removeAll()`, plus a new `SourcesTracker.removeAll()`.
 - Also fixed in #51 (`BikeImportCoordinator.eraseAll()`). As originally reported: the `h4a.bike.*` keys (bike address, last result, rejected set, enabled flag) and the in-memory `BikeImportCoordinator.isEnabled`. After an erase, the next foreground still imports rides into Health. Fix: remove `h4a.` keys in the same loop and `await BikeImportCoordinator.shared.setEnabled(false)` from the erase button's action.
 
@@ -84,10 +84,9 @@ Status: **FIXED** names the resolving PR on main. **OPEN** means reported in the
 - Historical finding: the policy described only data leaving the phone. The app also writes workouts, energy, distance, power, cadence and heart rate to Health (`NSHealthUpdateUsageDescription`) and reads rides from a host on the local network. HealthKit apps that write data should say so (5.1.3).
 - Fix: add a short section, e.g. "Bike on your network: optional; reads rides from a device on your Wi-Fi and saves them to Apple Health on your phone; nothing is sent to health4.ai."
 
-**M5. A Supabase password and JWT can go over cleartext HTTP to a local host.** OPEN
-- Where: `AuthManager.swift:143-166`, `SyncState.resolvedEndpointURL`, `Info.plist` `NSAllowsLocalNetworking`.
-- ATS allows plain HTTP to `.local` and IP-literal hosts for the bike, and the Supabase path keeps whatever scheme was typed. A self-hosted `http://192.168.1.10:8000` therefore sends the password, the Bearer token and health samples in the clear on the Wi-Fi. The `https` check exists only for the checklist tick (`ConnectionView.swift:335`).
-- Fix: refuse a non-`https` scheme for the Supabase project URL in `signIn`, `refreshAccessToken` and `postSamples` (throw `invalidURL`).
+**M5. Destination transport validation required review.** Historical finding; current validation required
+- The original audit questioned whether destination transport requirements were enforced consistently across connection setup, authentication and uploads.
+- This concern has not been reproduced against the current application in this documentation update. Revalidate the current transport policy and its enforcement before proposing an application change.
 
 **M6. A ride imported while still being written is truncated for good.** OPEN (plausible)
 - Where: `BikeImport/BikeImporter.swift:212`, with `liveWindow` at :229 used only for rejections.
