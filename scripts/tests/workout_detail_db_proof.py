@@ -70,7 +70,9 @@ def main():
         sql('CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY)')
         for role in ('anon', 'authenticated', 'service_role'):
             if not sql('SELECT 1 FROM pg_roles WHERE rolname=%s', (role,)):
-                sql('CREATE ROLE ' + role)
+                sql('CREATE ROLE ' + role + (' BYPASSRLS' if role == 'service_role' else ''))
+        check(sql("SELECT rolbypassrls FROM pg_roles WHERE rolname='service_role'")[0][0],
+              'fixture service role matches Supabase RLS bypass semantics')
         sql('INSERT INTO auth.users VALUES(%s),(%s)', (UID, OTHER))
         schema = (ROOT / 'supabase/optional/workout-details-v1.sql').read_text()
         if os.environ.get('H4A_WORKOUT_MUTANT') == 'missing_count_guard':

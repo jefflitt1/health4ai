@@ -30,7 +30,9 @@ and automatic background route refresh are not claimed.
    intentionally fails if conflicting existing relations are present. It creates
    no authenticated/anon grants; only service role may call the writer.
 2. Deploy the separate `workout-details` Edge Function with the feature flag absent.
-   Verify POST returns feature_disabled and ordinary healthkit-ingest is unchanged.
+   Keep gateway JWT verification enabled. With a valid gateway-accepted JWT, verify
+   POST returns feature_disabled and ordinary healthkit-ingest is unchanged.
+   An unauthenticated probe can return gateway401 before reaching the handler.
 3. Only after native opt-in/erase integration passes, set the endpoint environment
    flag `HEALTH4AI_WORKOUT_DETAILS_ENABLED=true`. Verify capabilities using an
    existing authenticated test identity; it succeeds only if the RPC is installed.
