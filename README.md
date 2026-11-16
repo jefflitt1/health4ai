@@ -215,6 +215,7 @@ other metric synced normally, and the app displayed a green "Complete" throughou
 
 ```
 health4ai/
+├── backends/netlify/            # Optional self-hosted backend on your own Netlify account
 ├── ios/                         # Swift/SwiftUI iOS app (iOS 17+)
 │   └── Health4AI/               # HealthKit sync engine, auth, settings
 ├── mcp-server/

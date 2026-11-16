@@ -131,6 +131,19 @@ visibly changes size between states.
 Run the Sasha Kim gate. It renders the real states rather than reading the diff, which is
 how every finding above was actually caught.
 
+## Web setup page
+
+The standalone Netlify setup page (`backends/netlify/public/index.html`) uses explicit
+light/dark equivalents of the iOS semantic palette: foreground `#1d1d1f/#f5f5f7`,
+secondary `#6e6e73/#a1a1a6`, page `#fff/#000`, card `#f5f5f7/#1c1c1e`, and system pink
+`#ff2d55/#ff375f`. Pink is reserved for the one visible primary action. Its white-text
+contrast exception is the same as the iOS primary action above. Error text uses
+`#c4002b` in light mode for readable contrast on the card and `#ff453a` in dark mode.
+Buttons have a 44px minimum target. Below 480px, key records stack their label/action,
+prefix/status, and last-used date; numbers must not break across narrow table columns.
+Errors are live alerts; copy results use a live status. Pending requests disable their
+action, and revoking the newly issued key clears its one-time copy panel.
+
 ## Website (2026-11-16)
 
 The website shares the pink accent; its dark surfaces use the tokens in
