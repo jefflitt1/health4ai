@@ -18,6 +18,32 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  workout-details:
+    name: Optional workout detail contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Start disposable local PostgreSQL
+        run: |
+          docker run -d --name jgle-test-db -p 127.0.0.1:54329:5432 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17
+          for attempt in $(seq 1 30); do
+            if docker exec jgle-test-db pg_isready -U postgres; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Real database and MCP tenant proof
+        env:
+          H4A_TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:54329/postgres
+        run: |
+          python3 -m pip install psycopg2-binary python-dotenv
+          python3 scripts/check-migration-grants.py supabase/optional/workout-details-v1.sql supabase/optional/workout-routes-v1.sql
+          python3 scripts/tests/workout_detail_db_proof.py
+          python3 -m unittest discover -s scripts/tests -p 'test_workout_proof_guards.py' -v
+          python3 scripts/tests/workout_proof_guards.py
+      - name: Ingest validation and auth wiring
+        run: npm exec --yes --package=deno@2.7.12 -- deno test --allow-read supabase/functions/workout-details/handler_test.ts supabase/functions/workout-routes/validation_test.ts
+
   grants:
     name: Lint migration grants
     runs-on: ubuntu-latest

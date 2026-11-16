@@ -19,6 +19,8 @@ import sys
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP
+from health4ai.workout_details import get_workout_details
+from health4ai.workout_routes import get_workout_routes
 
 from health4ai.tools import (
     get_health_summary,
@@ -52,6 +54,8 @@ mcp.tool()(get_sleep)
 mcp.tool()(get_hrv_trend)
 mcp.tool()(query_metric)
 mcp.tool()(get_workouts)
+mcp.tool()(get_workout_details)
+mcp.tool()(get_workout_routes)
 mcp.tool()(get_daily_snapshot)
 mcp.tool()(get_long_term_trend)
 mcp.tool()(get_coaching_brief)
