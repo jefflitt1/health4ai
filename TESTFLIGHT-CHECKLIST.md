@@ -125,4 +125,4 @@ Pair with the health4ai MCP server to give Claude, ChatGPT, or any AI assistant 
 **Category:** Health & Fitness | **Price:** Free | **Age Rating:** 4+
 
 **Review Notes:**
-health4ai requires HealthKit access to read Apple Health data and sync it to a user-configured Postgres database endpoint. The app does not write health data. To test, the reviewer can configure any Supabase project (free tier at supabase.com). No special test credentials are needed.
+health4ai requires HealthKit access to read Apple Health data and sync it to a user-configured Postgres database endpoint. Since 1.0.6 it writes to Health only when the user turns on the optional Bike on your network feature (indoor cycling workouts imported from a ride server on their own local network); otherwise it writes nothing. To test, the reviewer can configure any Supabase project (free tier at supabase.com). No special test credentials are needed.

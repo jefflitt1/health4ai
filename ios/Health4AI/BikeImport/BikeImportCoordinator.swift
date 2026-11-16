@@ -102,6 +102,31 @@ final class BikeImportCoordinator: ObservableObject {
         await importNow()
     }
 
+    /// Erase Local Data: switches the import off and forgets the bike's address, the last result and the
+    /// remembered rejections, so the next foreground imports nothing (audit H2). Saved rides stay in Health,
+    /// which the Erase dialog promises not to touch.
+    func eraseAll() {
+        eraseGeneration += 1
+        removeBikeKeys()
+        isEnabled = false
+        urlText = ""
+        lastResult = nil
+        testMessage = nil
+        testFailed = false
+        setupError = nil
+        addressProblem = nil
+    }
+
+    /// Bumped by every erase. An import that was already running when the person erased must not write its
+    /// result or remembered rejections back afterwards (review 2026-11-09).
+    private var eraseGeneration = 0
+
+    private func removeBikeKeys() {
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("h4a.bike.") {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
     // MARK: Test + import
 
     func testConnection() async {
@@ -131,10 +156,12 @@ final class BikeImportCoordinator: ObservableObject {
         guard !isRunning else { return }
         isRunning = true
         defer { isRunning = false }
+        let generation = eraseGeneration
         let result: BikeImportResult
         if case .success(let url) = urlValidation {
             var importer = BikeImporter(api: makeAPI(url), store: store)
             importer.rejectedStore = DefaultsRejectedStore(defaults: defaults)
+            importer.shouldContinue = { [weak self] in await MainActor.run { self?.eraseGeneration == generation } }
             result = await importer.run()
         } else {
             var r = BikeImportResult(date: Date())
@@ -142,6 +169,15 @@ final class BikeImportCoordinator: ObservableObject {
             result = r
         }
         refreshStatus()
+        guard generation == eraseGeneration else {
+            // Erased mid-run: the rejections store may have written its keys back while the import ran.
+            // Only those: the person may already have set the import up again, and those settings stay.
+            for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(DefaultsRejectedStore.keyPrefix) {
+                defaults.removeObject(forKey: key)
+            }
+            Self.logger.info("import finished after an erase; its result was not kept")
+            return
+        }
         lastResult = result
         if let data = try? JSONEncoder().encode(result) { defaults.set(data, forKey: Keys.lastResult) }
         Self.logger.info("import: \(result.imported) new, \(result.alreadyImported) existing, \(result.skipped.count) skipped, \(result.failed.count) failed, error=\(result.error ?? "none", privacy: .public)")

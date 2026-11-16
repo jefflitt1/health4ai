@@ -75,6 +75,15 @@ final class SourcesTracker: @unchecked Sendable {
         save()
     }
 
+    /// Forgets every source. Used by Erase Local Data: the names are often personal ("Jeff's
+    /// Apple Watch") and must not survive handing the phone to someone else.
+    func removeAll() {
+        lock.lock()
+        defer { lock.unlock() }
+        sources.removeAll()
+        save()
+    }
+
     /// A snapshot, most-recently-seen first.
     func all() -> [(name: String, info: HealthSourceInfo)] {
         lock.lock()

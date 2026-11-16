@@ -497,6 +497,10 @@ final class SyncState: ObservableObject {
             defaults.removeObject(forKey: key)
         }
         CredentialKeychain.deleteAll()
+        // Files, not defaults, so the hkb. sweep above misses them. The Erase dialog promises
+        // sync history is removed; the sources list names the person's devices.
+        SyncHistoryStore.shared.removeAll()
+        SourcesTracker.shared.removeAll()
         // Erasing also clears hkb.onboardingComplete, so the next start is a fresh install
         // and gets a fresh install's destination (defaultConnectionType). That writes the
         // key, so didSet writing it again is harmless.
