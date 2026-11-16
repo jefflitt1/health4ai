@@ -3,6 +3,66 @@ import UIKit
 import XCTest
 @testable import Health4AI
 
+final class SyncHistoryRetentionTests: XCTestCase {
+    private func withStore(_ body: (SyncHistoryStore, URL) throws -> Void) throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("history.json")
+        try body(SyncHistoryStore(fileURL: url), url)
+    }
+
+    func testEmptyObserverBurstPreservesUsefulHistoryAndLatestCheckOnDisk() throws {
+        try withStore { store, url in
+            let upload = SyncHistoryEntry(date: Date(timeIntervalSince1970: 0),
+                                          trigger: .foreground, counts: ["Heart Rate": 7], success: true)
+            store.record(upload)
+            var latest: SyncHistoryEntry!
+            for second in 0..<100 {
+                latest = SyncHistoryEntry(date: Date(timeIntervalSince1970: Double(second)),
+                                          trigger: .backgroundDelivery, counts: [:], success: true)
+                store.record(latest)
+            }
+            XCTAssertEqual(store.all(), [latest, upload])
+            XCTAssertEqual(SyncHistoryStore(fileURL: url).all(), [latest, upload])
+        }
+    }
+
+    func testFailuresAndUploadsSeparateEmptyObserverRuns() throws {
+        try withStore { store, _ in
+            let before = SyncHistoryEntry(trigger: .backgroundDelivery, counts: [:], success: true)
+            let failure = SyncHistoryEntry(trigger: .backgroundDelivery, counts: [:], success: false,
+                                           errorText: "Network failed")
+            let upload = SyncHistoryEntry(trigger: .backgroundDelivery, counts: ["Steps": 2], success: true)
+            let after = SyncHistoryEntry(trigger: .backgroundDelivery, counts: [:], success: true)
+            for entry in [before, failure, upload, after] { store.record(entry) }
+            XCTAssertEqual(store.all(), [after, upload, failure, before])
+        }
+    }
+
+    func testEmptyForegroundAndScheduledPassesRemainSeparate() throws {
+        try withStore { store, _ in
+            let entries = [SyncTrigger.foreground, .foreground, .backgroundTask, .backgroundTask]
+                .map { SyncHistoryEntry(trigger: $0, counts: [:], success: true) }
+            entries.forEach { store.record($0) }
+            XCTAssertEqual(store.all(), Array(entries.reversed()))
+        }
+    }
+
+    func testMeaningfulEntriesStillRespectRetentionCap() throws {
+        try withStore { store, url in
+            let entries = (0..<60).map { second in
+                SyncHistoryEntry(date: Date(timeIntervalSince1970: Double(second)),
+                                 trigger: .backgroundDelivery, counts: ["Steps": 1], success: true)
+            }
+            entries.forEach { store.record($0) }
+            let expected = Array(entries.reversed().prefix(SyncHistoryStore.cap))
+            XCTAssertEqual(store.all(), expected)
+            XCTAssertEqual(SyncHistoryStore(fileURL: url).all(), expected)
+        }
+    }
+}
+
 // The app is scene-based (UIApplicationSceneManifest), so UIKit never calls the app delegate's
 // lifecycle callbacks; a simulator probe on 2026-11-02 logged scenePhase changes and zero
 // app-delegate callbacks. Foreground and background work therefore runs from scenePhase only.
