@@ -140,6 +140,76 @@ check(WorkoutName.display(fromIdentifier: "HKWorkoutActivityTypeOther") == "Othe
 check(WorkoutName.display(fromIdentifier: "HKWorkoutActivityTypeHighIntensityIntervalTraining") == "High Intensity Interval Training", "workout_name_long")
 check(WorkoutName.display(fromIdentifier: "HKWorkoutActivityTypeTableTennis") == "Table Tennis", "workout_name_two")
 
+// Sheets HTTP answers (SheetsResponse.step). A 5xx on a request that is not safe to resend
+// (values:append) is NOT resent: Google may have applied it before the front end failed, and a
+// resend writes the same rows twice (review I1, 2026-11-04). The append is retried by the sync
+// core instead, after re-reading the IDs (see SheetsSyncTests).
+func step(_ status: Int, _ body: String = "", attempt: Int = 0, refreshed: Bool = false, replay: SheetsReplay = .safe) -> SheetsStep {
+    SheetsResponse.step(status: status, body: Data(body.utf8), attempt: attempt, forcedRefresh: refreshed, replay: replay)
+}
+check(step(503, replay: .unsafe) != .retry(afterSeconds: 2) && step(500, replay: .unsafe) != .retry(afterSeconds: 2)
+      && step(503, replay: .unsafe) == .fail(status: 503), "http_5xx_not_resent_when_unsafe")
+check(step(503) == .retry(afterSeconds: 2) && step(502, attempt: 1) == .retry(afterSeconds: 4)
+      && step(504, attempt: 2) == .retry(afterSeconds: 8) && step(503, attempt: 3) == .fail(status: 503), "http_5xx_resent_when_safe_with_backoff")
+check(step(429, replay: .unsafe) == .retry(afterSeconds: 2) && step(429, attempt: 3, replay: .unsafe) == .fail(status: 429), "http_429_resent_even_when_unsafe")
+check(step(200) == .done && step(401) == .refreshTokenAndRetry && step(401, refreshed: true) == .accessRevoked
+      && step(404) == .spreadsheetMissing && step(400) == .fail(status: 400), "http_other_statuses_unchanged")
+
+// 403: only Google's plain "caller does not have permission" (the drive.file answer for a sheet
+// the app can no longer see) forgets the sheet. A project-level refusal or anything unrecognised
+// keeps it (review I3, 2026-11-04), and a missing scope asks to reconnect Google, same sheet.
+let sheetGone = #"{"error":{"code":403,"message":"The caller does not have permission","status":"PERMISSION_DENIED"}}"#
+let serviceDisabled = #"{"error":{"code":403,"message":"Google Sheets API has not been used in project 546712901991 before or it is disabled.","status":"PERMISSION_DENIED","details":[{"@type":"type.googleapis.com/google.rpc.Help","links":[]},{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"SERVICE_DISABLED","domain":"googleapis.com","metadata":{"service":"sheets.googleapis.com"}}]}}"#
+let scopeMissing = #"{"error":{"code":403,"message":"Request had insufficient authentication scopes.","status":"PERMISSION_DENIED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"ACCESS_TOKEN_SCOPE_INSUFFICIENT","domain":"googleapis.com"}]}}"#
+let quota403 = #"{"error":{"code":403,"message":"Quota exceeded","status":"PERMISSION_DENIED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"RATE_LIMIT_EXCEEDED","domain":"googleapis.com"}]}}"#
+let unknownReason = #"{"error":{"code":403,"message":"Denied","status":"PERMISSION_DENIED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"SOME_NEW_REASON","domain":"googleapis.com"}]}}"#
+let proxyPage = "<html><body>403 Forbidden PERMISSION_DENIED</body></html>"
+check(step(403, sheetGone) == .spreadsheetMissing, "http_403_sheet_out_of_reach_forgets_sheet")
+check(step(403, serviceDisabled) != .spreadsheetMissing && step(403, serviceDisabled) == .fail(status: 403), "http_403_service_disabled_keeps_sheet")
+check(step(403, quota403) != .spreadsheetMissing, "http_403_quota_keeps_sheet")
+check(step(403, scopeMissing) == .accessRevoked, "http_403_scope_missing_asks_reconnect")
+check(step(403, unknownReason) != .spreadsheetMissing && step(403, proxyPage) != .spreadsheetMissing
+      && step(403, "") != .spreadsheetMissing && step(403, "{}") != .spreadsheetMissing, "http_403_ambiguous_keeps_sheet")
+
+// Values payload: numeric columns go as JSON numbers, so the sheet's locale (a German sheet reads
+// "7.50" as text, "1.5" as a date) cannot change what is stored (review I2, 2026-11-04).
+func json(_ range: String, _ rows: [[String]]) -> String {
+    String(data: try! JSONSerialization.data(withJSONObject: SheetPayload.values(range: range, rows: rows)), encoding: .utf8)!
+}
+let dailyRow = ["2026-09-28", "12345", "7.50", "512", "34", "", "9", "52", "71", "48", "7.25", "8.00", "1", "45", "72.4", "48.1"]
+check(json("Daily!A7:P7", [dailyRow])
+      == #"[["2026-09-28",12345,7.5,512,34,"",9,52,71,48,7.25,8,1,45,72.4,48.1]]"#, "payload_daily_numbers_are_numbers")
+check(json("Daily!A1:P1", [["Date", "Steps", "Distance (km)"]]) == #"[["Date","Steps","Distance (km)"]]"#, "payload_header_row_stays_text")
+check(json("Daily!C7:I7", [["7.50", "512", "34", "", "9", "52", "71"]]) == #"[[7.5,512,34,"",9,52,71]]"#, "payload_partial_row_offsets_columns")
+check(json("Daily!A2:P3", [["2026-09-28", "none", "-3.5", "1e5", "0x10", "nan", " 7", "1,5"]])
+      == #"[["2026-09-28","none",-3.5,"1e5","0x10","nan"," 7","1,5"]]"#, "payload_text_in_numeric_column_kept_as_typed")
+check(json("Workouts!A:H", [["2026-09-28", "07:00", "Running", "30", "250", "5.20", "1234", "6F9619FF-8B86-D011-B42D-00CF4FC964FF"]])
+      == #"[["2026-09-28","07:00","Running",30,250,5.2,"1234","6F9619FF-8B86-D011-B42D-00CF4FC964FF"]]"#, "payload_workouts_numeric_columns_only")
+check(json("Workouts!C5", [["Running"]]) == #"[["Running"]]"#, "payload_workout_type_fix_stays_text")
+check(json("'Sleep stages'!A:G", [["2026-09-28", "Core", "2026-09-27 23:10", "2026-09-28 00:40", "90.0", "42", "sl-1"]])
+      == #"[["2026-09-28","Core","2026-09-27 23:10","2026-09-28 00:40",90,"42","sl-1"]]"#, "payload_sleep_duration_is_number")
+check(json("About!A1:B2", [["Column", "Meaning"], ["Units", "12"]]) == #"[["Column","Meaning"],["Units","12"]]"#, "payload_about_stays_text")
+check([0.0, 7.456, -2.5, 123456.0, 0.04].allSatisfy { v in
+    json("Daily!B2", [[SheetCell.number(v, decimals: 2)]]).first(where: { $0 == "\"" }) == nil
+}, "payload_every_formatted_number_is_sent_as_number")
+
+check(SheetsForbidden.classify(Data(serviceDisabled.utf8)) == .refused(reason: "SERVICE_DISABLED")
+      && SheetsForbidden.classify(Data(proxyPage.utf8)) == .refused(reason: nil), "forbidden_reason_kept_for_history")
+check(SheetsForbidden.classify(Data(#"{"error":{"code":403,"status":"PERMISSION_DENIED","errors":[{"reason":"forbidden"}]}}"#.utf8)) == .sheetOutOfReach
+      && SheetsForbidden.classify(Data(#"{"error":{"code":403,"status":"PERMISSION_DENIED","errors":[{"reason":"dailyLimitExceeded"}]}}"#.utf8)) != .sheetOutOfReach,
+      "forbidden_legacy_reasons")
+check(A1Start("Daily!C7:I7") == A1Start(tab: "Daily", column: 2, row: 7) && A1Start("'Sleep stages'!A:G")?.row == nil
+      && A1Start("'Sleep stages'!A:G")?.tab == "Sleep stages" && A1Start("Workouts!H2:H")?.column == 7
+      && A1Start("Daily!AA10")?.column == 26 && A1Start("no range") == nil, "a1_start_parsing")
+check(Set(DailyColumn.index.values).isSubset(of: SheetSchema.numericColumns[SheetTabs.daily]!), "schema_covers_every_daily_value_column")
+// Held values read UNFORMATTED come back as JSON numbers and are kept as POSIX digits.
+let unformatted = try! JSONSerialization.jsonObject(with: Data(#"{"values":[[7.5,12345,72.4,-0.0,0.30000000000000004,"none",""]]}"#.utf8)) as! [String: Any]
+check(((unformatted["values"] as! [[Any]])[0]).map { SheetCell.stored($0) } == ["7.5", "12345", "72.4", "0", "0.3", "none", ""]
+      && SheetCell.stored(NSNull()) == nil, "stored_renders_posix_digits")
+check(SheetCell.isPlainDecimal("12345") && SheetCell.isPlainDecimal("-3.50") && !SheetCell.isPlainDecimal("")
+      && !SheetCell.isPlainDecimal("-") && !SheetCell.isPlainDecimal("1.") && !SheetCell.isPlainDecimal(".5")
+      && !SheetCell.isPlainDecimal("1.2.3") && !SheetCell.isPlainDecimal("٣"), "plain_decimal_shape")
+
 await runSyncTests(check, calendar: ny, at: at)
 
 // Column A of the Daily tab: only real yyyy-MM-dd keys count, and only from 2000 on.
@@ -150,6 +220,86 @@ check(DateKeys.staleRuns(["2026-01-01", "2026-01-02", "2026-01-03", "my notes", 
 check(DateKeys.staleRuns(["2026-01-01", "2026-01-02"], keptRows: 3).isEmpty, "datekey_stale_none_inside_table")
 let t0 = at("2026-09-30T12:00:00-04:00")
 check(RebuildBackoff.isBlocked(notBefore: t0.addingTimeInterval(60), now: t0) && !RebuildBackoff.isBlocked(notBefore: nil, now: t0) && !RebuildBackoff.isBlocked(notBefore: t0, now: t0), "backoff_window")
+
+// RangeSplit: a HealthKit range refusal splits down to the bad day; nothing else is split.
+struct Refused: Error {}
+struct Other: Error {}
+let splitDays = DayKey.days(from: at("2025-03-01T12:00:00-05:00"), through: at("2025-08-27T12:00:00-04:00"), calendar: ny)
+let badDay = splitDays[4]
+var splitCalls = 0
+let split = try? await RangeSplit.run(splitDays, splittable: { $0 is Refused }) { piece -> Int in
+    splitCalls += 1
+    if piece.contains(badDay) { throw Refused() }
+    return piece.count
+}
+check(split?.failedDays == [badDay] && split?.parts.map(\.value).reduce(0, +) == splitDays.count - 1, "split_isolates_bad_day")
+check(split.map { $0.parts.flatMap(\.days) + $0.failedDays }.map { Set($0) == Set(splitDays) } == true
+      && split?.parts.allSatisfy { !$0.days.contains(badDay) } == true, "split_covers_every_other_day_once")
+check(splitCalls < 25, "split_is_logarithmic")
+var clean = 0
+let whole = try? await RangeSplit.run(splitDays, splittable: { $0 is Refused }) { piece -> Int in clean += 1; return piece.count }
+check(clean == 1 && whole?.parts.count == 1 && whole?.failedDays.isEmpty == true, "split_not_used_when_query_succeeds")
+var otherThrown = false
+do { _ = try await RangeSplit.run(splitDays, splittable: { $0 is Refused }) { _ -> Int in throw Other() } } catch { otherThrown = error is Other }
+check(otherThrown, "split_rethrows_other_errors")
+var cancelThrown = false
+do { _ = try await RangeSplit.run(splitDays, splittable: { $0 is Refused }) { _ -> Int in throw CancellationError() } } catch { cancelThrown = error is CancellationError }
+check(cancelThrown, "split_rethrows_cancellation")
+// Rewriting a row around refused columns: the refused cells are left out of the write.
+check(DailyColumn.rewrite(row: 7, values: (0..<16).map(String.init), refused: [1, 9]).map(\.range)
+      == ["Daily!A7:A7", "Daily!C7:I7", "Daily!K7:P7"], "rewrite_skips_refused_columns")
+check(DailyColumn.rewrite(row: 7, values: (0..<16).map(String.init), refused: []).map(\.range) == ["Daily!A7:P7"], "rewrite_whole_row_when_none_refused")
+check(DailyColumn.rewrite(row: 7, values: (0..<16).map(String.init), refused: [15]).map(\.rows) == [[(0..<15).map(String.init)]], "rewrite_values_match_columns")
+
+// A one-day retry of a day still refused: reported, never thrown (that failed every pass).
+let oneDay = try? await RangeSplit.run([badDay], splittable: { $0 is Refused }) { _ -> Int in throw Refused() }
+check(oneDay?.failedDays == [badDay] && oneDay?.parts.isEmpty == true, "split_single_refused_day_reported_not_thrown")
+let allRefused = try? await RangeSplit.run(splitDays, splittable: { $0 is Refused }) { _ -> Int in throw Refused() }
+check(allRefused?.failedDays == splitDays, "split_every_refused_day_reported")
+
+// RefusedHourLedger: hours HealthKit refused to total, retried oldest first (GitHub #28).
+let basal = "HKQuantityTypeIdentifierBasalEnergyBurned"
+let h0 = at("2026-10-20T00:00:00Z")
+func hr(_ n: Int) -> Date { h0.addingTimeInterval(TimeInterval(n) * 3600) }
+var ledger = RefusedHourLedger()
+ledger.add([hr(0), hr(1), hr(2), hr(5), hr(1)], for: basal)
+check(ledger.runs[basal] == [[RefusedHourLedger.hourIndex(hr(0)), 3], [RefusedHourLedger.hourIndex(hr(5)), 1]], "ledger_stores_runs")
+check(ledger.hours(for: basal).count == 4 && ledger.pendingTypes == [basal], "ledger_counts_hours_once")
+let decoded = try? JSONDecoder().decode(RefusedHourLedger.self, from: JSONEncoder().encode(ledger))
+check(decoded == ledger, "ledger_round_trips")
+let due = ledger.due(for: basal, limit: 2, notBefore: nil, now: hr(10))
+check(due == [hr(0), hr(1)], "ledger_due_oldest_first_capped")
+ledger.resolve(asked: due, stillRefused: [hr(1)], for: basal, now: hr(10))
+check(ledger.hours(for: basal) == Set([hr(1), hr(2), hr(5)].map(RefusedHourLedger.hourIndex)), "ledger_answered_hours_leave")
+check(ledger.due(for: basal, limit: 10, notBefore: nil, now: hr(10)).isEmpty
+      && ledger.due(for: basal, limit: 10, notBefore: nil, now: hr(11)).count == 3, "ledger_partial_answer_waits_an_hour")
+ledger.resolve(asked: [hr(1)], stillRefused: [hr(1)], for: basal, now: hr(11))
+check(ledger.due(for: basal, limit: 10, notBefore: nil, now: hr(12)).isEmpty, "ledger_no_answer_backs_off")
+check(ledger.due(for: basal, limit: 10, notBefore: nil, now: hr(17)).count == 3, "ledger_backoff_expires")
+// The window moves on: two hours refused for good cannot hold it while later ones wait.
+var stuck = RefusedHourLedger()
+stuck.add((0..<6).map(hr), for: basal)
+let first = stuck.due(for: basal, limit: 2, notBefore: nil, now: hr(10))
+stuck.resolve(asked: first, stillRefused: first, for: basal, now: hr(10))
+let second = stuck.due(for: basal, limit: 2, notBefore: nil, now: hr(20))
+stuck.resolve(asked: second, stillRefused: second, for: basal, now: hr(20))
+let third = stuck.due(for: basal, limit: 2, notBefore: nil, now: hr(30))
+stuck.resolve(asked: third, stillRefused: third, for: basal, now: hr(30))
+check(first == [hr(0), hr(1)] && second == [hr(2), hr(3)] && third == [hr(4), hr(5)]
+      && stuck.due(for: basal, limit: 2, notBefore: nil, now: hr(40)) == [hr(0), hr(1)], "ledger_window_rotates_and_wraps")
+check(stuck.hasPending(basal) && !stuck.hasPending("HKQuantityTypeIdentifierStepCount"), "ledger_has_pending")
+stuck.backOff(basal, now: hr(40))
+check(stuck.due(for: basal, limit: 2, notBefore: nil, now: hr(45)).isEmpty
+      && stuck.due(for: basal, limit: 2, notBefore: nil, now: hr(46)).count == 2, "ledger_failed_retry_backs_off")
+// A ledger saved before `cursor` and `retryAfter` existed still decodes, hours intact.
+let older = #"{"runs":{"\#(basal)":[[\#(RefusedHourLedger.hourIndex(hr(0))),3]]}}"#
+let olderLedger = try? JSONDecoder().decode(RefusedHourLedger.self, from: Data(older.utf8))
+check(olderLedger?.hours(for: basal).count == 3 && olderLedger?.cursor.isEmpty == true, "ledger_decodes_without_newer_fields")
+check(Set(ledger.due(for: basal, limit: 10, notBefore: hr(2), now: hr(17))) == Set([hr(2), hr(5)])
+      && ledger.hours(for: basal).count == 2, "ledger_drops_hours_before_floor")
+ledger.resolve(asked: [hr(2), hr(5)], stillRefused: [], for: basal, now: hr(17))
+check(ledger.runs[basal] == nil && ledger.pendingTypes.isEmpty && ledger.retryAfter[basal] == nil
+      && ledger.cursor[basal] == nil, "ledger_empty_when_all_answered")
 
 print(failures == 0 ? "ALL PASS" : "\(failures) FAILED")
 exit(failures == 0 ? 0 : 1)

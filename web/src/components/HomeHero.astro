@@ -23,43 +23,26 @@ import BrandLogo from './BrandLogo.astro';
 
 <!-- ── HERO ────────────────────────────────────────────────── -->
 <section class="relative overflow-hidden px-6 pt-10 pb-20 max-w-6xl mx-auto">
-  <!-- background glow blobs -->
-  <div class="pointer-events-none absolute -top-24 right-0 w-[500px] h-[500px] rounded-full opacity-[0.07]" style="background:radial-gradient(circle,#ff2d78 0%,transparent 70%)"></div>
-  <div class="pointer-events-none absolute bottom-0 left-1/4 w-[300px] h-[300px] rounded-full opacity-[0.04]" style="background:radial-gradient(circle,#ff2d78 0%,transparent 70%)"></div>
-
   <div class="grid grid-cols-1 lg:grid-cols-[1fr_420px] items-center gap-12 lg:gap-8">
 
     <!-- Left: text -->
     <div class="max-w-xl">
       <div class="inline-flex items-center gap-2 text-xs font-semibold border rounded-full px-3 py-1 mb-7" style="color:var(--accent);border-color:var(--border);background:rgba(255,45,120,0.06)">
         <span class="w-1.5 h-1.5 rounded-full animate-pulse" style="background:var(--accent)"></span>
-        Free · Available now on the App Store
+        Available now on the App Store
       </div>
       <h1 class="text-4xl sm:text-[3.25rem] font-extrabold leading-[1.08] tracking-tight text-white mb-5">
         Apple Health MCP<br><span style="color:var(--accent)">for Claude &amp; Cursor.</span>
       </h1>
-      <p class="text-base leading-relaxed mb-5" style="color:var(--muted)">
-        Send your Apple Health data to a Google Sheet in your own Google Drive, or to your own database. health4.ai has no account and no server, and never receives a copy. Then ask Claude, Claude Code, Cursor, ChatGPT, or Ollama about your sleep, HRV, and workouts.
+      <p class="text-base leading-relaxed mb-6" style="color:var(--muted)">
+        Send your Apple Health data to a Google Sheet in your own Google Drive, or to your own database.
       </p>
-      <p class="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs font-semibold mb-8" style="color:#e2c8d4">
-        <span class="sr-only">Three steps: </span>
-        <span class="px-2.5 py-1 rounded-md" style="background:rgba(255,45,120,0.08);border:1px solid rgba(255,45,120,0.18)">Sync Apple Health</span>
-        <span aria-hidden="true" style="color:var(--muted)">→</span>
-        <span class="px-2.5 py-1 rounded-md" style="background:rgba(255,45,120,0.08);border:1px solid rgba(255,45,120,0.18)">Your Sheet or database</span>
-        <span aria-hidden="true" style="color:var(--muted)">→</span>
-        <span class="px-2.5 py-1 rounded-md" style="background:rgba(255,45,120,0.08);border:1px solid rgba(255,45,120,0.18)">Ask Claude/Cursor</span>
-      </p>
-
-      <!-- Live metric pills -->
-      <div class="flex flex-wrap gap-2 mb-8">
-        {[['HRV','62 ms','↑'],['Sleep','7h 23m',''],['Steps','8,432',''],['VO₂ Max','47.2','']].map(([label,val,arrow]) => (
-          <span class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold" style="background:rgba(255,45,120,0.08);border:1px solid rgba(255,45,120,0.18);color:#e2c8d4">
-            <span style="color:var(--muted)">{label}</span>
-            <span class="text-white">{val}</span>
-            {arrow && <span style="color:var(--accent)">{arrow}</span>}
-          </span>
+      <!-- Trust checklist: every claim is stated elsewhere on the site, README or FAQ -->
+      <ul role="list" class="mb-7 space-y-2 text-sm font-bold text-white" aria-label="Why health4.ai">
+        {['Free iOS app','Syncs to a Google Sheet or Supabase project you own','health4.ai never stores or has access to your health data','Open source on GitHub'].map((item) => (
+          <li class="flex gap-2.5"><span aria-hidden="true" style="color:var(--accent)">✓</span><span>{item}</span></li>
         ))}
-      </div>
+      </ul>
 
       <!-- App Store CTA -->
       <a
@@ -121,12 +104,12 @@ import BrandLogo from './BrandLogo.astro';
 
       <!-- Floating metric cards -->
       <div class="card-a absolute top-[8%] left-[3%] rounded-xl px-3 py-2.5 text-left" style="background:rgba(10,12,26,0.88);border:1px solid rgba(255,45,120,0.22);backdrop-filter:blur(12px)">
-        <div class="text-[9px] font-semibold uppercase tracking-widest mb-0.5" style="color:var(--muted)">HRV</div>
+        <div class="text-[9px] font-semibold uppercase tracking-widest mb-0.5" style="color:var(--muted)">Example · HRV</div>
         <div class="text-[22px] font-bold leading-none text-white mb-0.5">62<span class="text-xs font-normal ml-0.5" style="color:var(--muted)">ms</span></div>
         <div class="text-[10px] font-semibold" style="color:var(--accent)">↑ Good recovery</div>
       </div>
       <div class="card-b absolute bottom-[10%] right-[3%] rounded-xl px-3 py-2.5 text-left" style="background:rgba(10,12,26,0.88);border:1px solid rgba(255,45,120,0.22);backdrop-filter:blur(12px)">
-        <div class="text-[9px] font-semibold uppercase tracking-widest mb-0.5" style="color:var(--muted)">Last Night</div>
+        <div class="text-[9px] font-semibold uppercase tracking-widest mb-0.5" style="color:var(--muted)">Example · Last Night</div>
         <div class="text-[22px] font-bold leading-none text-white mb-0.5">7h 23<span class="text-xs font-normal ml-0.5" style="color:var(--muted)">m</span></div>
         <div class="text-[10px]" style="color:var(--accent-light)">Deep 1h 12m · REM 1h 34m</div>
       </div>

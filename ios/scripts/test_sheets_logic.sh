@@ -75,7 +75,7 @@ mutate "rebuild drops stale tail"      'if !stale.isEmpty {' 'if false {' sync
 mutate "rebuild skips about rewrite"   'if !rebuildExtras.isEmpty { try await api.writeRanges' 'if false { try await api.writeRanges' sync
 mutate "workouts not merged"           'let added = mergeRecentWorkouts ? try await addWorkouts(id: id, from: start, today: today) : 0' 'let added = 0' sync
 mutate "raw workout names left"        'try await tidyWorkoutNames(id: id)
-        return SheetsPassResult' 'return SheetsPassResult' sync
+        var out = SheetsPassResult' 'var out = SheetsPassResult' sync
 mutate "failed rebuild not backed off" 'progress.rebuildNotBefore = now.addingTimeInterval(RebuildBackoff.interval)
                 progress.rebuildFailed = true
                 persist(progress)
@@ -111,6 +111,43 @@ mutate "sleep appended in one request" 'static let appendChunkRows = 2000' 'stat
 mutate "empty sleep marked done"       'guard let oldest = try await source.oldestSleepRecord() else { return 0 }' 'guard let oldest = try await source.oldestSleepRecord() else { progress.sleepStagesThrough = DayKey.string(for: today, calendar: calendar); return 0 }' sleep
 mutate "workouts off ignored"          'private var mergeRecentWorkouts: Bool { saveWorkouts && !workoutsCatchUp }' 'private var mergeRecentWorkouts: Bool { !workoutsCatchUp }' sync
 mutate "workouts catch-up ignored"     'if latest.workouts && latest.workoutsCatchUp {' 'if false {' sync
-mutate "workouts appended in one request" 'try await appendInPieces(id: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)' 'try await api.append(spreadsheetId: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)' sync
+mutate "workouts appended in one request" 'try await appendInPieces(id: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh,
+                                 ids: (range: "\(SheetTabs.workouts)!H2:H", index: 7))' 'try await api.append(spreadsheetId: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)' sync
+mutate "range refusal not split"       '} catch let error where splittable(error) {' '} catch let error where false && splittable(error) {'
+mutate "split stops at whole range"    'guard days.count > 1 else { out.failedDays.append(days[0]); return }' 'out.failedDays += days; return'
+mutate "single refused day thrown"     'guard days.count > 1 else { out.failedDays.append(days[0]); return }' 'guard days.count > 1 else { throw error }'
+mutate "unread not saved per chunk"    'progress.unreadDays = Set(progress.unreadDays).union(chunk.unread.values.joined()).sorted()' '' sync
+mutate "split swallows other errors"   'out.parts.append((days, try await query(days)))' 'if let v = try? await query(days) { out.parts.append((days, v)) } else { out.failedDays += days }'
+mutate "unread cells not reported"     'result.daysWritten += rows.count
+            result.addUnread(chunk.unread)' 'result.daysWritten += rows.count' sync
+mutate "retry result ignored"          'let chunk = try await source.dailyRows(from: day, through: day)
+            result.addUnread(chunk.unread)' 'let chunk = try await source.dailyRows(from: day, through: day)' sync
+mutate "rebuild unread not reported"   'unread.addUnread(chunk.unread)' '' sync
+mutate "unread days never retried"     'try await retryUnread(id: id, before: start, existing: existing, progress: &progress, result: &result)' '' sync
+mutate "retried rows not written"      'if !ranges.isEmpty { try await api.writeRanges(spreadsheetId: id, ranges) }' '' sync
+mutate "unreached retries dropped"     '.union(earlier.dropFirst(tried.count))' '' sync
+mutate "retries unbounded"             'static let unreadRetriesPerPass = 30' 'static let unreadRetriesPerPass = 100000' sync
+mutate "refused-only chunk skipped"    'if pendingFirstWrite, !Self.hasData(rows), chunk.unread.isEmpty {' 'if pendingFirstWrite, !Self.hasData(rows) {' sync
+mutate "refused cells blank good data" 'guard !refused.isEmpty else { return [(' 'guard false else { return [(' sync
+mutate "rebuild blanks held values"    'try await keepHeldValues(id: id, refused: refused, in: &daily)' '' sync
+mutate "rebuild holds by position"     'for (i, key) in existing.enumerated() where i < values.count && !values[i].isEmpty { byDay[key] = values[i] }' 'for (i, key) in daily.map({ $0[0] }).enumerated() where i < values.count && !values[i].isEmpty { byDay[key] = values[i] }' sync
+mutate "rebuild fills unheld refused"  'if let value = held[col]?[daily[i][0]] { daily[i][col] = value }' 'daily[i][col] = held[col]?[daily[i][0]] ?? "100"' sync
+mutate "rewrite ignores refused cols"  'refused: chunk.refusedColumns(on: $0.values[0]))
+            }
+            if !plan.appends.isEmpty' 'refused: [])
+            }
+            if !plan.appends.isEmpty' sync
+mutate "5xx append resent blind"      '500...599 where attempt < maxRetries && replay == .safe:' '500...599 where attempt < maxRetries:'
+mutate "refused 403 forgets sheet"     'case .refused: return .fail(status: 403)' 'case .refused: return .spreadsheetMissing'
+mutate "scope 403 forgets sheet"       'case .scopeMissing: return .accessRevoked' 'case .scopeMissing: return .spreadsheetMissing'
+mutate "403 with a reason read as gone" 'if details.isEmpty, legacy.allSatisfy' 'if true, legacy.allSatisfy'
+mutate "numbers sent as text"          '&& SheetCell.isPlainDecimal(cell) ? NSDecimalNumber(string: cell) : cell' '&& false ? NSDecimalNumber(string: cell) : cell'
+mutate "partial row offset ignored"    'numeric.contains(start.column + j)' 'numeric.contains(j)'
+mutate "typed text sent as number"     '$0.allSatisfy { ("0"..."9").contains($0) }' '$0.allSatisfy { $0 != " " }'
+mutate "held values read as displayed" 'try await api.readValueColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!\(letter)2:\(letter)")' 'try await api.readColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!\(letter)2:\(letter)")' sync
+mutate "append retry resends all rows" 'pending = pending.filter { !present.contains($0[ids.index]) }' 'pending = pending.filter { _ in true }' sleep
+mutate "append 5xx not retried"        'catch let error where SheetsResponse.isServerError(error) && retries' 'catch let error where false && retries' sleep
+mutate "append retries unbounded"      'static let appendServerRetries = 2' 'static let appendServerRetries = 3' sleep
+mutate "stored keeps padding zeros"    'while out.hasSuffix("0") { out.removeLast() }' ''
 echo "survivors: $survivors"
 [ "$survivors" -eq 0 ]

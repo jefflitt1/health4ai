@@ -1,0 +1,13 @@
+# check-migration-grants baseline: findings in migrations applied before this check existed.
+# Shrink it by fixing the follow-up migration, never by adding lines. key = file|relation|rule|sha256(file)[:12];
+# editing a baselined file changes its hash and fails the lint until the entry is re-seeded in a reviewed PR.
+supabase/migrations/002_hosted_tier.sql|public.healthkit_api_keys|G001|a033e50cb7b8
+supabase/migrations/002_hosted_tier.sql|public.healthkit_setup_codes|G001|a033e50cb7b8
+supabase/migrations/004_sleep_nightly_view.sql|public.v_healthkit_sleep_nightly|G001|0838aaf404b4
+supabase/migrations/005_biometrics_combined_view.sql|public.v_healthkit_daily_quantity|G001|469013dda380
+supabase/migrations/006_waitlist_table.sql|public.health4ai_waitlist|G003|fc80805d2352
+supabase/migrations/009_healthkit_metrics_tenant_isolation.sql|public.healthkit_daily_summaries|G001|5c1a3b3b4625
+supabase/migrations/009_healthkit_metrics_tenant_isolation.sql|public.healthkit_metrics|G001|5c1a3b3b4625
+supabase/migrations/010_competitor_intelligence.sql|public.health4ai_competitor_intel|G001|081e73ec7f5b
+supabase/migrations/010_competitor_intelligence.sql|public.health4ai_competitor_intel|G005|081e73ec7f5b
+supabase/ops/2026-09-12_prod_summarize_group_by_unit.sql|public.v_healthkit_daily_quantity|G001|d4a587534332

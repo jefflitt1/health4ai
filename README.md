@@ -20,6 +20,11 @@
   <img src="https://img.shields.io/badge/Python-3.11%2B-blue?style=flat-square&logo=python" alt="Python 3.11+" />
   <img src="https://img.shields.io/badge/MCP-FastMCP-green?style=flat-square" alt="FastMCP" />
   <img src="https://img.shields.io/badge/backend-your%20Supabase%20project-3ecf8e?style=flat-square&logo=supabase" alt="Your own Supabase project" />
+  <a href="https://github.com/jefflitt1/health4ai"><img src="https://img.shields.io/github/stars/jefflitt1/health4ai?style=flat-square&logo=github" alt="Star health4.ai on GitHub" /></a>
+</p>
+
+<p align="center">
+  If health4.ai is useful to you, please give it a ⭐ on <a href="https://github.com/jefflitt1/health4ai">GitHub</a> — it helps others find it.
 </p>
 
 ---
@@ -242,6 +247,10 @@ MIT licensed. PRs welcome.
 
 Good first areas: additional metric aggregations, multi-user support with JWT/RLS, Android, and more MCP client integration guides.
 
+**SQL changes need explicit grants.** Supabase no longer auto-grants `anon` / `authenticated` / `service_role` access on new `public` tables (existing projects from 2026-10-30), so a table is unreachable through the Data API until its SQL says who may use it. Start from [`scripts/migration-templates/public_table.sql`](scripts/migration-templates/public_table.sql); a table that customers install belongs in `supabase/bootstrap/` (then run `scripts/build_schema_sql.sh`). `scripts/lint-migration-grants.sh` checks `web/public/schema.sql` and the migration folders, and CI fails a table without a grant. Findings in the old numbered migrations are frozen in `scripts/migration-grants-baseline.txt`.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+If health4.ai has been useful, a ⭐ on [GitHub](https://github.com/jefflitt1/health4ai) helps others find it.
