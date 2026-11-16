@@ -18,6 +18,7 @@ fail=0
 # The secret goes to curl through a fresh file descriptor per call (`-H @<(secret_header)`),
 # never argv, so `ps` cannot show it.
 secret_header() { printf 'X-Setup-Secret: %s' "$SECRET"; }
+device_header() { printf 'Authorization: Bearer %s' "$KEY"; }
 
 # check <label> <expected status> <expected body substring> <curl args...>
 check() {
@@ -29,42 +30,45 @@ check() {
   if [[ $status == "$want_status" && $body == *"$want_body"* ]]; then
     echo "ok   $label"
   else
-    echo "FAIL $label: got $status $body"
+    echo "FAIL $label: got HTTP $status; response body withheld because setup responses can contain keys"
     fail=1
   fi
   LAST_BODY=$body
 }
 
-field() { python3 -I -c "import sys,json; print(json.loads(sys.argv[1])[sys.argv[2]])" "$LAST_BODY" "$1"; }
+field() { printf '%s' "$LAST_BODY" | python3 -I -c "import sys,json; print(json.load(sys.stdin)[sys.argv[1]])" "$1"; }
 
 check 'setup without secret is refused' 403 'Wrong setup secret' "$BASE/api/setup"
 check 'setup shows the Owner ID' 200 'person_id' -H @<(secret_header) "$BASE/api/setup"
-check 'issue a Device key' 201 '"key":"h4a_' -X POST -H @<(secret_header) \
-  -d '{"label":"verify-deploy"}' "$BASE/api/setup/keys"
-if [[ $fail == 1 ]]; then echo "stopping: no Device key to test ingest with"; exit 1; fi
-KEY=$(field key)
-KEY_ID=$(field id)
-# Revoke the key however the script ends, so an abort cannot leave a live write key behind.
+if [[ $fail == 1 ]]; then echo "stopping: setup checks failed before issuing a key"; exit 1; fi
+KEY_ID=''
+# Register cleanup before issuance and parse its revocation id before reading the key.
 cleanup() {
-  [[ -n ${KEY_ID:-} ]] && curl -s -o /dev/null -X POST -H @<(secret_header) \
-    "$BASE/api/setup/keys/$KEY_ID/revoke"
+  if [[ -n $KEY_ID ]]; then
+    curl -s -o /dev/null -X POST -H @<(secret_header) "$BASE/api/setup/keys/$KEY_ID/revoke"
+  fi
 }
 trap cleanup EXIT
+check 'issue a Device key' 201 '"key":"h4a_' -X POST -H @<(secret_header) \
+  -d '{"label":"verify-deploy"}' "$BASE/api/setup/keys"
+KEY_ID=$(field id)
+if [[ $fail == 1 ]]; then echo "stopping: Device key issuance check failed"; exit 1; fi
+KEY=$(field key)
 
 check 'ingest without a key is 401' 401 'Missing Authorization header' -X POST -d '{}' "$BASE/api/ingest"
 check 'empty batch reports capabilities' 200 '"capabilities":["merged_hours_v1"]' -X POST \
-  -H "Authorization: Bearer $KEY" -d '{"samples":[]}' "$BASE/api/ingest"
-check 'two per-device step rows are stored' 200 '"inserted":2' -X POST -H "Authorization: Bearer $KEY" \
+  -H @<(device_header) -d '{"samples":[]}' "$BASE/api/ingest"
+check 'two per-device step rows are stored' 200 '"inserted":2' -X POST -H @<(device_header) \
   -d '{"samples":[
     {"metric_type":"HKQuantityTypeIdentifierStepCount","value":10,"unit":"count","source_device":"verify-deploy","started_at":"2000-01-01T00:05:00Z","ended_at":"2000-01-01T00:10:00Z"},
     {"metric_type":"HKQuantityTypeIdentifierStepCount","value":20,"unit":"count","source_device":"verify-deploy","started_at":"2000-01-01T00:40:00Z","ended_at":"2000-01-01T00:45:00Z"}]}' \
   "$BASE/api/ingest"
-check 'a merged hour replaces both' 200 '"replaced":2' -X POST -H "Authorization: Bearer $KEY" \
+check 'a merged hour replaces both' 200 '"replaced":2' -X POST -H @<(device_header) \
   -d '{"samples":[{"metric_type":"HKQuantityTypeIdentifierStepCount","value":30,"unit":"count","source_device":"HealthKit (all sources)","started_at":"2000-01-01T00:00:00Z","ended_at":"2000-01-01T01:00:00Z"}]}' \
   "$BASE/api/ingest"
 
 check 'revoke the key' 204 '' -X POST -H @<(secret_header) "$BASE/api/setup/keys/$KEY_ID/revoke"
-check 'a revoked key is 401' 401 'Unauthorized' -X POST -H "Authorization: Bearer $KEY" \
+check 'a revoked key is 401' 401 'Unauthorized' -X POST -H @<(device_header) \
   -d '{"samples":[]}' "$BASE/api/ingest"
 
 exit $fail

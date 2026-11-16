@@ -49,23 +49,15 @@ export async function personForDeviceKey(db: Queryable, plaintext: string): Prom
 }
 
 /**
- * One statement, so the batch is atomic. On conflict every column the app sent is overwritten,
- * which is what the Supabase upsert (ignoreDuplicates: false) did.
+ * Serializes by person with merged-hour writes and skips rows already covered by a merged hour.
+ * A late device upload must not restore rows that would double-count that hour.
  */
 export async function upsertDeviceRows(db: Queryable, rows: MetricRow[]): Promise<number> {
-  const { rowCount } = await db.query(
-    `INSERT INTO healthkit_metrics
-       (user_id, metric_type, value, unit, source_device, started_at, ended_at, metadata)
-     SELECT r.user_id, r.metric_type, r.value, r.unit, r.source_device, r.started_at, r.ended_at, r.metadata
-       FROM jsonb_to_recordset($1::jsonb) AS r(
-         user_id uuid, metric_type text, value float8, unit text, source_device text,
-         started_at timestamptz, ended_at timestamptz, metadata jsonb)
-     ON CONFLICT (user_id, metric_type, source_device, started_at) DO UPDATE SET
-       value = EXCLUDED.value, unit = EXCLUDED.unit, ended_at = EXCLUDED.ended_at,
-       metadata = EXCLUDED.metadata, synced_at = now()`,
-    [JSON.stringify(rows)],
+  const { rows: result } = await db.query<{ written: number }>(
+    'SELECT health4ai_upsert_device_rows($1::jsonb)::int AS written', [JSON.stringify(rows)],
   )
-  return rowCount ?? 0
+  if (result.length !== 1) throw new Error('device upsert returned no row')
+  return result[0].written
 }
 
 export async function replaceMergedHours(
