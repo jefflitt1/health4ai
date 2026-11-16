@@ -1,10 +1,9 @@
 ---
 import Layout from '../layouts/Layout.astro';
-const lastUpdated = '2026-11-15';
-// Match the build-time vendor switches in Layout.astro and posthog.astro.
+const lastUpdated = '2026-11-16';
+// Match the build-time vendor switches in ConsentBanner.astro.
 const hasPostHog = Boolean(import.meta.env.PUBLIC_POSTHOG_PROJECT_TOKEN && import.meta.env.PUBLIC_POSTHOG_HOST);
 const hasClarity = Boolean(import.meta.env.PUBLIC_CLARITY_PROJECT_ID);
-const hasMetaPixel = Boolean(import.meta.env.PUBLIC_META_PIXEL_ID);
 ---
 <style>
   /* Anyone linking directly to #testflight (historical TestFlight section)
@@ -106,15 +105,18 @@ const hasMetaPixel = Boolean(import.meta.env.PUBLIC_META_PIXEL_ID);
         this website build's configuration; they are website tools, not part of the HealthKit sync.
       </p>
       <ul class="text-neutral-400 text-sm leading-relaxed space-y-2 list-none pl-0 mt-3">
-        {hasPostHog && <li><strong class="text-neutral-200">PostHog (US-hosted)</strong> receives website page views and interactions and uses a browser identifier in local storage. Its recording configuration masks form inputs; recorded page content and browser identifiers should not be treated as anonymous.</li>}
-        {hasClarity && <li><strong class="text-neutral-200">Microsoft Clarity</strong> receives website interaction and recording data under Microsoft's privacy policy.</li>}
-        {hasMetaPixel && <li><strong class="text-neutral-200">Meta Pixel</strong> receives page visits and connection information for advertising measurement. Meta may associate visits with its own identifiers. This may count as sharing or targeted advertising under applicable privacy laws.</li>}
-        {!hasPostHog && !hasClarity && !hasMetaPixel && <li>No optional PostHog, Microsoft Clarity or Meta Pixel integration is enabled in this website build.</li>}
+        {hasPostHog && <li><strong class="text-neutral-200">PostHog (US-hosted)</strong> receives website page views and interactions and uses a browser identifier in local storage. PostHog session recording is disabled.</li>}
+        {hasClarity && <li><strong class="text-neutral-200">Microsoft Clarity</strong> receives website interaction data, session recordings and heatmaps under Microsoft's privacy policy. Page content and browser identifiers should not be treated as anonymous. We deny advertising storage consent.</li>}
+        {!hasPostHog && !hasClarity && <li>No optional analytics integration is enabled in this website build.</li>}
       </ul>
-      {(hasPostHog || hasClarity || hasMetaPixel) && <p class="text-neutral-400 text-sm leading-relaxed mt-3">
-        These configured tools currently load on production website visits without an on-site consent
-        selector. You can use your browser's blocking controls and contact us about privacy choices;
-        we do not currently claim that this website automatically honors Global Privacy Control.
+      {(hasPostHog || hasClarity) && <p class="text-neutral-400 text-sm leading-relaxed mt-3">
+        These tools load only after you accept the cookie banner. Before acceptance, neither runs
+        nor sets cookies or browser storage. Use Cookie choices on any page to change your decision.
+        Declining after acceptance sends an opt-out, removes accessible first-party analytics
+        storage and reloads without the tools. If your browser prevents saving or clearing the
+        old choice, we display an error with instructions to close the tab and clear site data.
+        Browser restrictions may limit storage access;
+        this site cannot remove cookies on a provider's own domain. We do not load Meta Pixel.
       </p>}
       <p class="text-neutral-400 text-sm leading-relaxed mt-3">
         We do not send HealthKit records to these website tools. We have not set a uniform automatic

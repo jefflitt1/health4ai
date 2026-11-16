@@ -4,8 +4,8 @@ Scope: website performance pass (2026-09-10), not a redesign or iOS specificatio
 
 ## Existing visual system
 
-Use the existing layout/CSS tokens (`--accent`, `--accent-light`, `--muted`,
-`--border`) and current Tailwind typography, spacing and responsive breakpoints.
+Use the website tokens documented in [the root design contract](../design.md#website-2026-11-16)
+and current Tailwind typography, spacing and responsive breakpoints.
 This pass changes no color, font, radius or content token. Do not substitute a
 different venture's design system. Existing layout is the visual baseline.
 
@@ -66,6 +66,17 @@ The same whitespace-collapse recurs on any plain inline `<p>...text<a>...</a>tex
 where the link starts or ends its own source line — not only inside the legacy-setup aside.
 Found again 2026-09-23 on `about.astro`/`contact.astro` ("see thePrivacy Policy", "license
 onGitHub"). Same fix: an explicit `{' '}` at the line boundary next to the `<a>`.
+
+## Optional analytics consent (2026-11-16)
+
+The root [Website contract](../design.md#website-2026-11-16) owns the consent colour,
+control and visible persistence-failure rules. The fixed cookie-choice panel uses those tokens,
+16px viewport gutters and a 720px maximum width. Accept and Decline have equal
+visual weight and at least 44px touch height. Text wraps before controls at 375px.
+Cookie choices remains available at the page end with a 44px touch target.
+The panel is a labeled region, not a focus-trapping modal. No vendor loads before
+acceptance; PostHog replay stays disabled and Clarity recording is named explicitly.
+The no-vendor build shows no banner. Review both 375px and 1440px renders.
 
 ## Verification
 
