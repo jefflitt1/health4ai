@@ -71,6 +71,8 @@ async function read(req: Request): Promise<string | null> {
 const CONFLICTS = new Set(['revision_conflict', 'revision_limit', 'export_not_found', 'immutable_export',
   'sample_conflict', 'sample_limit', 'count_mismatch', 'stale_revision', 'unqueried_type',
   'point_conflict', 'invalid_point_index'])
+const VALIDATION_ERRORS = new Set(['invalid_request', 'invalid_workout', 'invalid_export', 'invalid_types',
+  'invalid_page', 'invalid_count', 'invalid_routes', 'invalid_operation'])
 export function handler(deps: Dependencies) {
   return async (req: Request): Promise<Response> => {
     if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
@@ -89,8 +91,11 @@ export function handler(deps: Dependencies) {
       if (!(deps.validatePayload ?? validate)(body)) return json({ error: 'invalid_payload' }, 400)
       const { data, error } = await deps.rpc({ p_user_id: user, p_operation: body.operation,
         p_workout_uuid: body.workout_uuid ?? null, p_export_uuid: body.export_uuid ?? null, p_payload: body })
-      if (error) return CONFLICTS.has(error.message)
-        ? json({ error: error.message }, 409) : json({ error: 'storage_unavailable' }, 503)
+      if (error) {
+        if (VALIDATION_ERRORS.has(error.message)) return json({ error: error.message }, 400)
+        return CONFLICTS.has(error.message)
+          ? json({ error: error.message }, 409) : json({ error: 'storage_unavailable' }, 503)
+      }
       return json(data)
     } catch { return json({ error: 'service_unavailable' }, 503) }
   }

@@ -69,6 +69,17 @@ Deno.test('known conflict status is visible; other errors stay sanitized', async
   const response = await h(request(begin))
   assert(response.status === 409 && (await response.json()).error === 'count_mismatch')
 })
+Deno.test('SQL validation refusals are client errors, unknown provider errors remain unavailable', async () => {
+  for (const message of ['invalid_request', 'invalid_workout', 'invalid_export', 'invalid_types',
+    'invalid_page', 'invalid_count', 'invalid_routes', 'invalid_operation', 'private backend detail']) {
+    const h = handler({ enabled: true, authenticate: async () => U,
+      rpc: async () => ({ data: null, error: { message } }) })
+    const response = await h(request(begin))
+    const known = message !== 'private backend detail'
+    assert(response.status === (known ? 400 : 503), message)
+    assert((await response.json()).error === (known ? message : 'storage_unavailable'))
+  }
+})
 Deno.test('valid near-limit 500 sample page reaches RPC', async () => {
   let selected: unknown
   for (let length = 1; length <= 256; length++) {
