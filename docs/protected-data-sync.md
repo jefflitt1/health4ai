@@ -33,10 +33,21 @@ Apple defines HKError.errorDatabaseInaccessible as the locked-device condition.
 
 - Six native helper checks exercise exact error classification, text-only nonmatches,
   unrelated HealthKit errors, and injected availability.
-- AppLifecycleTests adds real runFullPass preflight, untouched timestamp/anchor,
-  unlock routing, and mixed-error scan tests. Tests compile in Xcode.
-- iOS XCTest execution and physical locked/unlocked foreground behavior remain
-  unverified because this Mac's simulator cannot boot (launchd_sim session failure).
+- AppLifecycleTests executes real runFullPass preflight, untouched timestamp/anchor,
+  unlock routing, mixed-error scan and stale-generation tests: 10 passed, zero failures
+  on the iOS 27 simulator (verified 2026-11-16).
+- Full iOS XCTest suite: 113 tests passed, zero failures on the same simulator.
+- Simulator boot succeeded outside the sandbox. The unsigned test host stalled;
+  a fresh `xcodebuild test` with default simulator signing executed successfully.
+  Command: `xcodebuild test -project ios/Health4AI.xcodeproj -scheme Health4AI
+  -destination 'platform=iOS Simulator,id=52724B85-F09E-4896-9F75-A1DDB1A30FBF'
+  -derivedDataPath /private/tmp/health4ai-protected-signed-tests
+  -only-testing:Health4AITests/AppLifecycleTests -parallel-testing-enabled NO`.
+- Real deferred-state renders captured in light/dark at default and accessibilityXXXL
+  text sizes on a 360pt simulator. DEBUG-only `-h4aiScreenshotHealthDeferred` seeds
+  the pending state without credentials or network activity.
+- Physical locked/unlocked HealthKit behavior remains a release acceptance check;
+  simulator tests inject availability and cannot prove physical data protection.
 - Independent code/security/silent-failure and Sasha UI review required before merge.
 - Do not close D1200 until the physical device no longer logs all-type failure while
   locked and an unlocked retry actually syncs data.

@@ -355,6 +355,11 @@ final class SyncState: ObservableObject {
         }
 
         #if DEBUG
+        // Render the real deferred status without a device session or Health queries.
+        if ProcessInfo.processInfo.arguments.contains("-h4aiScreenshotHealthDeferred") {
+            self.isAuthenticated = true
+            self.deferredHealthWork = [.sync]
+        }
         // Every screenshot fixture forces the SAME metric-types scope, regardless of which
         // simulator or how many prior runs installed the app on it. `healthScope` in HomeView
         // reads `HealthKitManager.selectedScope`, which falls back on `hkb.onboardingComplete`
