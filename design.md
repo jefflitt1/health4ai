@@ -130,3 +130,19 @@ visibly changes size between states.
 
 Run the Sasha Kim gate. It renders the real states rather than reading the diff, which is
 how every finding above was actually caught.
+
+## Website (2026-11-16)
+
+The website shares the pink accent; its dark surfaces use the tokens in
+`web/src/layouts/Layout.astro`: `--accent` #ff2d78, `--accent-light` #ff6b9d,
+`--surface` #0f1225, `--border` rgba(255,45,120,0.14), `--muted` #9ba5c4,
+`--text` #e5e7eb, and `--attention` #fbbf24. Use tokens for new components.
+
+The consent panel sits fixed at the bottom with 16px gutters and a 720px maximum
+width. Accept and Decline always have equal weight, neither pink, and minimum
+44px touch height. Neutral muted borders distinguish both controls; keyboard
+focus uses an accent-light outline. A persistence failure keeps normal body text
+inside a 3px attention border with a faint matching tint and 8px by 12px padding.
+Number its recovery steps: close the tab, then clear this site's browser data.
+Review normal and failure states at 375px plus the normal 1440px layout.
+Further website patterns live in `web/design.md`.
