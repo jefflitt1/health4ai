@@ -413,7 +413,7 @@ final class HealthKitManager {
             sourceDevice: device,
             startedAt: workout.startDate,
             endedAt: workout.endDate,
-            metadata: meta
+            metadata: WorkoutExport.metadata(for: workout, preserving: meta)
         )
     }
 

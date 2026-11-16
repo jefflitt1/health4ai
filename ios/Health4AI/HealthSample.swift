@@ -38,6 +38,8 @@ enum AnyCodableValue: Codable, Equatable {
     case int(Int)
     case bool(Bool)
     case null
+    case array([AnyCodableValue])
+    case object([String: AnyCodableValue])
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -51,6 +53,10 @@ enum AnyCodableValue: Codable, Equatable {
             self = .double(v)
         } else if let v = try? container.decode(String.self) {
             self = .string(v)
+        } else if let v = try? container.decode([AnyCodableValue].self) {
+            self = .array(v)
+        } else if let v = try? container.decode([String: AnyCodableValue].self) {
+            self = .object(v)
         } else {
             throw DecodingError.typeMismatch(
                 AnyCodableValue.self,
@@ -68,6 +74,8 @@ enum AnyCodableValue: Codable, Equatable {
         case .int(let v):    try container.encode(v)
         case .bool(let v):   try container.encode(v)
         case .null:          try container.encodeNil()
+        case .array(let v):  try container.encode(v)
+        case .object(let v): try container.encode(v)
         }
     }
 
