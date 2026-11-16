@@ -107,7 +107,9 @@ def test_get_sleep_clamps_days(monkeypatch, days, want_days):
 
     monkeypatch.setattr(tools, "_fetch_metrics", fetch)
 
-    tools.get_sleep(days=days)
+    out = tools.get_sleep(days=days)
 
-    expected = datetime.now(timezone.utc) - timedelta(days=want_days)
+    assert out["period_days"] == want_days
+    # The fetch reaches 2 days before the window, so a night that began before its edge is whole.
+    expected = datetime.now(timezone.utc) - timedelta(days=want_days + 2)
     assert abs(datetime.fromisoformat(seen["since"]) - expected) < timedelta(minutes=1)
