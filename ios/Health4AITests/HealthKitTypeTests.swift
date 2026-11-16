@@ -56,7 +56,7 @@ final class HealthKitTypeTests: XCTestCase {
     }
 
     func testWorkoutEventsRespectRealIngestMetadataBudget() throws {
-        let event = HKWorkoutEvent(type: .lap, dateInterval: DateInterval(start: Date(), duration: 60), metadata: nil)
+        let event = HKWorkoutEvent(type: .lap, dateInterval: DateInterval(start: Date(timeIntervalSince1970: 1_700_000_000), duration: 60), metadata: nil)
         let original: [String: AnyCodableValue] = ["existing": .string(String(repeating: "é", count: 500)),
                                                        "large_number": .double(1e20)]
         let meta = WorkoutExport.metadata(for: workout(events: Array(repeating: event, count: 100)), preserving: original)
@@ -74,7 +74,7 @@ final class HealthKitTypeTests: XCTestCase {
     }
 
     func testBudgetAllowsForJavaScriptDecimalExpansion() throws {
-        let event = HKWorkoutEvent(type: .lap, dateInterval: DateInterval(start: Date(), duration: 60), metadata: nil)
+        let event = HKWorkoutEvent(type: .lap, dateInterval: DateInterval(start: Date(timeIntervalSince1970: 1_700_000_000), duration: 60), metadata: nil)
         for length in 3000...3800 {
             let original: [String: AnyCodableValue] = ["padding": .string(String(repeating: "x", count: length)),
                                                        "large": .double(1e20)]

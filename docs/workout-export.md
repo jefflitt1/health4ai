@@ -43,3 +43,18 @@ sync as separate quantity samples when the user enables those Health types.
 
 Apple's event semantics:
 https://developer.apple.com/documentation/healthkit/hkworkoutevent
+
+## Verification
+
+Verified 2026-11-16: eight HealthKitTypeTests pass on the iOS 27 simulator,
+including actual HKWorkout conversion, JSON round trip, unavailable events and
+the 801-length numeric-budget sweep. The first runtime pass exposed two invalid
+fixtures whose events were dated outside the fixed workout interval; aligning
+those dates changed the result from two failures to zero. Production code unchanged.
+
+Run `xcodebuild test -project ios/Health4AI.xcodeproj -scheme Health4AI
+-destination 'platform=iOS Simulator,id=<simulator UUID>'
+-only-testing:Health4AITests/HealthKitTypeTests -parallel-testing-enabled NO`.
+Use normal simulator signing; unsigned test artifacts built but stalled at launch.
+The full iOS XCTest suite also passed: 114 tests, zero failures.
+Physical-device recorded-workout export remains a release acceptance check.
