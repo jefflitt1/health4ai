@@ -181,10 +181,12 @@ def test_coaching_brief_counts_every_row_in_its_windows(monkeypatch):
     # really 15 days ago). Steps are summed in SQL now (test_coaching_brief_windows.py).
     workouts = [{"started_at": _iso(NOW - timedelta(hours=11 * i + 1)), "value": None,
                  "metadata": {"workout_type": "walking", "duration_seconds": 600}} for i in range(60)]
-    weight = [{"started_at": _iso(NOW - timedelta(hours=12 * i + 1)), "value": 70.0 + i / 100}
+    weight = [{"started_at": _iso(NOW - timedelta(hours=12 * i + 1)), "value": 70.0 + i / 100, "unit": "kg"}
               for i in range(59)]
     _stub(monkeypatch, {tools.WORKOUT: workouts, tools.SLEEP: _two_trackers(7), tools.WEIGHT: weight})
-    monkeypatch.setattr(tools, "_get_tiered_daily", lambda *a, **k: [])
+    # Daily values from the weigh-ins (weight 30 days ago reads the daily series); no VO2 max.
+    monkeypatch.setattr(tools, "_get_tiered_daily",
+                        lambda mt, uid, days: tools._daily_from_raw(weight if mt == tools.WEIGHT else []))
     monkeypatch.setattr(tools, "_fetch_raw_daily_aggregates", lambda *a, **k: [])
     out = tools.get_coaching_brief()
     assert out["training_load_30d"]["total_workouts"] == 60
@@ -193,4 +195,6 @@ def test_coaching_brief_counts_every_row_in_its_windows(monkeypatch):
     # Night 7 ended just over 7 days ago, so the brief averages nights 1-6. The old 500-row cap
     # would have left about 3 of them.
     assert out["sleep"]["nights_tracked"] >= 6
-    assert out["fitness_markers"]["weight_kg_30d_ago"] == 70.58  # the oldest of the 59 readings
+    # The day nearest 30 days ago is 29 days ago, with two weigh-ins: 70.57 and 70.58. A day's mean
+    # is kept to four places (70.575), which rounds to 70.58.
+    assert out["fitness_markers"]["weight_kg_30d_ago"] == 70.58

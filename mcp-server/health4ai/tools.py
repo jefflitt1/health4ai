@@ -596,7 +596,7 @@ def _get_tiered_daily(metric_type: str, user_id: str, days: int) -> list[dict]:
         older_end = (date.fromisoformat(cutoff) - timedelta(days=1)).isoformat()
         _fill_days_from_raw(metric_type, user_id, window_start, older_end, daily)
 
-    return sorted(daily.values(), key=lambda x: (x["date"], x["unit"]))
+    return _in_kg(metric_type, sorted(daily.values(), key=lambda x: (x["date"], x["unit"])))
 
 
 def _weighted_mean(points: list[dict]) -> float | None:
@@ -686,7 +686,7 @@ def _daily_series_for_range(metric_type: str, user_id: str,
         for d in _daily_from_raw(_fetch_metrics_range(metric_type, user_id, start_iso, end_iso)):
             daily[(d["date"], d["unit"])] = d
 
-    return sorted(daily.values(), key=lambda x: (x["date"], x["unit"]))
+    return _in_kg(metric_type, sorted(daily.values(), key=lambda x: (x["date"], x["unit"])))
 
 
 def _percentile(sorted_vals: list[float], p: float) -> float:
@@ -1119,9 +1119,10 @@ def query_metric(
         }
 
     since = _since(days)
-    rows = _fetch_metrics(metric_type, uid, since, limit=limit)
+    rows = _rows_in_kg(metric_type, _fetch_metrics(metric_type, uid, since, limit=limit))
 
-    values = [r["value"] for r in rows if r.get("value") is not None]
+    # Body mass in a unit with no factor is listed as stored but never averaged with kg.
+    values = [r["value"] for r in rows if r.get("value") is not None and (metric_type != WEIGHT or r.get("unit") == "kg")]
     note = _absence_note(metric_type, uid, len(rows))
     return {
         "metric_type": metric_type,
@@ -1209,7 +1210,8 @@ def get_daily_snapshot(date: str = "") -> dict:
     # Local (HEALTH4AI_TZ) midnight boundaries, converted to UTC for the DB query
     day_start, day_end = _local_day_bounds_utc(date, date)
 
-    rows = _fetch_metrics_snapshot(uid, day_start, day_end, limit=1000)
+    rows = [_rows_in_kg(WEIGHT, [r])[0] if r.get("metric_type") == WEIGHT else r
+            for r in _fetch_metrics_snapshot(uid, day_start, day_end, limit=1000)]
 
     # Group by metric type
     by_type: dict[str, list[dict]] = {}
@@ -1219,6 +1221,8 @@ def get_daily_snapshot(date: str = "") -> dict:
 
     # Summarise key metrics
     def first_val(metric: str) -> float | None:
+        if metric == WEIGHT:  # in kg whatever its unit, as "weight_kg" says (rows are converted above)
+            return next((r["value"] for r in by_type.get(WEIGHT, []) if r.get("unit") == "kg" and r.get("value") is not None), None)
         return by_type[metric][0]["value"] if metric in by_type else None
 
     def sum_val(metric: str) -> float | None:
@@ -1236,7 +1240,9 @@ def get_daily_snapshot(date: str = "") -> dict:
             return val
         # Raw rows for this date have already been compacted away — fall back to the
         # daily summary (same helper _daily_series_for_range/_get_tiered_daily use elsewhere).
-        srows = _fetch_summaries_range(metric, uid, date, date)
+        srows = _in_kg(metric, _fetch_summaries_range(metric, uid, date, date))
+        if metric == WEIGHT:
+            srows = [r for r in srows if r.get("unit") == "kg"]
         if not srows:
             return None
         highlights_fallback_used = True
@@ -1335,15 +1341,95 @@ FRESH_HOURS = 48  # older than this and a coaching brief must not cite a number 
 _KG_PER_UNIT = {"kg": 1.0, "g": 0.001, "lb": 0.45359237, "oz": 0.028349523125, "st": 6.35029318}
 
 
-def _weights_kg(rows: list[dict]) -> list[float]:
-    """Body-mass values in kg, in row order. A row without a unit is taken as kg, the unit the app
-    writes; a row in a unit not listed above is skipped, never passed through as if it were kg."""
+def _kg_factor(unit: str | None) -> float | None:
+    """The factor from a body-mass unit to kg; no unit means kg, the unit the app writes; None for a
+    unit not listed above."""
+    return _KG_PER_UNIT.get((unit or "kg").strip())
+
+
+def _rows_in_kg(metric_type: str, rows: list[dict]) -> list[dict]:
+    """Body-mass rows with their values in kg (see _in_kg). Other metrics, and rows in a unit not
+    listed above, are unchanged."""
+    if metric_type != WEIGHT:
+        return rows
     out = []
     for r in rows:
-        factor = _KG_PER_UNIT.get((r.get("unit") or "kg").strip())
-        if factor is not None and r.get("value") is not None:
-            out.append(round(r["value"] * factor, 2))
+        factor = _kg_factor(r.get("unit"))
+        if factor is None or r.get("value") is None:
+            out.append(r)
+        else:
+            out.append({**r, "value": r["value"] if factor == 1.0 else round(r["value"] * factor, 2), "unit": "kg"})
     return out
+
+
+def _in_kg(metric_type: str, points: list[dict]) -> list[dict]:
+    """Body-mass daily points in kg, so a scale that writes lb and an app that writes kg make one
+    series, in the unit the coaching brief and the dashboard report. Two units on one date become
+    one day, weighted by their readings; a point whose total cannot be known (no sum and no average
+    and count) stays a point of its own rather than be guessed at. A day in a unit not listed above
+    keeps it, so _single_unit still keeps it apart. Other metrics are unchanged."""
+    if metric_type != WEIGHT:
+        return points
+
+    def total(p: dict) -> float | None:
+        if p.get("sum_value") is not None:
+            return p["sum_value"]
+        if p.get("avg_value") is not None and p.get("sample_count"):
+            return p["avg_value"] * p["sample_count"]
+        return None
+
+    out: list[dict] = []
+    by_date: dict[str, dict] = {}
+    for p in points:
+        factor = _kg_factor(p.get("unit"))
+        if factor is None:
+            out.append(p)
+            continue
+        kg = {**p, "unit": "kg"}
+        if factor != 1.0:
+            for k in ("avg_value", "min_value", "max_value", "sum_value"):
+                if p.get(k) is not None:
+                    kg[k] = round(p[k] * factor, 2)
+        same = by_date.get(kg["date"])
+        a, b = (total(same), total(kg)) if same is not None else (None, None)
+        if same is None or a is None or b is None or not (same.get("sample_count") and kg.get("sample_count")):
+            if same is None:
+                by_date[kg["date"]] = kg
+            out.append(kg)
+            continue
+        n = same["sample_count"] + kg["sample_count"]
+        same["sum_value"] = round(a + b, 2)
+        same["sample_count"] = n
+        same["avg_value"] = round(same["sum_value"] / n, 2)
+        lows = [v for v in (same.get("min_value"), kg.get("min_value")) if v is not None]
+        highs = [v for v in (same.get("max_value"), kg.get("max_value")) if v is not None]
+        same["min_value"] = min(lows) if lows else None
+        same["max_value"] = max(highs) if highs else None
+    return out
+
+
+WEIGHT_NEAR_DAYS = 7  # how far from 30 days ago a day's weight may be and still stand for it
+
+
+def _weight_markers(uid: str, rows: list[dict]) -> tuple[float | None, float | None]:
+    """The newest body-mass reading of the last 30 days (rows newest first), and the day's weight
+    nearest to 30 days ago, within WEIGHT_NEAR_DAYS either side (on a tie the earlier day), read
+    from the tiered daily series so a day compacted into a daily summary still counts. That day
+    must be at least 30 - WEIGHT_NEAR_DAYS days before the newest reading, so weigh-ins close
+    together never read as a 30-day change; with no reading in the last 30 days there is no change
+    to give, so neither. Both in kg; a reading in a unit not listed above is skipped."""
+    latest = next((r for r in _rows_in_kg(WEIGHT, rows) if r.get("unit") == "kg" and r.get("value") is not None), None)
+    if latest is None:
+        return None, None
+    target = _today_local() - timedelta(days=30)
+    near = timedelta(days=WEIGHT_NEAR_DAYS)
+    days = [p for p in _get_tiered_daily(WEIGHT, uid, 30 + WEIGHT_NEAR_DAYS)
+            if p.get("unit") == "kg" and p.get("avg_value") is not None
+            and abs(date.fromisoformat(p["date"]) - target) <= near]
+    last_day = date.fromisoformat(_local_date(_parse_ts(latest["started_at"]).isoformat()))
+    days = [p for p in days if date.fromisoformat(p["date"]) <= last_day - timedelta(days=30 - WEIGHT_NEAR_DAYS)]
+    ago = min(days, key=lambda p: (abs((date.fromisoformat(p["date"]) - target).days), p["date"]), default=None)
+    return round(latest["value"], 2), (round(ago["avg_value"], 2) if ago else None)
 
 
 def _newest_started_at(*row_lists: list[dict]) -> datetime | None:
@@ -1477,7 +1563,7 @@ def get_coaching_brief() -> dict:
     recent_nights = sorted(nights.items(), reverse=True)[:7]
     avg_sleep_h = round(sum(h for _, h in recent_nights) / len(recent_nights), 1) if recent_nights else None
 
-    weights_kg = _weights_kg(weight_rows)  # newest first
+    weight_latest, weight_30d_ago = _weight_markers(uid, weight_rows)
 
     # Training load
     workout_types = {}
@@ -1529,8 +1615,8 @@ def get_coaching_brief() -> dict:
         "fitness_markers": {
             "vo2max_latest": vo2_points[-1]["avg_value"] if vo2_points else None,
             "vo2max_source_tier": vo2_points[-1]["source"] if vo2_points else None,
-            "weight_kg_latest": weights_kg[0] if weights_kg else None,
-            "weight_kg_30d_ago": weights_kg[-1] if len(weights_kg) > 1 else None,
+            "weight_kg_latest": weight_latest,
+            "weight_kg_30d_ago": weight_30d_ago,
         },
     }
 
