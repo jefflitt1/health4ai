@@ -162,6 +162,9 @@ struct BikeImporter {
     var maxRides = BikeLimits.maxRidesPerImport
     /// Rides rejected for good. In memory unless the app passes the UserDefaults-backed one.
     var rejectedStore: BikeRejectedStore = MemoryRejectedStore()
+    /// Asked before each ride is fetched and saved. False stops the import there: the person erased the
+    /// app's data while it ran, and no further ride may be written to Health (review 2026-11-09).
+    var shouldContinue: () async -> Bool = { true }
 
     func run() async -> BikeImportResult {
         var result = BikeImportResult(date: now())
@@ -218,7 +221,10 @@ struct BikeImporter {
             result.notes.append(BikeIssue(rideID: nil, reason: "\(candidates.count - maxRides) older rides were left for the next import (limit \(maxRides) per import)"))
             candidates = Array(candidates.prefix(maxRides))
         }
-        for c in candidates { await importOne(c.summary, into: &result, rejected: &rejected) }
+        for c in candidates {
+            guard await shouldContinue() else { return result }
+            await importOne(c.summary, into: &result, rejected: &rejected)
+        }
         // Forget ids the bike no longer lists, so the set cannot grow without bound.
         let listed = Set(rides.map(\.id))
         rejectedStore.save(rejected.filter { listed.contains($0.key) })
@@ -266,6 +272,8 @@ struct BikeImporter {
                 }
             }
             if plan.hasHeartRate { plan.writeHeartRate = await heartRateAllowed(id: id, into: &result) }
+            // Asked again here: the fetch and the heart-rate prompt above both wait, and an erase can land then.
+            guard await shouldContinue() else { return }
             try await store.save(plan)
             result.imported += 1
         } catch BikeImportError.saveUnconfirmed(let rideID) {

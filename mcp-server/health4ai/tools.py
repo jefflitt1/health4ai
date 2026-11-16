@@ -94,6 +94,10 @@ RAW_CUTOFF_DAYS = 30  # beyond this, queries hit daily summaries
 MAX_DAYS = 1825       # 5 years
 MAX_MONTHS = 120      # 10 years
 MAX_LIMIT = 1000
+# Row ceiling for fetches that feed an aggregate over a raw window (at most RAW_CUTOFF_DAYS).
+# The 500-row default is far too small there: steps sync as one merged row per hour, so 30 days
+# is 720 rows before any per-device ones, and two sleep trackers write ~140 stage rows a night.
+RAW_WINDOW_LIMIT = 100000
 
 
 def _connect():
@@ -289,6 +293,59 @@ def _fetch_metrics_range(metric_type: str, user_id: str,
         conn.close()
 
     return all_rows
+
+
+def _count_sleep_rows(user_id: str, since: str) -> tuple[int, int]:
+    """(all sleep rows, rows whose metadata mentions sleep) since `since`, counted in SQL.
+
+    Counted, not fetched: two sleep trackers write ~140 stage rows a night, so a long window
+    would pass any row cap and the count would stop at it.
+    """
+    conn = _connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT count(*),
+                       count(*) FILTER (WHERE lower(metadata::text) LIKE '%%sleep%%')
+                FROM {TABLE}
+                WHERE user_id = %s
+                  AND metric_type = %s
+                  AND started_at >= %s
+                """,
+                (user_id, SLEEP, since),
+            )
+            total, stages = cur.fetchone()
+    finally:
+        conn.close()
+    return total, stages
+
+
+def _count_workouts(user_id: str, since: str) -> tuple[int, list]:
+    """(workout count, distinct workout types) since `since`, counted in SQL.
+
+    A workout without a workout_type key counts as "unknown".
+    """
+    conn = _connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT count(*),
+                       array_agg(DISTINCT CASE WHEN metadata ? 'workout_type'
+                                               THEN metadata->>'workout_type'
+                                               ELSE 'unknown' END)
+                FROM {TABLE}
+                WHERE user_id = %s
+                  AND metric_type = %s
+                  AND started_at >= %s
+                """,
+                (user_id, WORKOUT, since),
+            )
+            count, types = cur.fetchone()
+    finally:
+        conn.close()
+    return count, types or []
 
 
 def _fetch_metrics_snapshot(user_id: str, day_start: str, day_end: str,
@@ -519,7 +576,7 @@ def _get_tiered_daily(metric_type: str, user_id: str, days: int) -> list[dict]:
     # Recent raw portion (from max(window_start, cutoff) forward, local-day aligned)
     raw_since = max(window_start, cutoff)
     raw_rows = _fetch_metrics(metric_type, user_id, _local_day_bounds_utc(raw_since, raw_since)[0],
-                              limit=100000)
+                              limit=RAW_WINDOW_LIMIT)
     daily: dict[tuple[str, str], dict] = {
         (d["date"], d["unit"]): d for d in _daily_from_raw(raw_rows) if d["date"] >= cutoff
     }
@@ -660,8 +717,8 @@ def get_health_summary(days: int = 7) -> dict:
     uid = current_user_id.get()
     since = _since(days)
 
-    sleep_rows = _fetch_metrics(SLEEP, uid, since)
-    workout_rows = _fetch_metrics(WORKOUT, uid, since, limit=50)
+    sleep_total, sleep_stage_count = _count_sleep_rows(uid, since)
+    workout_count, workout_types = _count_workouts(uid, since)
 
     def avg(rows: list[dict]) -> float | None:
         vals = [r["value"] for r in rows if r.get("value") is not None]
@@ -682,9 +739,10 @@ def get_health_summary(days: int = 7) -> dict:
         tier["note"] += " Counts are day-points across steps, HRV and resting HR."
     else:
         tier = None
-        steps_points, steps_unit = _single_unit(_daily_from_raw(_fetch_metrics(STEPS, uid, since)))
-        hrv_rows = _fetch_metrics(HRV, uid, since)
-        resting_hr_rows = _fetch_metrics(RESTING_HR, uid, since)
+        steps_points, steps_unit = _single_unit(
+            _daily_from_raw(_fetch_metrics(STEPS, uid, since, limit=RAW_WINDOW_LIMIT)))
+        hrv_rows = _fetch_metrics(HRV, uid, since, limit=RAW_WINDOW_LIMIT)
+        resting_hr_rows = _fetch_metrics(RESTING_HR, uid, since, limit=RAW_WINDOW_LIMIT)
 
         hrv_avg = avg(hrv_rows)
         hrv_latest = hrv_rows[0]["value"] if hrv_rows else None
@@ -697,12 +755,6 @@ def get_health_summary(days: int = 7) -> dict:
     steps_total = round(sum(p["sum_value"] for p in steps_points), 0) if steps_points else None
     steps_daily_avg = _daily_total_avg(steps_points)
     steps_days_with_data = len(steps_points)
-
-    # Sleep: sum duration of "asleep" stages per day
-    sleep_stages = [
-        r for r in sleep_rows
-        if r.get("metadata", {}) and "sleep" in str(r.get("metadata", {})).lower()
-    ]
 
     # Steps is the headline figure an assistant quotes first, and it is one of the
     # metrics that can be silently unshared. A bare zero here becomes "you were
@@ -728,12 +780,12 @@ def get_health_summary(days: int = 7) -> dict:
             "latest": rhr_latest,
         },
         "sleep": {
-            "total_records": len(sleep_rows),
-            "stage_records": len(sleep_stages),
+            "total_records": sleep_total,
+            "stage_records": sleep_stage_count,
         },
         "workouts": {
-            "count": len(workout_rows),
-            "types": list({(r.get("metadata") or {}).get("workout_type", "unknown") for r in workout_rows}),
+            "count": workout_count,
+            "types": workout_types,
         },
         **({"tier": tier} if tier else {}),
         "data_as_of": datetime.now(timezone.utc).isoformat(),
@@ -743,6 +795,7 @@ def get_health_summary(days: int = 7) -> dict:
 # HKCategoryValueSleepAnalysis: 0=InBed, 1=AsleepUnspecified, 2=Awake,
 # 3=AsleepCore, 4=AsleepDeep, 5=AsleepREM. Only 3/4/5 are true sleep stages.
 _SLEEP_STAGE_NAMES = {3.0: "core", 4.0: "deep", 5.0: "rem"}
+SLEEP_SEGMENT_DAYS = 7  # get_sleep lists stage segments for nights that ended this many days back
 # Highest priority first. Anything not listed ranks below all of these and competes on
 # record count. This used to be an ALLOW list of the author's two devices, which gave
 # every Whoop / Garmin / Withings / iPhone-only user a null sleep total.
@@ -787,16 +840,36 @@ def get_sleep(days: int = 7) -> dict:
     Returns per-night breakdown with stage durations (REM, Deep/Core, Light, Awake).
     One source per night (see _sleep_stage_rows_by_night): Oura > Apple Watch > Whoop >
     Garmin > Withings > whichever other source has the most stage records that night.
+    A night is listed whole if it ended inside the window. Stage segments (each stage's start
+    and end) are listed for nights that ended in the last 7 days; older nights carry stage totals.
+    If the fetch reaches RAW_WINDOW_LIMIT, older nights are missing: covered_since gives the
+    oldest night listed, and avg_sleep_hours covers only the nights from then on.
     """
+    days = _clamp_days(days)
     uid = current_user_id.get()
-    since = _since(days)
-    rows = _fetch_metrics(SLEEP, uid, since, limit=1000)
+    since_dt = _parse_ts(_since(days))
+    segments_since = since_dt if days <= SLEEP_SEGMENT_DAYS else _parse_ts(_since(SLEEP_SEGMENT_DAYS))
+    # Two days further back, so a night that began before the window edge is fetched whole; a
+    # night is then kept only if it ends inside the window. Cutting at the edge left the oldest
+    # night half counted.
+    rows = _fetch_metrics(SLEEP, uid, _since(days + 2), limit=RAW_WINDOW_LIMIT)
+    by_night = _sleep_stage_rows_by_night(rows)
+    capped = len(rows) >= RAW_WINDOW_LIMIT
+    if capped and by_night:
+        # At the row cap the oldest fetched night may be missing its earlier stages.
+        by_night.pop(min(by_night))
 
     nights: dict[str, dict] = {}
-    for night_key, (device, stage_rows) in _sleep_stage_rows_by_night(rows).items():
+    older: list[dict] = []  # nights that ended before segments_since
+    for night_key, (device, stage_rows) in by_night.items():
+        night_end = max(_parse_ts(r["ended_at"]) for r in stage_rows)
+        if night_end <= since_dt:
+            continue
         night = nights[night_key] = {
             "date": night_key, "source": device, "stages": {}, "total_minutes": 0, "segments": [],
         }
+        if night_end <= segments_since:
+            older.append(night)
         for row in stage_rows:
             start_dt = _parse_ts(row["started_at"])
             end_dt = _parse_ts(row["ended_at"])
@@ -816,10 +889,23 @@ def get_sleep(days: int = 7) -> dict:
     total_hours = [n["total_minutes"] / 60 for n in sorted_nights if n["total_minutes"] > 0]
     avg_hours = round(sum(total_hours) / len(total_hours), 1) if total_hours else None
 
+    # Segments are 5-minute rows from some trackers: a long window listed in full would flood an
+    # AI client's context. Older nights keep their stage totals.
+    for night in older:
+        night.pop("segments")
+
     return {
         "period_days": days,
         "avg_sleep_hours": avg_hours,
         "nights": sorted_nights,
+        **({"segments_note": f"Stage segments are listed only for nights that ended in the last "
+                             f"{SLEEP_SEGMENT_DAYS} days; older nights carry stage totals."}
+           if older else {}),
+        **({"covered_since": sorted_nights[-1]["date"] if sorted_nights else None,
+            "coverage_note": f"The fetch reached the {RAW_WINDOW_LIMIT}-row limit, so nights before "
+                             f"covered_since are missing and avg_sleep_hours covers only the nights "
+                             f"listed. Ask for fewer days to cover the whole period."}
+           if capped else {}),
     }
 
 
@@ -1060,6 +1146,8 @@ def get_workouts(days: int = 30, limit: int = 20) -> dict:
     """
     Recent workouts with type, duration, distance, and calories.
     """
+    days = _clamp_days(days)
+    limit = _clamp_limit(limit)
     uid = current_user_id.get()
     since = _since(days)
     rows = _fetch_metrics(WORKOUT, uid, since, limit=limit)
@@ -1104,7 +1192,8 @@ def get_daily_snapshot(date: str = "") -> dict:
         date = _today_local().isoformat()
 
     try:
-        datetime.strptime(date, "%Y-%m-%d")
+        # Zero-padded, because the tier check below compares dates as strings (2026-9-1 → 2026-09-01).
+        date = datetime.strptime(date, "%Y-%m-%d").date().isoformat()
     except ValueError:
         return {"error": f"Invalid date format '{date}' — expected YYYY-MM-DD"}
 
@@ -1302,17 +1391,19 @@ def get_coaching_brief() -> dict:
     since_30d = _since(30)
     since_7d = _since(7)
 
-    hrv_14d = _fetch_metrics(HRV, uid, since_14d, limit=200)
-    rhr_14d = _fetch_metrics(RESTING_HR, uid, since_14d, limit=50)
-    sleep_14d = _fetch_metrics(SLEEP, uid, since_14d, limit=500)
-    workouts_30d = _fetch_metrics(WORKOUT, uid, since_30d, limit=50)
-    steps_7d = _fetch_metrics(STEPS, uid, since_7d, limit=500)
+    # Every fetch that is counted, summed or read from its oldest end gets the full window
+    # (RAW_WINDOW_LIMIT): a fixed cap here dropped nights, workouts and step hours silently.
+    hrv_14d = _fetch_metrics(HRV, uid, since_14d, limit=RAW_WINDOW_LIMIT)
+    rhr_14d = _fetch_metrics(RESTING_HR, uid, since_14d, limit=RAW_WINDOW_LIMIT)
+    sleep_14d = _fetch_metrics(SLEEP, uid, since_14d, limit=RAW_WINDOW_LIMIT)
+    workouts_30d = _fetch_metrics(WORKOUT, uid, since_30d, limit=RAW_WINDOW_LIMIT)
+    steps_7d = _fetch_metrics(STEPS, uid, since_7d, limit=RAW_WINDOW_LIMIT)
     # Tier-aware: VO2Max readings are infrequent (Watch Cardio Fitness), so the most
     # recent one is often already past RAW_CUTOFF_DAYS and would read as None from a
     # raw-only fetch even though real history exists in daily summaries.
     vo2_points = _get_tiered_daily(VO2MAX, uid, 365)
-    weight_rows = _fetch_metrics(WEIGHT, uid, since_30d, limit=30)
-    energy_7d = _fetch_metrics(ACTIVE_ENERGY, uid, since_7d, limit=500)
+    weight_rows = _fetch_metrics(WEIGHT, uid, since_30d, limit=RAW_WINDOW_LIMIT)
+    energy_7d = _fetch_metrics(ACTIVE_ENERGY, uid, since_7d, limit=RAW_WINDOW_LIMIT)
     data_status = _data_status(hrv_14d, rhr_14d, sleep_14d, workouts_30d, steps_7d)
 
     def avg(rows: list[dict]) -> float | None:
@@ -1577,6 +1668,11 @@ def compare_periods(
         err = _valid(s, e)
         if err:
             return {"metric_type": metric_type, "error": err}
+    # strptime also accepts unpadded dates (2026-9-1); everything below compares dates as strings
+    # and parses them with date.fromisoformat, so pass them on zero-padded.
+    period_a_start, period_a_end, period_b_start, period_b_end = (
+        datetime.strptime(d, "%Y-%m-%d").date().isoformat()
+        for d in (period_a_start, period_a_end, period_b_start, period_b_end))
 
     def _period_stats(start: str, end: str) -> dict:
         pts, unit = _single_unit(_daily_series_for_range(metric_type, uid, start, end))

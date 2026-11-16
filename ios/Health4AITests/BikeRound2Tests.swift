@@ -30,7 +30,7 @@ final class BikeSaveConfirmationTests: XCTestCase {
         let p = try plan()
         var discarded = false
         do {
-            try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { false }, discard: { discarded = true },
+            try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: {}, finish: { false }, discard: { discarded = true },
                                                lookup: { _ in throw Boom() })
             XCTFail("returned")
         } catch { XCTAssertEqual(error as? BikeImportError, .saveUnconfirmed(p.rideID)) }
@@ -39,27 +39,27 @@ final class BikeSaveConfirmationTests: XCTestCase {
 
     func testNilFinishThenLookupFindingTheWorkoutIsSaved() async throws {
         let p = try plan()
-        try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { false }, discard: {}, lookup: { _ in [p.syncIdentifier] })
+        try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: {}, finish: { false }, discard: {}, lookup: { _ in [p.syncIdentifier] })
     }
 
     func testNilFinishThenEmptyLookupIsUnconfirmed() async throws {
         let p = try plan()
         do {
-            try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { false }, discard: {}, lookup: { _ in [] })
+            try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: {}, finish: { false }, discard: {}, lookup: { _ in [] })
             XCTFail("returned")
         } catch { XCTAssertEqual(error as? BikeImportError, .saveUnconfirmed(p.rideID)) }
     }
 
     func testFinishReturningAWorkoutNeverQueries() async throws {
         let p = try plan()
-        try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { true }, discard: {}, lookup: { _ in XCTFail("queried"); return [] })
+        try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: {}, finish: { true }, discard: {}, lookup: { _ in XCTFail("queried"); return [] })
     }
 
     /// A finish that throws may still have written the workout, so Health is asked; discard is not called after a finish.
     func testThrowingFinishThatWasWrittenIsSaved() async throws {
         let p = try plan()
         var discarded = false
-        try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { throw Boom() }, discard: { discarded = true },
+        try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: {}, finish: { throw Boom() }, discard: { discarded = true },
                                            lookup: { _ in [p.syncIdentifier] })
         XCTAssertFalse(discarded)
     }
@@ -68,7 +68,7 @@ final class BikeSaveConfirmationTests: XCTestCase {
         let p = try plan()
         var discarded = false
         do {
-            try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { throw Boom() }, discard: { discarded = true }, lookup: { _ in [] })
+            try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: {}, finish: { throw Boom() }, discard: { discarded = true }, lookup: { _ in [] })
             XCTFail("returned")
         } catch { XCTAssertTrue(error is Boom) }
         XCTAssertFalse(discarded)
@@ -77,7 +77,7 @@ final class BikeSaveConfirmationTests: XCTestCase {
     func testThrowingFinishWithFailingLookupIsUnconfirmed() async throws {
         let p = try plan()
         do {
-            try await BikeSaveConfirmation.run(plan: p, collect: {}, finish: { throw Boom() }, discard: {}, lookup: { _ in throw Boom() })
+            try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: {}, finish: { throw Boom() }, discard: {}, lookup: { _ in throw Boom() })
             XCTFail("returned")
         } catch { XCTAssertEqual(error as? BikeImportError, .saveUnconfirmed(p.rideID)) }
     }
@@ -86,10 +86,35 @@ final class BikeSaveConfirmationTests: XCTestCase {
         let p = try plan()
         var discarded = false
         do {
-            try await BikeSaveConfirmation.run(plan: p, collect: { throw Boom() }, finish: { true }, discard: { discarded = true }, lookup: { _ in [] })
+            try await BikeSaveConfirmation.run(plan: p, clearOrphans: {}, collect: { throw Boom() }, finish: { true }, discard: { discarded = true }, lookup: { _ in [] })
             XCTFail("returned")
         } catch { XCTAssertTrue(error is Boom) }
         XCTAssertTrue(discarded)
+    }
+
+    /// Audit H1: leftover samples from a failed or unconfirmed save are cleared BEFORE the ride's samples
+    /// are added again, so a retry replaces them instead of doubling the day's energy and distance.
+    func testOrphanSamplesAreClearedBeforeCollection() async throws {
+        let p = try plan()
+        var steps: [String] = []
+        try await BikeSaveConfirmation.run(plan: p, clearOrphans: { steps.append("clear") },
+                                           collect: { steps.append("collect") }, finish: { true },
+                                           discard: {}, lookup: { _ in [] })
+        XCTAssertEqual(steps, ["clear", "collect"])
+    }
+
+    /// If the leftovers cannot be cleared, nothing is written: the ride is retried next import rather than
+    /// saved on top of samples that would double it.
+    func testFailedOrphanClearingStopsTheSave() async throws {
+        let p = try plan()
+        var collected = false
+        do {
+            try await BikeSaveConfirmation.run(plan: p, clearOrphans: { throw Boom() },
+                                               collect: { collected = true }, finish: { true },
+                                               discard: {}, lookup: { _ in [] })
+            XCTFail("returned")
+        } catch { XCTAssertTrue(error is Boom) }
+        XCTAssertFalse(collected)
     }
 }
 
@@ -243,5 +268,145 @@ final class BikeScreenTextTests: XCTestCase {
         let other = BikeCopy.rideDate(date("20250505T120000Z"), now: now, calendar: cal)
         XCTAssertFalse(same.contains("2026"), same)
         XCTAssertTrue(other.contains("2025"), other)
+    }
+}
+
+// MARK: Audit H2: Erase Local Data turns the bike import off
+
+@MainActor
+final class BikeEraseTests: XCTestCase {
+    func testEraseAllForgetsEveryBikeSettingAndSwitchesTheImportOff() {
+        let suite = "bike-erase-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: BikeImportCoordinator.Keys.enabled)
+        defaults.set("http://peloton-pi.local:8080", forKey: BikeImportCoordinator.Keys.url)
+        defaults.set(Data("{}".utf8), forKey: BikeImportCoordinator.Keys.lastResult)
+        defaults.set(["r1": "f"], forKey: DefaultsRejectedStore.keyPrefix + "rules")
+        defaults.set("kept", forKey: "hkb.unrelated")
+
+        let c = BikeImportCoordinator(defaults: defaults, store: FakeStore())
+        XCTAssertTrue(c.isEnabled)
+        c.eraseAll()
+
+        XCTAssertFalse(c.isEnabled)
+        XCTAssertEqual(c.urlText, "")
+        XCTAssertNil(c.lastResult)
+        XCTAssertTrue(defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("h4a.bike.") }.isEmpty)
+        XCTAssertEqual(defaults.string(forKey: "hkb.unrelated"), "kept", "only bike keys are this method's to remove")
+        XCTAssertFalse(BikeImportCoordinator(defaults: defaults, store: FakeStore()).isEnabled,
+                       "a fresh launch after erase must not import")
+    }
+}
+
+/// Runs a step (here: an erase) while the import is waiting on the bike, then answers like FakeAPI.
+final class GatedAPI: BikeRideAPI {
+    let inner = FakeAPI()
+    var beforeList: () async -> Void = {}
+    func listRides() async throws -> [BikeRideSummary] {
+        await beforeList()
+        return try await inner.listRides()
+    }
+    func ride(id: String) async throws -> BikeRide { try await inner.ride(id: id) }
+}
+
+@MainActor
+final class BikeEraseDuringImportTests: XCTestCase {
+    /// Review 2026-11-09: an import already running when the person erases must not write its result
+    /// (or anything else under h4a.bike.) back afterwards.
+    func testImportFinishingAfterEraseKeepsNothing() async {
+        let suite = "bike-erase-race-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: BikeImportCoordinator.Keys.enabled)
+        defaults.set("http://peloton-pi.local:8080", forKey: BikeImportCoordinator.Keys.url)
+
+        let api = GatedAPI()
+        let c = BikeImportCoordinator(defaults: defaults, store: FakeStore(), makeAPI: { _ in api })
+        api.beforeList = { await MainActor.run { c.eraseAll() } }
+        await c.importNow()
+
+        XCTAssertNil(c.lastResult)
+        XCTAssertFalse(c.isEnabled)
+        XCTAssertTrue(defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("h4a.bike.") }.isEmpty)
+    }
+
+    /// Review 2026-11-09 (Codex recheck): after an erase, the import already running saves no more rides.
+    func testEraseDuringImportStopsFurtherSaves() async {
+        let suite = "bike-erase-stop-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: BikeImportCoordinator.Keys.enabled)
+        defaults.set("http://peloton-pi.local:8080", forKey: BikeImportCoordinator.Keys.url)
+
+        let api = GatedAPI()
+        let r = ride()
+        api.inner.list = .success([r.summary])
+        api.inner.rides[r.summary.id] = r
+        let store = FakeStore()
+        let c = BikeImportCoordinator(defaults: defaults, store: store, makeAPI: { _ in api })
+        api.beforeList = { await MainActor.run { c.eraseAll() } }
+        await c.importNow()
+
+        XCTAssertTrue(store.saved.isEmpty)
+        XCTAssertTrue(api.inner.detailCalls.isEmpty, "a ride must not even be fetched after the erase")
+    }
+
+    /// Settings entered again after the erase, while the old import was still running, survive its end.
+    func testImportFinishingAfterEraseKeepsSettingsEnteredSince() async {
+        let suite = "bike-erase-reenter-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: BikeImportCoordinator.Keys.enabled)
+        defaults.set("http://peloton-pi.local:8080", forKey: BikeImportCoordinator.Keys.url)
+
+        let api = GatedAPI()
+        let c = BikeImportCoordinator(defaults: defaults, store: FakeStore(), makeAPI: { _ in api })
+        api.beforeList = {
+            await MainActor.run {
+                c.eraseAll()
+                defaults.set("http://bike.local:8080", forKey: BikeImportCoordinator.Keys.url)
+                defaults.set(["r1": "f"], forKey: DefaultsRejectedStore.keyPrefix + "rules")
+            }
+        }
+        await c.importNow()
+
+        XCTAssertEqual(defaults.string(forKey: BikeImportCoordinator.Keys.url), "http://bike.local:8080")
+        XCTAssertNil(defaults.object(forKey: DefaultsRejectedStore.keyPrefix + "rules"))
+        XCTAssertNil(c.lastResult)
+    }
+}
+
+final class BikeImporterStopTests: XCTestCase {
+    /// The stop check is asked before every ride, so an erase between two rides stops the second.
+    func testStopCheckIsAskedBeforeEachRide() async {
+        let a = ride(id: "20261102T172230Z"), b = ride(id: "20261101T172230Z")
+        let api = FakeAPI()
+        api.list = .success([a.summary, b.summary])
+        api.rides = [a.summary.id: a, b.summary.id: b]
+        let store = FakeStore()
+        var importer = BikeImporter(api: api, store: store)
+        var asked = 0
+        importer.shouldContinue = { asked += 1; return asked <= 2 }   // ride a: before fetch, before save
+        let result = await importer.run()
+        XCTAssertEqual(store.saved.map(\.rideID), ["20261102T172230Z"])
+        XCTAssertEqual(result.imported, 1)
+        XCTAssertEqual(asked, 3)
+    }
+
+    /// An erase that lands while a ride is being fetched stops that ride before it is saved.
+    func testStopCheckIsAskedAgainBeforeTheSave() async {
+        let a = ride()
+        let api = FakeAPI()
+        api.list = .success([a.summary])
+        api.rides = [a.summary.id: a]
+        let store = FakeStore()
+        var importer = BikeImporter(api: api, store: store)
+        var asked = 0
+        importer.shouldContinue = { asked += 1; return asked == 1 }   // erased during the fetch
+        let result = await importer.run()
+        XCTAssertEqual(api.detailCalls, [a.summary.id])
+        XCTAssertTrue(store.saved.isEmpty)
+        XCTAssertEqual(result.imported, 0)
     }
 }

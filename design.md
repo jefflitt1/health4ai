@@ -48,7 +48,7 @@ and increased-contrast for free.
 
 `statusColor` in `HomeView.swift` is the one place that maps state to colour. The status
 card's icon and border read from it; its title and caption stay `.primary` and `.secondary`
-(rule 1 above). Precedence, highest first: syncing → error → **Sheets needs attention** →
+(rule 1 above). Precedence, highest first: syncing → error → **connected, deferred Health data** → **Sheets needs attention** →
 **partial data** → **server update needed** → **background sync unavailable** → connection
 health. Sheets needs attention (Google access removed, sheet missing, no Health data readable)
 is a problem only the person can fix. It is never also recorded as `syncError`. The status card
@@ -58,6 +58,10 @@ server update needed and background sync unavailable are shown, and coloured, on
 connection is healthy. Background sync unavailable means `enableBackgroundDelivery` failed for
 at least one type on this device; the app still syncs on every open, so it is attention, not
 failure.
+
+Deferred Health data uses a neutral `.secondary` status border and a `.primary` lock symbol
+and headline “Waiting for device unlock”. It appears only while authenticated and pending;
+an existing sync error retains priority. Unlock/foreground retries the pending work.
 
 **Never add a second, independent colour path for the same state.** The bug this ordering
 exists to prevent: the headline said green "Active" while the card below it named four

@@ -54,11 +54,13 @@
 		B0000082 /* BikeRound6Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000082 /* BikeRound6Tests.swift */; };
 		B0000085 /* BikeRound8Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000085 /* BikeRound8Tests.swift */; };
 		B0000086 /* AppLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000086 /* AppLifecycleTests.swift */; };
+		B0000087 /* HealthKitTypeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000087 /* HealthKitTypeTests.swift */; };
 		B0000071 /* BikeImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000071 /* BikeImportTests.swift */; };
 		B000000A /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A000000A /* HealthKit.framework */; };
 		B000000B /* BackgroundTasks.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A000000B /* BackgroundTasks.framework */; };
 		B000000C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A000000F /* Assets.xcassets */; };
 		B000000D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A0000014 /* PrivacyInfo.xcprivacy */; };
+		B0000091 /* ProtectedHealthData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000091 /* ProtectedHealthData.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -110,6 +112,7 @@
 		A0000082 /* BikeRound6Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeRound6Tests.swift; sourceTree = "<group>"; };
 		A0000085 /* BikeRound8Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeRound8Tests.swift; sourceTree = "<group>"; };
 		A0000086 /* AppLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLifecycleTests.swift; sourceTree = "<group>"; };
+		A0000087 /* HealthKitTypeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitTypeTests.swift; sourceTree = "<group>"; };
 		A0000071 /* BikeImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeImportTests.swift; sourceTree = "<group>"; };
 		A000000A /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
 		A000000B /* BackgroundTasks.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = BackgroundTasks.framework; path = System/Library/Frameworks/BackgroundTasks.framework; sourceTree = SDKROOT; };
@@ -118,6 +121,7 @@
 		A000000E /* Health4AI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Health4AI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A000000F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A0000014 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A0000091 /* ProtectedHealthData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedHealthData.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -179,6 +183,7 @@
 				A0000006 /* SyncEngine.swift */,
 				A0000007 /* BulkExportManager.swift */,
 				A0000008 /* HealthSample.swift */,
+				A0000091 /* ProtectedHealthData.swift */,
 				A0000009 /* SyncState.swift */,
 				A0000010 /* OnboardingView.swift */,
 				A0000011 /* HomeView.swift */,
@@ -238,6 +243,7 @@
 				A0000082 /* BikeRound6Tests.swift */,
 				A0000085 /* BikeRound8Tests.swift */,
 				A0000086 /* AppLifecycleTests.swift */,
+				A0000087 /* HealthKitTypeTests.swift */,
 			);
 			path = Health4AITests;
 			sourceTree = "<group>";
@@ -360,6 +366,7 @@
 				B0000006 /* SyncEngine.swift in Sources */,
 				B0000007 /* BulkExportManager.swift in Sources */,
 				B0000008 /* HealthSample.swift in Sources */,
+				B0000091 /* ProtectedHealthData.swift in Sources */,
 				B0000009 /* SyncState.swift in Sources */,
 				B0000010 /* OnboardingView.swift in Sources */,
 				B0000011 /* HomeView.swift in Sources */,
@@ -407,6 +414,7 @@
 				B0000082 /* BikeRound6Tests.swift in Sources */,
 				B0000085 /* BikeRound8Tests.swift in Sources */,
 				B0000086 /* AppLifecycleTests.swift in Sources */,
+				B0000087 /* HealthKitTypeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
