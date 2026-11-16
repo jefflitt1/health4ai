@@ -32,6 +32,14 @@
       "description": "Recent workouts with type, duration, distance, and calories."
     },
     {
+      "name": "get_workout_details",
+      "description": "Optional source-checkout tool, disabled by default: paginated exact workout-associated samples from a completed manual export. Requires the optional schema and HEALTH4AI_WORKOUT_DETAILS_ENABLED; not yet included in the published package."
+    },
+    {
+      "name": "get_workout_routes",
+      "description": "Optional source-checkout tool, disabled by default: paginated observed GPS route points and explicit invalid-point counts. Requires separate route consent, optional schema and HEALTH4AI_WORKOUT_ROUTES_ENABLED; not yet included in the published package."
+    },
+    {
       "name": "get_daily_snapshot",
       "description": "Everything recorded for one date (YYYY-MM-DD, default today): steps, sleep, workouts, HRV, resting heart rate, active energy, and other metrics."
     },

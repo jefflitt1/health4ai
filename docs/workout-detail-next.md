@@ -3,6 +3,12 @@
 Implementation design, 2026-11-16. Not enabled, installed,
 deployed or advertised by the app. Submitted 1.0.7 build 84 is unchanged.
 
+Implementation follow-up: optional quantity/route SQL, separate disabled Edge
+Functions, MCP readers and interval-only derived step rate now exist in the draft
+backend slice. See `workout-detail-wire-v1.md`, `workout-route-wire-v1.md` and
+`workout-detail-deployment.md`. The design below records the original sequence;
+it is not a claim that deployment, native integration or physical acceptance ran.
+
 ## Why a separate store
 
 The requester wants running time series and routes in their own Supabase project,
