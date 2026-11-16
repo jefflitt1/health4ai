@@ -124,6 +124,19 @@ column and broke "Server update needed" mid-word ("Serve / r / up- / date") at
 
 ## Cards
 
+Workout detail export uses a system Form with separate quantity and GPS consent
+sections, both off by default. Keep the manual action, destination and retention
+promise in plain language above consent; place query semantics and limits in a
+DisclosureGroup. GPS privacy text names precise locations before its own switch.
+Only the quantity Export action is prominent. Disabled controls use native dimming;
+all action targets are at least 44pt. Destructive dialogs bind the selected account,
+category and workout when opened, and close on destination changes. Use a full-width
+confirmation sheet with a scrollable scope message and separate visible Delete/Cancel
+controls; iOS 27 confirmation popovers clip full-account scope at accessibility XXXL.
+Status text
+reports confirmed counts, including omitted invalid route points, in primary text;
+do not use red/orange body copy. Verify sections and dialogs at 375pt and XXXL.
+
 Rounded rectangle, corner radius 16, `.padding()`, on the card ground. A card that can
 render more than one state needs `.frame(maxWidth: .infinity, alignment: .leading)` —
 without a width-expanding child, one state collapses to its intrinsic width and the card

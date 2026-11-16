@@ -63,6 +63,19 @@
 		B000000D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A0000014 /* PrivacyInfo.xcprivacy */; };
 		B0000090 /* WorkoutExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000090 /* WorkoutExport.swift */; };
 		B0000091 /* ProtectedHealthData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000091 /* ProtectedHealthData.swift */; };
+		B0000200 /* WorkoutDetailTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000200 /* WorkoutDetailTypes.swift */; };
+		B0000201 /* WorkoutDetailClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000201 /* WorkoutDetailClient.swift */; };
+		B0000202 /* WorkoutDetailHealthReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000202 /* WorkoutDetailHealthReader.swift */; };
+		B0000203 /* WorkoutDetailExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000203 /* WorkoutDetailExport.swift */; };
+		B0000204 /* WorkoutDetailModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000204 /* WorkoutDetailModel.swift */; };
+		B0000205 /* WorkoutDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000205 /* WorkoutDetailView.swift */; };
+		B0000206 /* WorkoutDetailTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000206 /* WorkoutDetailTests.swift */; };
+		B0000210 /* WorkoutRouteTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000210 /* WorkoutRouteTypes.swift */; };
+		B0000211 /* WorkoutRouteReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000211 /* WorkoutRouteReader.swift */; };
+		B0000212 /* WorkoutRouteExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000212 /* WorkoutRouteExport.swift */; };
+		B0000213 /* WorkoutRouteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000213 /* WorkoutRouteTests.swift */; };
+		B0000220 /* WorkoutHealthQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000220 /* WorkoutHealthQuery.swift */; };
+		B0000221 /* WorkoutQueryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000221 /* WorkoutQueryTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -126,6 +139,19 @@
 		A0000014 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A0000090 /* WorkoutExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutExport.swift; sourceTree = "<group>"; };
 		A0000091 /* ProtectedHealthData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedHealthData.swift; sourceTree = "<group>"; };
+		A0000200 /* WorkoutDetailTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetailTypes.swift; sourceTree = "<group>"; };
+		A0000201 /* WorkoutDetailClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetailClient.swift; sourceTree = "<group>"; };
+		A0000202 /* WorkoutDetailHealthReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetailHealthReader.swift; sourceTree = "<group>"; };
+		A0000203 /* WorkoutDetailExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetailExport.swift; sourceTree = "<group>"; };
+		A0000204 /* WorkoutDetailModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetailModel.swift; sourceTree = "<group>"; };
+		A0000205 /* WorkoutDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetailView.swift; sourceTree = "<group>"; };
+		A0000206 /* WorkoutDetailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetailTests.swift; sourceTree = "<group>"; };
+		A0000210 /* WorkoutRouteTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutRouteTypes.swift; sourceTree = "<group>"; };
+		A0000211 /* WorkoutRouteReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutRouteReader.swift; sourceTree = "<group>"; };
+		A0000212 /* WorkoutRouteExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutRouteExport.swift; sourceTree = "<group>"; };
+		A0000213 /* WorkoutRouteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutRouteTests.swift; sourceTree = "<group>"; };
+		A0000220 /* WorkoutHealthQuery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutHealthQuery.swift; sourceTree = "<group>"; };
+		A0000221 /* WorkoutQueryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutQueryTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -188,6 +214,16 @@
 				A0000007 /* BulkExportManager.swift */,
 				A0000008 /* HealthSample.swift */,
 				A0000090 /* WorkoutExport.swift */,
+				A0000220 /* WorkoutHealthQuery.swift */,
+				A0000212 /* WorkoutRouteExport.swift */,
+				A0000211 /* WorkoutRouteReader.swift */,
+				A0000210 /* WorkoutRouteTypes.swift */,
+				A0000205 /* WorkoutDetailView.swift */,
+				A0000204 /* WorkoutDetailModel.swift */,
+				A0000203 /* WorkoutDetailExport.swift */,
+				A0000202 /* WorkoutDetailHealthReader.swift */,
+				A0000201 /* WorkoutDetailClient.swift */,
+				A0000200 /* WorkoutDetailTypes.swift */,
 				A0000091 /* ProtectedHealthData.swift */,
 				A0000009 /* SyncState.swift */,
 				A0000010 /* OnboardingView.swift */,
@@ -250,6 +286,9 @@
 				A0000085 /* BikeRound8Tests.swift */,
 				A0000086 /* AppLifecycleTests.swift */,
 				A0000087 /* HealthKitTypeTests.swift */,
+				A0000221 /* WorkoutQueryTests.swift */,
+				A0000213 /* WorkoutRouteTests.swift */,
+				A0000206 /* WorkoutDetailTests.swift */,
 			);
 			path = Health4AITests;
 			sourceTree = "<group>";
@@ -373,6 +412,16 @@
 				B0000007 /* BulkExportManager.swift in Sources */,
 				B0000008 /* HealthSample.swift in Sources */,
 				B0000090 /* WorkoutExport.swift in Sources */,
+				B0000220 /* WorkoutHealthQuery.swift in Sources */,
+				B0000212 /* WorkoutRouteExport.swift in Sources */,
+				B0000211 /* WorkoutRouteReader.swift in Sources */,
+				B0000210 /* WorkoutRouteTypes.swift in Sources */,
+				B0000205 /* WorkoutDetailView.swift in Sources */,
+				B0000204 /* WorkoutDetailModel.swift in Sources */,
+				B0000203 /* WorkoutDetailExport.swift in Sources */,
+				B0000202 /* WorkoutDetailHealthReader.swift in Sources */,
+				B0000201 /* WorkoutDetailClient.swift in Sources */,
+				B0000200 /* WorkoutDetailTypes.swift in Sources */,
 				B0000091 /* ProtectedHealthData.swift in Sources */,
 				B0000009 /* SyncState.swift in Sources */,
 				B0000010 /* OnboardingView.swift in Sources */,
@@ -423,6 +472,9 @@
 				B0000085 /* BikeRound8Tests.swift in Sources */,
 				B0000086 /* AppLifecycleTests.swift in Sources */,
 				B0000087 /* HealthKitTypeTests.swift in Sources */,
+				B0000221 /* WorkoutQueryTests.swift in Sources */,
+				B0000213 /* WorkoutRouteTests.swift in Sources */,
+				B0000206 /* WorkoutDetailTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
