@@ -61,7 +61,8 @@ def test_avg_daily_total_never_adds_units():
     today = tools._today_local().isoformat()
     rows = [_raw(today, "g", 32.0), _raw(today, "kg", 0.032), _raw(_day(-1), "g", 30.0)]
     # 'g' has the most days, so the average is over g days only: (32 + 30) / 2
-    assert tools._avg_daily_total_from_raw(rows) == 31.0
+    # As the coaching brief averages daily totals: one unit only, never g + kg.
+    assert tools._daily_total_avg(tools._single_unit(tools._daily_from_raw(rows))[0]) == 31.0
 
 
 # --- summary window: two summary rows on one date, neither overwritten ---------------

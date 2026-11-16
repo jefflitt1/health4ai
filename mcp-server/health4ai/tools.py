@@ -665,13 +665,6 @@ _CUMULATIVE_METRICS = {
 }
 
 
-def _avg_daily_total_from_raw(rows: list[dict]) -> float | None:
-    """For cumulative metrics: sum intervals per local calendar day, then average across
-    days. Uses the unit with the most days only (see _single_unit); never adds units."""
-    points, _unit = _single_unit(_daily_from_raw(rows))
-    return _daily_total_avg(points)
-
-
 def _daily_series_for_range(metric_type: str, user_id: str,
                              start_date: str, end_date: str) -> list[dict]:
     """Daily-aggregated series for [start_date, end_date], tier-aware.
@@ -1338,6 +1331,20 @@ def get_long_term_trend(
 
 FRESH_HOURS = 48  # older than this and a coaching brief must not cite a number as current
 
+# HKUnit unit strings the app can write for body mass, to kilograms (1 lb = 0.45359237 kg exactly).
+_KG_PER_UNIT = {"kg": 1.0, "g": 0.001, "lb": 0.45359237, "oz": 0.028349523125, "st": 6.35029318}
+
+
+def _weights_kg(rows: list[dict]) -> list[float]:
+    """Body-mass values in kg, in row order. A row without a unit is taken as kg, the unit the app
+    writes; a row in a unit not listed above is skipped, never passed through as if it were kg."""
+    out = []
+    for r in rows:
+        factor = _KG_PER_UNIT.get((r.get("unit") or "kg").strip())
+        if factor is not None and r.get("value") is not None:
+            out.append(round(r["value"] * factor, 2))
+    return out
+
 
 def _newest_started_at(*row_lists: list[dict]) -> datetime | None:
     newest = None
@@ -1395,7 +1402,7 @@ def _data_status(hrv: list[dict], rhr: list[dict], sleep: list[dict], workouts: 
 
 def get_coaching_brief() -> dict:
     """
-    Pre-session coaching brief for Brett — combines recent trends across all key metrics.
+    Pre-session coaching brief — combines recent trends across all key metrics.
     Returns a structured summary optimized for performance coaching context:
     recovery status, sleep quality, training load, and fitness trajectory.
     Call this at the start of every coaching session.
@@ -1413,14 +1420,19 @@ def get_coaching_brief() -> dict:
     rhr_14d = _fetch_metrics(RESTING_HR, uid, since_14d, limit=RAW_WINDOW_LIMIT)
     sleep_14d = _fetch_metrics(SLEEP, uid, since_14d, limit=RAW_WINDOW_LIMIT)
     workouts_30d = _fetch_metrics(WORKOUT, uid, since_30d, limit=RAW_WINDOW_LIMIT)
-    steps_7d = _fetch_metrics(STEPS, uid, since_7d, limit=RAW_WINDOW_LIMIT)
+    # Steps and energy: daily totals over the last 7 complete local days, summed in SQL. A partial
+    # first day and a partial today would drag the average down, and the rows are never needed.
+    today = _today_local()
+    week_first, week_last = (today - timedelta(days=7)).isoformat(), (today - timedelta(days=1)).isoformat()
+    steps_days = _fetch_raw_daily_aggregates(STEPS, uid, week_first, week_last)
+    steps_newest = _fetch_metrics(STEPS, uid, since_7d, limit=1)  # for freshness only
     # Tier-aware: VO2Max readings are infrequent (Watch Cardio Fitness), so the most
     # recent one is often already past RAW_CUTOFF_DAYS and would read as None from a
     # raw-only fetch even though real history exists in daily summaries.
     vo2_points = _get_tiered_daily(VO2MAX, uid, 365)
     weight_rows = _fetch_metrics(WEIGHT, uid, since_30d, limit=RAW_WINDOW_LIMIT)
-    energy_7d = _fetch_metrics(ACTIVE_ENERGY, uid, since_7d, limit=RAW_WINDOW_LIMIT)
-    data_status = _data_status(hrv_14d, rhr_14d, sleep_14d, workouts_30d, steps_7d)
+    energy_days = _fetch_raw_daily_aggregates(ACTIVE_ENERGY, uid, week_first, week_last)
+    data_status = _data_status(hrv_14d, rhr_14d, sleep_14d, workouts_30d, steps_newest)
 
     def avg(rows: list[dict]) -> float | None:
         vals = [r["value"] for r in rows if r.get("value") is not None]
@@ -1432,9 +1444,16 @@ def get_coaching_brief() -> dict:
                 return r["value"]
         return None
 
+    # "7d" means the last 7 days, not the 7 most recent samples; "latest" is read from the same
+    # days, so it never cites a reading the 7-day figures say is missing.
+    week_start = _parse_ts(since_7d)
+    hrv_7d = [r for r in hrv_14d if _parse_ts(r["started_at"]) >= week_start]
+    hrv_prior_week = [r for r in hrv_14d if _parse_ts(r["started_at"]) < week_start]
+    rhr_7d = [r for r in rhr_14d if _parse_ts(r["started_at"]) >= week_start]
+
     # HRV trend: last 7d vs prior 7d
-    hrv_recent = [r["value"] for r in hrv_14d[:7] if r.get("value")]
-    hrv_prior = [r["value"] for r in hrv_14d[7:] if r.get("value")]
+    hrv_recent = [r["value"] for r in hrv_7d if r.get("value")]
+    hrv_prior = [r["value"] for r in hrv_prior_week if r.get("value")]
     hrv_delta = None
     hrv_status = "unknown"
     if hrv_recent and hrv_prior:
@@ -1444,11 +1463,11 @@ def get_coaching_brief() -> dict:
 
     # Sleep: Core+Deep+REM only (value 3/4/5), one source per night — same selection
     # as get_sleep, instead of the hard Oura filter that nulled sleep for everyone else.
-    # Today's night is left out, as get_sleep leaves it out: it has not happened yet.
+    # Count only nights that have happened and ended within the rolling seven-day window.
     tonight = _today_local().isoformat()
     nights: dict[str, float] = {}
     for night_key, (_device, stage_rows) in _sleep_stage_rows_by_night(sleep_14d).items():
-        if night_key >= tonight:
+        if night_key >= tonight or max(_parse_ts(r["ended_at"]) for r in stage_rows) <= week_start:
             continue
         nights[night_key] = sum(
             (_parse_ts(r["ended_at"]) - _parse_ts(r["started_at"])).total_seconds() / 3600
@@ -1457,6 +1476,8 @@ def get_coaching_brief() -> dict:
 
     recent_nights = sorted(nights.items(), reverse=True)[:7]
     avg_sleep_h = round(sum(h for _, h in recent_nights) / len(recent_nights), 1) if recent_nights else None
+
+    weights_kg = _weights_kg(weight_rows)  # newest first
 
     # Training load
     workout_types = {}
@@ -1471,12 +1492,12 @@ def get_coaching_brief() -> dict:
         "generated_at": _now().isoformat(),
         "data_status": data_status,
         "recovery": {
-            "hrv_latest_ms": latest(hrv_14d),
-            "hrv_7d_avg_ms": avg(hrv_14d[:7]) if hrv_14d else None,
+            "hrv_latest_ms": latest(hrv_7d),
+            "hrv_7d_avg_ms": avg(hrv_7d),
             "hrv_trend": hrv_status,
             "hrv_delta_vs_prior_week_ms": hrv_delta,
-            "resting_hr_latest_bpm": latest(rhr_14d),
-            "resting_hr_7d_avg_bpm": avg(rhr_14d),
+            "resting_hr_latest_bpm": latest(rhr_7d),
+            "resting_hr_7d_avg_bpm": avg(rhr_7d),
             "coaching_note": (
                 "No HRV samples in the last 7 days; recovery cannot be assessed from this brief. Do not cite recovery."
                 if not hrv_recent
@@ -1502,14 +1523,14 @@ def get_coaching_brief() -> dict:
             "by_type": workout_types,
         },
         "activity_7d": {
-            "avg_daily_steps": _avg_daily_total_from_raw(steps_7d),
-            "avg_active_energy_cal": _avg_daily_total_from_raw(energy_7d),
+            "avg_daily_steps": _daily_total_avg(_single_unit(steps_days)[0]),
+            "avg_active_energy_cal": _daily_total_avg(_single_unit(energy_days)[0]),
         },
         "fitness_markers": {
             "vo2max_latest": vo2_points[-1]["avg_value"] if vo2_points else None,
             "vo2max_source_tier": vo2_points[-1]["source"] if vo2_points else None,
-            "weight_kg_latest": latest(weight_rows),
-            "weight_kg_30d_ago": weight_rows[-1]["value"] if len(weight_rows) > 1 else None,
+            "weight_kg_latest": weights_kg[0] if weights_kg else None,
+            "weight_kg_30d_ago": weights_kg[-1] if len(weights_kg) > 1 else None,
         },
     }
 

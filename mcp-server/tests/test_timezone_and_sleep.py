@@ -154,6 +154,7 @@ def test_coaching_brief_sleep_no_longer_requires_oura(monkeypatch):
 
     monkeypatch.setattr(tools, "_fetch_metrics", fake_fetch)
     monkeypatch.setattr(tools, "_get_tiered_daily", lambda *a, **k: [])
+    monkeypatch.setattr(tools, "_fetch_raw_daily_aggregates", lambda *a, **k: [])
     brief = tools.get_coaching_brief()
     assert brief["sleep"]["nights_tracked"] == 1
     assert brief["sleep"]["avg_hours_last_7_nights"] == 2.5
