@@ -53,6 +53,8 @@ CREATE INDEX IF NOT EXISTS healthkit_metrics_user_time_idx
   ON public.healthkit_metrics (user_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS healthkit_metrics_user_type_time_idx
   ON public.healthkit_metrics (user_id, metric_type, started_at DESC);
+CREATE INDEX IF NOT EXISTS healthkit_metrics_user_synced_idx
+  ON public.healthkit_metrics (user_id, synced_at DESC);
 CREATE INDEX IF NOT EXISTS healthkit_metrics_metadata_idx
   ON public.healthkit_metrics USING gin(metadata);
 

@@ -68,6 +68,49 @@ enum SleepMath {
         if let cur = current { total += cur.duration }
         return total
     }
+
+    /// The night a sleep record belongs to: the date of the noon-to-noon window it starts in
+    /// (`window(for:)`), so the Sleep stages tab and the Daily tab's Sleep column agree.
+    static func night(for start: Date, calendar: Calendar) -> String {
+        DayKey.string(for: calendar.date(byAdding: .hour, value: 12, to: start)!, calendar: calendar)
+    }
+}
+
+// MARK: - Sleep stages tab
+
+enum SleepStageLayout {
+    static let header = ["Night", "Stage", "Start", "End", "Duration (min)", "Source", "Record ID"]
+    /// Column of the record ID, which is how a pass avoids writing a record twice.
+    static let idColumn = "G"
+    static let idIndex = 6
+
+    /// HKCategoryValueSleepAnalysis raw values (stable since iOS 16), named the way the
+    /// Health app names them. Before iOS 16 a Watch recorded only "asleep", which has no
+    /// stage: said so, rather than left looking like a gap.
+    static func stage(rawValue: Int) -> String {
+        switch rawValue {
+        case 0: return "In bed"
+        case 1: return "Asleep (no stage)"
+        case 2: return "Awake"
+        case 3: return "Core"
+        case 4: return "Deep"
+        case 5: return "REM"
+        default: return "Other"
+        }
+    }
+
+    /// The first sheet row (1-based, header is row 1) whose Night is on or after `key`. A
+    /// pass only needs the record IDs from there down: anything it re-reads from HealthKit
+    /// starts on or after that night. Rows are appended roughly in night order, but a late
+    /// record can land below a newer night; it is still below this row, so it is still seen.
+    /// Text a person typed into the column is skipped.
+    static func firstRow(nights: [String], onOrAfter key: String) -> Int? {
+        for (i, raw) in nights.enumerated() {
+            let night = raw.trimmingCharacters(in: .whitespaces)
+            if DateKeys.isKey(night), night >= key { return i + 2 }
+        }
+        return nil
+    }
 }
 
 // MARK: - Day keys
@@ -157,6 +200,28 @@ enum SheetCell {
     static func text(_ value: String) -> String {
         guard let first = value.first, "=+-@".contains(first) else { return value }
         return "'" + value
+    }
+
+    /// "123", "-3.5", "7.50": ASCII digits, an optional leading minus and at most one point,
+    /// which is exactly what `number` writes. Not "1e5", "0x10", "nan", " 7" or "7,5", which a
+    /// person may have typed and which are kept as their text.
+    static func isPlainDecimal(_ s: String) -> Bool {
+        let body = s.hasPrefix("-") ? s.dropFirst() : Substring(s)
+        let parts = body.split(separator: ".", omittingEmptySubsequences: false)
+        return (1...2).contains(parts.count)
+            && parts.allSatisfy { !$0.isEmpty && $0.allSatisfy { ("0"..."9").contains($0) } }
+    }
+
+    /// A cell read UNFORMATTED (a JSON number or string) as the text this app writes: numbers in
+    /// en_US_POSIX digits, so a value held across a rewrite goes back as the same number whatever
+    /// the sheet's locale shows ("7,5" in a German sheet). nil for a value that is neither.
+    static func stored(_ value: Any) -> String? {
+        if let text = value as? String { return text }
+        guard let number = value as? NSNumber else { return nil }
+        var out = String(format: "%.10f", locale: Locale(identifier: "en_US_POSIX"), number.doubleValue)
+        while out.hasSuffix("0") { out.removeLast() }
+        if out.hasSuffix(".") { out.removeLast() }
+        return out == "-0" ? "0" : out
     }
 
     /// A blank cell, not "0", when there is no data: a day without a Watch reading has no
@@ -297,6 +362,160 @@ enum DateKeys {
     }
 }
 
+// MARK: - Sheets HTTP responses
+
+/// What SheetsClient.send does with one HTTP answer. Pure, so the off-device harness can test
+/// it; SheetsClient only runs the request and maps the step to a thrown error.
+enum SheetsStep: Equatable {
+    case done
+    /// 401 on a token believed valid: refresh it once and resend.
+    case refreshTokenAndRetry
+    case retry(afterSeconds: UInt64)
+    case accessRevoked
+    case spreadsheetMissing
+    case fail(status: Int)
+}
+
+/// Whether sending the same request twice can apply it twice. `values:append`, creating a
+/// spreadsheet, adding a tab and adding rows are `.unsafe`: a 5xx can come back after Google
+/// applied the request (its front end failed, not the write), and a blind resend applies it
+/// again. Reads, `values:batchUpdate` and `values:batchClear` write the same cells either way.
+enum SheetsReplay { case safe, unsafe }
+
+enum SheetsResponse {
+    static let maxRetries = 3
+
+    /// Seconds to wait before backoff retry number `retry` (1-based): 2, 4, 8.
+    static func backoffSeconds(_ retry: Int) -> UInt64 { UInt64(1 << retry) }
+
+    /// `attempt` is how many backoff retries this request has had so far.
+    static func step(status: Int, body: Data, attempt: Int, forcedRefresh: Bool, replay: SheetsReplay) -> SheetsStep {
+        switch status {
+        case 200...299:
+            return .done
+        case 401 where !forcedRefresh:
+            return .refreshTokenAndRetry
+        case 401:
+            // Still refused with a fresh token: access was removed, not a stale token.
+            return .accessRevoked
+        case 404:
+            return .spreadsheetMissing
+        case 403:
+            switch SheetsForbidden.classify(body) {
+            case .sheetOutOfReach: return .spreadsheetMissing
+            case .scopeMissing: return .accessRevoked
+            case .refused: return .fail(status: 403)
+            }
+        // `where` binds per pattern, so each carries its own limit: a bare `429` here
+        // would retry a rate limit forever. A rate-limited request was not applied, so 429
+        // is resent whatever the method; a 5xx only when resending cannot apply it twice.
+        case 429 where attempt < maxRetries, 500...599 where attempt < maxRetries && replay == .safe:
+            return .retry(afterSeconds: backoffSeconds(attempt + 1))
+        default:
+            return .fail(status: status)
+        }
+    }
+
+    /// A Sheets 5xx (thrown by SheetsClient as SheetsError.http).
+    static func isServerError(_ error: Error) -> Bool {
+        if case SheetsError.http(let status, _) = error { return (500...599).contains(status) }
+        return false
+    }
+}
+
+/// What a Sheets 403 means. Google answers 403 PERMISSION_DENIED for very different things, and
+/// only one of them is "this sheet is gone": before this change every one of them made the app forget
+/// the person's sheet, including the Sheets API being disabled on the Cloud project for an hour,
+/// which would have split every user's history across two files (review I3, 2026-11-04).
+enum SheetsForbidden: Equatable {
+    /// Google's plain "The caller does not have permission": no ErrorInfo reason. With the
+    /// drive.file scope this is a sheet the app can no longer see (ownership moved, access
+    /// removed), which the app treats like a deleted sheet.
+    case sheetOutOfReach
+    /// The token lacks the drive.file scope (ErrorInfo ACCESS_TOKEN_SCOPE_INSUFFICIENT): a
+    /// Google access problem, so the fix is reconnecting Google, which keeps the same sheet.
+    case scopeMissing
+    /// Anything else: a project-level refusal (SERVICE_DISABLED, BILLING_DISABLED, a quota
+    /// reason), a reason this app does not know, or a body that is not Google's JSON error
+    /// (a proxy or captive portal page). The sheet is kept and the pass fails as an HTTP error.
+    case refused(reason: String?)
+
+    static func classify(_ body: Data) -> SheetsForbidden {
+        guard let object = try? JSONSerialization.jsonObject(with: body),
+              let error = (object as? [String: Any])?["error"] as? [String: Any] else {
+            return .refused(reason: nil)   // not Google's JSON error shape: unknown, so not "gone"
+        }
+        let details = error["details"] as? [[String: Any]] ?? []
+        let reasons = details.compactMap { $0["reason"] as? String }
+        if reasons.contains("ACCESS_TOKEN_SCOPE_INSUFFICIENT") { return .scopeMissing }
+        // Legacy v3-style `errors[].reason` carries only "forbidden" on the plain answer.
+        let legacy = (error["errors"] as? [[String: Any]] ?? []).compactMap { $0["reason"] as? String }
+        if details.isEmpty, legacy.allSatisfy({ $0 == "forbidden" }),
+           error["status"] as? String == "PERMISSION_DENIED" {
+            return .sheetOutOfReach
+        }
+        return .refused(reason: reasons.first ?? legacy.first)
+    }
+}
+
+// MARK: - Values payload
+
+/// The columns this app writes as numbers, per tab (0 = A). Every other column is text: dates,
+/// times, names, sources and record IDs. Matches SheetLayout's headers.
+enum SheetSchema {
+    static let numericColumns: [String: Set<Int>] = [
+        SheetTabs.daily: Set(1...15),        // Steps through VO2 max
+        SheetTabs.workouts: [3, 4, 5],       // Duration, Active energy, Distance
+        SheetTabs.sleepStages: [4],          // Duration (min)
+    ]
+}
+
+/// Where an A1 range starts: its tab, first column (0 = A) and first row (nil for a whole-column
+/// range such as "Workouts!A:H", which values:append fills from the first empty row).
+struct A1Start: Equatable {
+    var tab: String
+    var column: Int
+    var row: Int?
+
+    init(tab: String, column: Int, row: Int?) {
+        self.tab = tab
+        self.column = column
+        self.row = row
+    }
+
+    init?(_ range: String) {
+        guard let bang = range.lastIndex(of: "!") else { return nil }
+        var tab = String(range[..<bang])
+        if tab.count >= 2, tab.hasPrefix("'"), tab.hasSuffix("'") { tab = String(tab.dropFirst().dropLast()) }
+        let cell = range[range.index(after: bang)...].prefix { $0 != ":" }
+        let letters = cell.prefix { $0.isASCII && $0.isLetter }
+        guard !letters.isEmpty else { return nil }
+        var column = 0
+        for c in letters.uppercased().unicodeScalars { column = column * 26 + Int(c.value) - 64 }
+        self.tab = tab
+        self.column = column - 1
+        let digits = cell.dropFirst(letters.count)
+        self.row = digits.isEmpty ? nil : Int(digits)
+    }
+}
+
+enum SheetPayload {
+    /// The `values` array sent for `rows` written at `range`. A cell in a numeric column of a data
+    /// row goes as a JSON number. Sheets parses a USER_ENTERED string in the spreadsheet's
+    /// locale, so "7.50" was text in a German sheet and "1.5" could become 1 May; a JSON number
+    /// is stored as that number in every locale (review I2, 2026-11-04). Header labels, blanks
+    /// and text a person left in a numeric column (kept by a rewrite) are not plain decimals, so
+    /// they stay strings.
+    static func values(range: String, rows: [[String]]) -> [[Any]] {
+        guard let start = A1Start(range), let numeric = SheetSchema.numericColumns[start.tab] else { return rows }
+        return rows.map { row in
+            row.enumerated().map { j, cell -> Any in
+                numeric.contains(start.column + j) && SheetCell.isPlainDecimal(cell) ? NSDecimalNumber(string: cell) : cell
+            }
+        }
+    }
+}
+
 // MARK: - Rebuild backoff
 
 enum RebuildBackoff {
@@ -306,4 +525,157 @@ enum RebuildBackoff {
     static let interval: TimeInterval = 6 * 3600
     static func isBlocked(notBefore: Date?, now: Date) -> Bool { (notBefore ?? .distantPast) > now }
 }
+
 #endif
+
+// MARK: - Splitting a query around days HealthKit refuses
+
+// Outside H4A_SHEETS: live sync and the history import split refused hourly totals with it too,
+// passing hours where the Sheets path passes days (HealthKitManager.hourlyTotals, GitHub #28).
+import Foundation
+
+enum RangeSplit {
+    struct Outcome<T> {
+        /// Each piece that was read, with the days it covers (ascending, contiguous).
+        var parts: [(days: [Date], value: T)] = []
+        /// Single days that still failed with a splittable error.
+        var failedDays: [Date] = []
+    }
+
+    /// Runs `query` over `days`. When it throws an error `splittable` accepts, each half is
+    /// retried, down to single days. HealthKit can refuse a statistics collection over a range
+    /// with "Unable to invalidate interval: no data source available" (com.apple.healthkit 3),
+    /// a framework bug Apple has acknowledged without a fix (FB22221658), while a shorter range
+    /// with the same anchor succeeds. Without this, one bad day failed the whole 180-day chunk
+    /// on every pass and the Daily tab never got past it (support report, 2026-10-17).
+    /// Any other error is rethrown, so a locked device or a cancelled task still fails the pass.
+    /// A range refused on every day is NOT rethrown: a one-day retry of a day still refused is
+    /// exactly that case, and throwing there failed every pass again (review, 2026-10-20). Every
+    /// failed day is returned instead, and the caller reports and retries them.
+    static func run<T>(_ days: [Date], splittable: (Error) -> Bool,
+                       _ query: ([Date]) async throws -> T) async throws -> Outcome<T> {
+        var out = Outcome<T>()
+        try await split(days, splittable, query, &out)
+        return out
+    }
+
+    private static func split<T>(_ days: [Date], _ splittable: (Error) -> Bool, _ query: ([Date]) async throws -> T,
+                                 _ out: inout Outcome<T>) async throws {
+        guard !days.isEmpty else { return }
+        do {
+            out.parts.append((days, try await query(days)))
+        } catch let error where splittable(error) {
+            guard days.count > 1 else { out.failedDays.append(days[0]); return }
+            let mid = days.count / 2
+            try await split(Array(days[..<mid]), splittable, query, &out)
+            try await split(Array(days[mid...]), splittable, query, &out)
+        }
+    }
+}
+
+// MARK: - Hours HealthKit refused to total
+
+/// Hourly totals HealthKit refused (RangeSplit), per type, waiting to be asked again. Persisted
+/// by RefusedHours; pure here so the off-device harness tests it.
+///
+/// Stored as runs of consecutive hours, [first hour, count], hours counted from 1970 in UTC.
+/// A refusal covers whole stretches, so a plain list would grow by 24 entries a day per type
+/// for as long as a phone stays affected.
+struct RefusedHourLedger: Codable, Equatable {
+    private(set) var runs: [String: [[Int]]] = [:]
+    /// Per type: no retry before this time (seconds since 1970), so an affected phone does not
+    /// re-ask on every background wake. Set after every retry that leaves hours waiting.
+    private(set) var retryAfter: [String: Double] = [:]
+    /// Per type: the hour the next retry window starts from. The window moves past each one it
+    /// asks, wrapping at the end, so hours HealthKit refuses for good cannot hold the same
+    /// window forever while newer ones are never asked (review, 2026-10-26).
+    private(set) var cursor: [String: Int] = [:]
+
+    /// After a retry HealthKit refused entirely.
+    static let backoff: TimeInterval = 6 * 3600
+    /// After a retry that got some answers. A partial answer used to clear the wait, which let
+    /// one answered hour buy a full re-split of the rest on every wake (review, 2026-10-26).
+    static let minInterval: TimeInterval = 3600
+
+    init() {}
+
+    /// Every field optional on decode, so a ledger saved before a field existed still reads.
+    /// A strict decode fails, and a failed decode is a ledger the app can no longer act on
+    /// (Codex review, 2026-10-26).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        runs = try c.decodeIfPresent([String: [[Int]]].self, forKey: .runs) ?? [:]
+        retryAfter = try c.decodeIfPresent([String: Double].self, forKey: .retryAfter) ?? [:]
+        cursor = try c.decodeIfPresent([String: Int].self, forKey: .cursor) ?? [:]
+    }
+
+    /// After a retry that failed outright (not a refusal): wait the full backoff, so an error
+    /// that repeats does not re-run the retry on every wake.
+    mutating func backOff(_ type: String, now: Date) {
+        guard runs[type] != nil else { return }
+        retryAfter[type] = now.timeIntervalSince1970 + Self.backoff
+    }
+
+    static func hourIndex(_ date: Date) -> Int { Int((date.timeIntervalSince1970 / 3600).rounded(.down)) }
+    static func date(_ hour: Int) -> Date { Date(timeIntervalSince1970: TimeInterval(hour) * 3600) }
+
+    var pendingTypes: [String] { runs.keys.sorted() }
+
+    func hours(for type: String) -> Set<Int> {
+        var out = Set<Int>()
+        for run in runs[type] ?? [] where run.count == 2 && run[1] > 0 {
+            out.formUnion(run[0]..<(run[0] + run[1]))
+        }
+        return out
+    }
+
+    private mutating func set(_ hours: Set<Int>, for type: String) {
+        guard !hours.isEmpty else {
+            runs[type] = nil
+            retryAfter[type] = nil
+            cursor[type] = nil
+            return
+        }
+        var out: [[Int]] = []
+        for h in hours.sorted() {
+            if let last = out.last, last[0] + last[1] == h { out[out.count - 1][1] += 1 }
+            else { out.append([h, 1]) }
+        }
+        runs[type] = out
+    }
+
+    mutating func add(_ dates: [Date], for type: String) {
+        guard !dates.isEmpty else { return }
+        set(hours(for: type).union(dates.map(Self.hourIndex)), for: type)
+    }
+
+    func hasPending(_ type: String) -> Bool { runs[type] != nil }
+
+    /// Up to `limit` hours to ask again, oldest first from the cursor and wrapping, or none
+    /// while waiting. Hours before `floor` are dropped for good: the import setting no longer
+    /// covers them.
+    mutating func due(for type: String, limit: Int, notBefore floor: Date?, now: Date) -> [Date] {
+        var pending = hours(for: type)
+        if let floor {
+            let kept = pending.filter { $0 >= Self.hourIndex(floor) }
+            if kept.count != pending.count { set(kept, for: type); pending = kept }
+        }
+        guard !pending.isEmpty, (retryAfter[type] ?? 0) <= now.timeIntervalSince1970 else { return [] }
+        let sorted = pending.sorted()
+        let from = cursor[type] ?? Int.min
+        let window = sorted.filter { $0 >= from } + sorted.filter { $0 < from }
+        return window.prefix(limit).map(Self.date)
+    }
+
+    /// After asking `asked` again: answered hours leave, `stillRefused` stay, and the next
+    /// window starts after the last hour asked. Hours still waiting set the next wait.
+    mutating func resolve(asked: [Date], stillRefused: [Date], for type: String, now: Date) {
+        let refused = Set(stillRefused.map(Self.hourIndex))
+        let askedHours = asked.map(Self.hourIndex)
+        let answered = Set(askedHours).subtracting(refused)
+        set(hours(for: type).subtracting(answered), for: type)
+        guard runs[type] != nil else { return }
+        if let last = askedHours.max() { cursor[type] = last + 1 }
+        retryAfter[type] = now.timeIntervalSince1970 + (answered.isEmpty ? Self.backoff : Self.minInterval)
+    }
+}

@@ -36,14 +36,98 @@ enum SheetTabs {
     static let daily = "Daily"
     static let workouts = "Workouts"
     static let about = "About"
+    static let sleepStages = "Sleep stages"
+
+    /// "'Sleep stages'!A2:A". A tab name with a space must be quoted in A1 notation; the
+    /// quotes are harmless on the others, but they are left bare to keep existing ranges as-is.
+    static func range(_ tab: String, _ cells: String) -> String {
+        tab.contains(" ") ? "'\(tab)'!\(cells)" : "\(tab)!\(cells)"
+    }
+}
+
+/// One chunk of Daily rows, and the cells HealthKit refused to read for it (left blank).
+struct DailyChunk {
+    var rows: [[String]]
+    /// Column label ("Steps") -> the day keys whose cell could not be read.
+    var unread: [String: [String]] = [:]
+
+    /// Daily tab columns (0 = A) HealthKit refused for the day `key`.
+    func refusedColumns(on key: String) -> Set<Int> {
+        Set(unread.compactMap { $0.value.contains(key) ? DailyColumn.index[$0.key] : nil })
+    }
+}
+
+enum DailyColumn {
+    /// The Daily column (0 = A, the date) of each label a DailyChunk can report unread.
+    static let index: [String: Int] = [
+        "Steps": 1, "Distance": 2, "Active energy": 3, "Exercise": 4, "Flights climbed": 6,
+        "Resting HR": 7, "Avg HR": 8, "HRV": 9, "Weight": 14, "VO2 max": 15]
+
+    /// Ranges that rewrite an existing Daily row with `values`, leaving out the `refused`
+    /// columns: a refused read is not "no data", so the value already in the sheet is kept
+    /// rather than blanked (the same rule as never clearing Workouts on an empty read).
+    static func rewrite(row: Int, values: [String], refused: Set<Int>) -> [(range: String, rows: [[String]])] {
+        guard !refused.isEmpty else { return [("\(SheetTabs.daily)!A\(row):P\(row)", [values])] }
+        var out: [(range: String, rows: [[String]])] = []
+        var start: Int?
+        for i in 0...values.count {
+            if i < values.count, !refused.contains(i) { if start == nil { start = i }; continue }
+            if let s = start {
+                out.append(("\(SheetTabs.daily)!\(letter(s))\(row):\(letter(i - 1))\(row)", [Array(values[s..<i])]))
+                start = nil
+            }
+        }
+        return out
+    }
+
+    static func letter(_ i: Int) -> String { String(UnicodeScalar(UInt8(65 + i))) }
 }
 
 struct SheetsPassResult {
     var daysWritten: Int
     var workoutsAdded: Int
+    var sleepStagesAdded = 0
+    /// Column label -> day keys HealthKit could not read this pass. Those cells are written
+    /// blank, and the About tab says blank means no data, so this must reach the person.
+    var unreadCells: [String: [String]] = [:]
+
+    mutating func addUnread(_ more: [String: [String]]) {
+        for (label, days) in more { unreadCells[label, default: []] += days }
+    }
+
+    /// Every day still carrying a blank HealthKit refused, after this pass (saved as
+    /// SheetsProgress.unreadDays), including earlier refusals this pass did not reach.
+    var unreadPending: [String] = []
+
+    /// Distinct days still carrying an unread cell.
+    var unreadDays: Int { unreadPending.count }
+
+    /// For the Sheets card, e.g. "HealthKit could not read Steps on 1 day (2025-03-05). ...".
+    /// Shown on every pass while any day is pending, not only the pass that met it, because
+    /// the About tab tells the reader a blank means no data.
+    var unreadSummary: String? {
+        guard !unreadPending.isEmpty else { return nil }
+        let parts = unreadCells.keys.sorted().map { label -> String in
+            let days = Set(unreadCells[label]!).sorted()
+            let span = days.count == 1 ? days[0] : "\(days.first!) to \(days.last!)"
+            return "\(label) on \(days.count) day\(days.count == 1 ? "" : "s") (\(span))"
+        }
+        let detail = parts.isEmpty ? "" : "HealthKit could not read \(parts.joined(separator: ", ")). "
+        let n = unreadPending.count
+        return detail + "\(n) day\(n == 1 ? " has" : "s have") cells HealthKit would not read. They stay blank, or keep the value the sheet already held; health4ai asks again on each sync and fills them in when it can."
+    }
+    /// Every workout was merged, so the person's "catch up" request is done.
+    var workoutsCaughtUp = false
     /// A due history rebuild was not run because it would have destroyed rows (Health access
     /// for the older history is off). The incremental work still succeeded.
     var rebuildSkipped = false
+}
+
+/// What to save, as the sync core sees it (SheetsSaveChoices without the storage).
+struct SaveChoiceFlags {
+    var workouts: Bool
+    var sleepStages: Bool
+    var workoutsCatchUp: Bool
 }
 
 /// The two fields of the saved sheet state that sequencing reads and advances.
@@ -52,6 +136,13 @@ struct SheetsProgress: Equatable {
     var historyVersion: Int?
     /// No rebuild attempt before this time (set when one fails or is refused).
     var rebuildNotBefore: Date?
+    /// Last night fully written to the Sleep stages tab; nil before its first sweep. Kept
+    /// apart from `lastWrittenDay` because the tab can be switched on long after the sheet
+    /// was made, and only advances while it is on, so switching it back on fills the gap.
+    var sleepStagesThrough: String?
+    /// Day keys whose Daily row has a cell HealthKit refused to read (RangeSplit). Asked again
+    /// on later passes, because the refusal is a stale HealthKit cache that can clear.
+    var unreadDays: [String] = []
     /// Set (not persisted) when this pass attempted a history rebuild and it threw, so the
     /// caller can tell a failed rebuild from an incremental failure after a refusal.
     var rebuildFailed = false
@@ -60,17 +151,28 @@ struct SheetsProgress: Equatable {
 protocol SheetsAPI {
     func readDateColumn(spreadsheetId: String, range: String) async throws -> [String]
     func readColumn(spreadsheetId: String, range: String) async throws -> [String]
+    /// One column as stored (UNFORMATTED), numbers in en_US_POSIX digits (SheetCell.stored),
+    /// whatever the sheet's locale displays.
+    func readValueColumn(spreadsheetId: String, range: String) async throws -> [String]
     func writeRanges(spreadsheetId: String, _ ranges: [(range: String, rows: [[String]])]) async throws
     func append(spreadsheetId: String, range: String, rows: [[String]]) async throws
     func clear(spreadsheetId: String, ranges: [String]) async throws
     func ensureRows(spreadsheetId: String, tab: String, needed: Int, headroom: Int) async throws -> Int
+    /// Adds the tab (with a frozen header row) if the sheet has none by that name. True when
+    /// it was added, so the caller writes the header.
+    func ensureTab(spreadsheetId: String, title: String) async throws -> Bool
 }
 
 /// Where the rows come from (HealthKit, with the sheet's units already bound).
 protocol SheetsHistorySource {
     func earliestDataDay(now: Date) async throws -> Date
-    func dailyRows(from: Date, through: Date) async throws -> [[String]]
+    func dailyRows(from: Date, through: Date) async throws -> DailyChunk
     func workoutRows(from: Date, to: Date) async throws -> [[String]]
+    /// Start of the oldest sleep record, nil when there is none.
+    func oldestSleepRecord() async throws -> Date?
+    /// Sleep stages tab rows for the nights `from` through `through` (by `SleepMath.night`),
+    /// each record once, ordered by start.
+    func sleepStageRows(nights from: Date, through: Date) async throws -> [[String]]
 }
 
 struct SheetsSyncCore {
@@ -84,12 +186,49 @@ struct SheetsSyncCore {
     let calendar: Calendar
     /// Rewritten with a rebuild (the About tab's current text).
     var rebuildExtras: [(range: String, rows: [[String]])] = []
+    /// What to save (the person's choices). The Daily tab is always written: its column A is
+    /// how a pass knows where the sheet is up to.
+    var saveWorkouts = true
+    var saveSleepStages = false
+    /// Workouts were just switched back on: merge every workout, not only the recent days,
+    /// so the ones recorded while it was off are not left out.
+    var workoutsCatchUp = false
+    /// The choices as saved right now, read after the Daily part of the pass.
+    var latestChoices: (() -> SaveChoiceFlags)?
 
     /// One pass. `allowRebuild` is false in the background: a rebuild is ~20 chunks of
     /// HealthKit queries and a single write, which a background window cannot be trusted to
     /// finish, and a failure must not stall the ordinary incremental updates.
     func run(spreadsheetId id: String, progress: inout SheetsProgress, allowRebuild: Bool,
              now: Date, persist: (SheetsProgress) -> Void) async throws -> SheetsPassResult {
+        var result = try await syncDaily(spreadsheetId: id, progress: &progress, allowRebuild: allowRebuild,
+                                         now: now, persist: persist)
+        let today = calendar.startOfDay(for: now)
+        // Re-read now: a choice switched on while the Daily part ran (often a long first sweep)
+        // is acted on in this pass, because the switch's own sync is skipped as in-flight.
+        let latest = latestChoices?() ?? SaveChoiceFlags(workouts: saveWorkouts, sleepStages: saveSleepStages,
+                                                         workoutsCatchUp: workoutsCatchUp)
+        if latest.workouts && latest.workoutsCatchUp {
+            result.workoutsAdded += try await addWorkouts(id: id, from: Self.historyFloor(today, calendar: calendar), today: today)
+            result.workoutsCaughtUp = true
+        }
+        if latest.sleepStages {
+            result.sleepStagesAdded = try await syncSleepStages(id: id, progress: &progress, today: today, persist: persist)
+        }
+        return result
+    }
+
+    /// The oldest day any sweep goes back to, so a first sync always finishes.
+    static func historyFloor(_ today: Date, calendar: Calendar) -> Date {
+        calendar.date(byAdding: .year, value: -10, to: today)!
+    }
+
+    /// Workouts switched off: none added. Catching up: `run` merges them all afterwards.
+    private var mergeRecentWorkouts: Bool { saveWorkouts && !workoutsCatchUp }
+
+    /// The Daily tab (rebuild or incremental) and, unless switched off, recent workouts.
+    private func syncDaily(spreadsheetId id: String, progress: inout SheetsProgress, allowRebuild: Bool,
+                           now: Date, persist: (SheetsProgress) -> Void) async throws -> SheetsPassResult {
         let today = calendar.startOfDay(for: now)
         var existing = try await api.readDateColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!A2:A")
         var result = SheetsPassResult(daysWritten: 0, workoutsAdded: 0)
@@ -111,6 +250,7 @@ struct SheetsSyncCore {
                     progress.lastWrittenDay = DayKey.string(for: today, calendar: calendar)
                     progress.historyVersion = HistoryVersion.current
                     progress.rebuildNotBefore = nil
+                    progress.unreadDays = rebuilt.unreadPending
                     persist(progress)
                     return rebuilt
                 }
@@ -141,13 +281,14 @@ struct SheetsSyncCore {
         while chunkStart <= today {
             try Task.checkCancellation()
             let chunkEnd = min(calendar.date(byAdding: .day, value: Self.chunkDays - 1, to: chunkStart)!, today)
-            let rows = try await source.dailyRows(from: chunkStart, through: chunkEnd)
+            let chunk = try await source.dailyRows(from: chunkStart, through: chunkEnd)
+            let rows = chunk.rows
             // First connect with nothing to write: do not report success and do not advance
             // lastWrittenDay over it (Reviewboard B, 2026-09-28). An empty chunk with later
             // days still to read is skipped, not failed: the sweep can start well before the
             // first day with data (an oldest sample past the ten-year floor, then a gap), and
             // failing there told someone with years of data they had none (2026-10-09).
-            if pendingFirstWrite, !Self.hasData(rows) {
+            if pendingFirstWrite, !Self.hasData(rows), chunk.unread.isEmpty {
                 guard chunkEnd < today else {
                     throw SheetsError.noHealthData(checked: Self.checkedRange(start, today, calendar: calendar))
                 }
@@ -162,11 +303,13 @@ struct SheetsSyncCore {
                                                     needed: existing.count + 1 + days, headroom: Self.gridHeadroom)
                 // Workouts first: a sweep cut short resumes from a recent day and would never
                 // come back for older workouts.
-                result.workoutsAdded += try await addWorkouts(id: id, from: firstDay, today: today)
+                if mergeRecentWorkouts { result.workoutsAdded += try await addWorkouts(id: id, from: firstDay, today: today) }
                 workoutsDone = true
             }
             let plan = UpsertPlan.make(existingDates: existing, rows: rows)
-            var ranges = plan.updates.map { (range: "\(SheetTabs.daily)!A\($0.row):P\($0.row)", rows: [$0.values]) }
+            var ranges = plan.updates.flatMap {
+                DailyColumn.rewrite(row: $0.row, values: $0.values, refused: chunk.refusedColumns(on: $0.values[0]))
+            }
             if !plan.appends.isEmpty {
                 let firstRow = existing.count + 2
                 let lastRow = firstRow + plan.appends.count - 1
@@ -181,19 +324,52 @@ struct SheetsSyncCore {
             }
             try await api.writeRanges(spreadsheetId: id, ranges)
             result.daysWritten += rows.count
+            result.addUnread(chunk.unread)
+            // Saved with the lastWrittenDay that moves past them, so a pass cut short later
+            // cannot leave blank days that are neither retried nor reported.
+            progress.unreadDays = Set(progress.unreadDays).union(chunk.unread.values.joined()).sorted()
             progress.lastWrittenDay = DayKey.string(for: chunkEnd, calendar: calendar)
             if pendingFirstWrite { progress.historyVersion = HistoryVersion.current }
             pendingFirstWrite = false
             persist(progress)
             chunkStart = calendar.date(byAdding: .day, value: 1, to: chunkEnd)!
         }
-        if !workoutsDone { result.workoutsAdded += try await addWorkouts(id: id, from: start, today: today) }
+        try await retryUnread(id: id, before: start, existing: existing, progress: &progress, result: &result)
+        persist(progress)
+        if !workoutsDone && mergeRecentWorkouts { result.workoutsAdded += try await addWorkouts(id: id, from: start, today: today) }
         // The incremental work above is done and saved; the sheet keeps its old history.
         result.rebuildSkipped = rebuildRefused
         return result
     }
 
     static let writeChunkRows = 800
+    /// Earlier refused days asked again per pass, oldest first, so a type HealthKit refuses for
+    /// months cannot turn every pass (background ones too) into hundreds of queries.
+    static let unreadRetriesPerPass = 30
+
+    /// Re-reads days refused on an earlier pass that this pass's sweep (from `sweepStart`) did
+    /// not cover, rewrites their rows in place, and leaves `progress.unreadDays` as what is
+    /// still unread: this pass's refusals, retries refused again, and retries not reached.
+    private func retryUnread(id: String, before sweepStart: Date, existing: [String],
+                             progress: inout SheetsProgress, result: inout SheetsPassResult) async throws {
+        let swept = DayKey.string(for: sweepStart, calendar: calendar)
+        let earlier = progress.unreadDays.filter { $0 < swept }.sorted()
+        let tried = earlier.prefix(Self.unreadRetriesPerPass)
+        var ranges: [(range: String, rows: [[String]])] = []
+        for key in tried {
+            try Task.checkCancellation()
+            guard let day = Self.date(fromKey: key, calendar: calendar) else { continue }
+            let chunk = try await source.dailyRows(from: day, through: day)
+            result.addUnread(chunk.unread)
+            // Only rows the tab still holds are rewritten; a row the person removed is left out.
+            ranges += UpsertPlan.make(existingDates: existing, rows: chunk.rows).updates.flatMap {
+                DailyColumn.rewrite(row: $0.row, values: $0.values, refused: chunk.refusedColumns(on: $0.values[0]))
+            }
+        }
+        if !ranges.isEmpty { try await api.writeRanges(spreadsheetId: id, ranges) }
+        result.unreadPending = Set(result.unreadCells.values.joined()).union(earlier.dropFirst(tried.count)).sorted()
+        progress.unreadDays = result.unreadPending
+    }
 
     /// Rebuilds the Daily tab from `start` and merges the Workouts tab. Everything
     /// failure-prone (HealthKit queries, grid growth) happens BEFORE the sheet is touched.
@@ -206,14 +382,23 @@ struct SheetsSyncCore {
     /// raw "HKWorkoutActivityType..." names from builds 54-55 are tidied in place.
     private func rebuild(id: String, from start: Date, today: Date) async throws -> SheetsPassResult {
         var daily: [[String]] = []
+        var unread = SheetsPassResult(daysWritten: 0, workoutsAdded: 0)
+        var refused: [String: Set<Int>] = [:]
         var chunkStart = start
         while chunkStart <= today {
             try Task.checkCancellation()
             let chunkEnd = min(calendar.date(byAdding: .day, value: Self.chunkDays - 1, to: chunkStart)!, today)
-            daily += try await source.dailyRows(from: chunkStart, through: chunkEnd)
+            let chunk = try await source.dailyRows(from: chunkStart, through: chunkEnd)
+            daily += chunk.rows
+            unread.addUnread(chunk.unread)
+            for row in chunk.rows {
+                let cols = chunk.refusedColumns(on: row[0])
+                if !cols.isEmpty { refused[row[0]] = cols }
+            }
             chunkStart = calendar.date(byAdding: .day, value: 1, to: chunkEnd)!
         }
         guard Self.hasData(daily) else { throw SheetsError.noHealthData(checked: Self.checkedRange(start, today, calendar: calendar)) }
+        try await keepHeldValues(id: id, refused: refused, in: &daily)
         try Task.checkCancellation()
 
         _ = try await api.ensureRows(spreadsheetId: id, tab: SheetTabs.daily, needed: daily.count + 1, headroom: Self.gridHeadroom)
@@ -234,9 +419,39 @@ struct SheetsSyncCore {
             try await api.clear(spreadsheetId: id, ranges: stale.map { "\(SheetTabs.daily)!A\($0.lowerBound):P\($0.upperBound)" })
         }
 
-        let added = try await addWorkouts(id: id, from: start, today: today)
+        let added = mergeRecentWorkouts ? try await addWorkouts(id: id, from: start, today: today) : 0
         try await tidyWorkoutNames(id: id)
-        return SheetsPassResult(daysWritten: daily.count, workoutsAdded: added)
+        var out = SheetsPassResult(daysWritten: daily.count, workoutsAdded: added, unreadCells: unread.unreadCells)
+        out.unreadPending = Set(unread.unreadCells.values.joined()).sorted()
+        return out
+    }
+
+    /// A rebuild rewrites whole rows, and rows can move (an earlier start shifts them down), so
+    /// a cell HealthKit refused takes the value the sheet already holds for that date, matched
+    /// by date, not position. Read before the sheet is touched: the dates, then one read per
+    /// refused column.
+    private func keepHeldValues(id: String, refused: [String: Set<Int>],
+                                in daily: inout [[String]]) async throws {
+        guard !refused.isEmpty else { return }
+        // Dates re-read beside the values: the pass-start snapshot predates the HealthKit reads,
+        // and a row the person moved meanwhile would pair one day's value with another's date.
+        let existing = try await api.readDateColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!A2:A")
+        var held: [Int: [String: String]] = [:]
+        for col in Set(refused.values.joined()).sorted() {
+            let letter = DailyColumn.letter(col)
+            // As stored, not as displayed: a German sheet displays 7.5 as "7,5", which would go
+            // back as text (review I2, 2026-11-04).
+            let values = try await api.readValueColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!\(letter)2:\(letter)")
+            var byDay: [String: String] = [:]
+            for (i, key) in existing.enumerated() where i < values.count && !values[i].isEmpty { byDay[key] = values[i] }
+            held[col] = byDay
+        }
+        for i in daily.indices {
+            guard let cols = refused[daily[i][0]] else { continue }
+            for col in cols where col < daily[i].count {
+                if let value = held[col]?[daily[i][0]] { daily[i][col] = value }
+            }
+        }
     }
 
     /// Rewrites only the Type cell of rows still carrying a raw HealthKit identifier.
@@ -257,7 +472,9 @@ struct SheetsSyncCore {
         guard !rows.isEmpty else { return 0 }
         let known = Set(try await api.readColumn(spreadsheetId: id, range: "\(SheetTabs.workouts)!H2:H"))
         let fresh = rows.filter { !known.contains($0[7]) }
-        try await api.append(spreadsheetId: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)
+        // In pieces: a catch-up after years with the switch off can be thousands of workouts.
+        try await appendInPieces(id: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh,
+                                 ids: (range: "\(SheetTabs.workouts)!H2:H", index: 7))
         return fresh.count
     }
 

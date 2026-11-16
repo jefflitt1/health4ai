@@ -15,8 +15,8 @@ The condition is kept, rather than deleted, so a build without Sheets stays one 
 (`H4A_RELEASE_CONDITIONS = ""`) if Google access ever has to be pulled; the CI gates below would then need the
 inverse check again (see git history before 2026-10-02 for that version).
 
-What the flag controls: `GoogleAuth`, `SheetsClient`, `SheetsSink`, `SheetsLogic`,
-`DailySummaryBuilder`, `SheetsDestinationView` (picker, connect section, Home card), the Sheets branches in
+What the flag controls: `GoogleAuth`, `SheetsClient`, `SheetsSink`, `SheetsLogic` (all but
+`RangeSplit`, which live sync shares), `DailySummaryBuilder`, `SheetsDestinationView` (picker, connect section, Home card), the Sheets branches in
 `HomeView`, `ConnectionView`, `PrivacyView`, `SyncEngine`, `AppDelegate`, and `ConnectionType.googleSheets`.
 `Info.plist` has no `CFBundleURLTypes`: the OAuth redirect is handled in-process by `ASWebAuthenticationSession`,
 so there is no URL scheme to keep or remove.

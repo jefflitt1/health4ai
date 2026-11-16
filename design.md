@@ -63,6 +63,10 @@ failure.
 exists to prevent: the headline said green "Active" while the card below it named four
 metrics that had returned nothing.
 
+A self-healing notice (the app retries and the person has nothing to do, such as HealthKit
+refused hours, GitHub #28) uses a neutral `.secondary` symbol, never orange, and does not feed
+`statusColor`. Orange means attention the person or the connection owes.
+
 ## Honest numbers
 
 The app reports on data it does not own, so a number on screen is a claim.
@@ -75,6 +79,10 @@ The app reports on data it does not own, so a number on screen is a claim.
   the trustworthy one — and never collapse the pair into one figure.
 - **A spinner is a claim too.** If nothing has moved, stop it. A spinner above the words
   "nothing has moved" is a contradiction, and the spinner wins.
+- **"Filling…" under a switch.** When turning a switch on starts work (a Sheets tab being
+  filled), a secondary line under the Toggle label says so, shown only while a sync that does
+  that work is running. It goes when the sync ends or the switch goes off. Plain `Text`, so the
+  Toggle gives it secondary styling; no spinner, no hand-set colour.
 - **Green means verified, not attempted.** An operation that completed without evidence
   gets attention colour, not success colour.
 

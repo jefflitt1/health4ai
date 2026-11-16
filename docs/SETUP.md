@@ -26,6 +26,12 @@ one long-lived project and do not apply to a fresh one (a duplicated `003` versi
 `004_sleep_nightly_view.sql`). `supabase/config.toml` sets `[db.migrations] enabled = false` so a
 local `supabase start` or `db reset` does not apply them either.
 
+Supabase no longer auto-grants Data API access (`anon`, `authenticated`, `service_role`) on new
+`public` tables, so `schema.sql` spells out every grant itself: `service_role` gets only what the
+ingest function does to `healthkit_metrics` (select, insert, update, delete), `authenticated` can
+only reach its own rows, and `anon` can only add a waitlist row. A table you add needs its own
+grant in the same SQL; see `scripts/migration-templates/public_table.sql`.
+
 ## Step 2: Deploy the ingest function
 
 Needs the [Supabase CLI](https://supabase.com/docs/guides/cli), logged in to your account.

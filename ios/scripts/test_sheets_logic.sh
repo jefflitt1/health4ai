@@ -6,28 +6,32 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/../Health4AI/SheetsLogic.swift"
 SYNC="$HERE/../Health4AI/SheetsSync.swift"
+SLEEP="$HERE/../Health4AI/SheetsSync+SleepStages.swift"
 SYNCTESTS="$HERE/SheetsSyncTests.swift"
 TESTS="$HERE/SheetsLogicTests.swift"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-run() { # $1 = logic file, $2 = sync file. Exit 2 = did not build (never counts as a killed mutant).
+run() { # $1 = logic, $2 = sync, $3 = sleep stages file. Exit 2 = did not build (never a killed mutant).
   # Top-level test code is only legal in a file named main.swift.
   cp "$TESTS" "$WORK/main.swift"
-  cp "$1" "$WORK/SheetsLogic.swift"; cp "$2" "$WORK/SheetsSync.swift"; cp "$SYNCTESTS" "$WORK/SheetsSyncTests.swift"
-  xcrun swiftc -O -D H4A_SHEETS -o "$WORK/t" "$WORK/SheetsLogic.swift" "$WORK/SheetsSync.swift" "$WORK/SheetsSyncTests.swift" "$WORK/main.swift" 2>"$WORK/build.log" || { cat "$WORK/build.log"; return 2; }
+  cp "$1" "$WORK/SheetsLogic.swift"; cp "$2" "$WORK/SheetsSync.swift"; cp "$3" "$WORK/SheetsSleep.swift"
+  cp "$SYNCTESTS" "$WORK/SheetsSyncTests.swift"
+  xcrun swiftc -O -D H4A_SHEETS -o "$WORK/t" "$WORK/SheetsLogic.swift" "$WORK/SheetsSync.swift" "$WORK/SheetsSleep.swift" \
+    "$WORK/SheetsSyncTests.swift" "$WORK/main.swift" 2>"$WORK/build.log" || { cat "$WORK/build.log"; return 2; }
   "$WORK/t"
 }
 
 if [ "${1:-}" != "--mutants" ]; then
-  run "$SRC" "$SYNC"
+  run "$SRC" "$SYNC" "$SLEEP"
   exit $?
 fi
 
 # Each mutant breaks one behaviour; the suite must FAIL on every one.
-mutate() { # name, old, new, [sync] - mutates SheetsLogic.swift, or SheetsSync.swift when a 4th arg is given
+mutate() { # name, old, new, [sync|sleep] - mutates SheetsLogic.swift unless a 4th arg names another file
   local name="$1" old="$2" new="$3" target="$SRC"
-  [ -n "${4:-}" ] && target="$SYNC"
+  [ "${4:-}" = sync ] && target="$SYNC"
+  [ "${4:-}" = sleep ] && target="$SLEEP"
   python3 - "$target" "$WORK/m.swift" "$old" "$new" <<'EOF'
 import sys
 src, out, old, new = sys.argv[1:]
@@ -36,7 +40,11 @@ assert s.count(old) == 1, f"mutant anchor not unique: {old!r}"
 open(out, "w").write(s.replace(old, new))
 EOF
   local rc=0
-  if [ -n "${4:-}" ]; then run "$SRC" "$WORK/m.swift" >/dev/null 2>&1 || rc=$?; else run "$WORK/m.swift" "$SYNC" >/dev/null 2>&1 || rc=$?; fi
+  case "${4:-}" in
+    sync)  run "$SRC" "$WORK/m.swift" "$SLEEP" >/dev/null 2>&1 || rc=$? ;;
+    sleep) run "$SRC" "$SYNC" "$WORK/m.swift" >/dev/null 2>&1 || rc=$? ;;
+    *)     run "$WORK/m.swift" "$SYNC" "$SLEEP" >/dev/null 2>&1 || rc=$? ;;
+  esac
   if [ "$rc" -eq 0 ]; then echo "MUTANT SURVIVED: $name"; survivors=$((survivors+1))
   elif [ "$rc" -eq 2 ]; then echo "MUTANT DID NOT BUILD (invalid mutant, not a kill): $name"; survivors=$((survivors+1))
   else echo "mutant killed: $name"; fi
@@ -65,11 +73,9 @@ mutate "rebuild never marks version"   'progress.historyVersion = HistoryVersion
 mutate "no up-front grid growth"       'needed: existing.count + 1 + days, headroom: Self.gridHeadroom)' 'needed: 1, headroom: 0)' sync
 mutate "rebuild drops stale tail"      'if !stale.isEmpty {' 'if false {' sync
 mutate "rebuild skips about rewrite"   'if !rebuildExtras.isEmpty { try await api.writeRanges' 'if false { try await api.writeRanges' sync
-mutate "workouts not merged"           'let added = try await addWorkouts(id: id, from: start, today: today)
-        try await tidyWorkoutNames' 'let added = 0
-        try await tidyWorkoutNames' sync
+mutate "workouts not merged"           'let added = mergeRecentWorkouts ? try await addWorkouts(id: id, from: start, today: today) : 0' 'let added = 0' sync
 mutate "raw workout names left"        'try await tidyWorkoutNames(id: id)
-        return SheetsPassResult' 'return SheetsPassResult' sync
+        var out = SheetsPassResult' 'var out = SheetsPassResult' sync
 mutate "failed rebuild not backed off" 'progress.rebuildNotBefore = now.addingTimeInterval(RebuildBackoff.interval)
                 progress.rebuildFailed = true
                 persist(progress)
@@ -87,5 +93,61 @@ mutate "empty history reported as synced" 'guard chunkEnd < today else {
                     throw SheetsError.noHealthData(checked: Self.checkedRange(start, today, calendar: calendar))
                 }
                 chunkStart' 'chunkStart' sync
+mutate "sleep night midnight-based"    'value: 12, to: start)!, calendar: calendar)' 'value: 0, to: start)!, calendar: calendar)'
+mutate "sleep stage names swapped"     'case 4: return "Deep"' 'case 4: return "REM"'
+mutate "sleep tail reads typed text"   'if DateKeys.isKey(night), night >= key { return i + 2 }' 'if night >= key { return i + 2 }'
+mutate "sleep stages on by default"    'var saveSleepStages = false' 'var saveSleepStages = true' sync
+mutate "sleep records not deduped"     '.filter { !known.contains($0[SleepStageLayout.idIndex]) }' '.filter { _ in true }' sleep
+mutate "sleep overlap only two nights" 'static let sleepOverlapDays = 7' 'static let sleepOverlapDays = 2' sleep
+mutate "sleep progress never advances" 'progress.sleepStagesThrough = DayKey.string(for: chunkEnd, calendar: calendar)' '' sleep
+mutate "deleted sleep tab not refilled" 'if try await api.ensureTab(spreadsheetId: id, title: tab) { progress.sleepStagesThrough = nil }' '_ = try await api.ensureTab(spreadsheetId: id, title: tab)' sleep
+mutate "sleep header not written"      'try await api.writeRanges(spreadsheetId: id, header)' '' sleep
+mutate "header only on a new tab"      'if progress.sleepStagesThrough == nil {
+            // Written' 'if false {
+            // Written' sleep
+mutate "late choice ignored"           'let latest = latestChoices?() ?? SaveChoiceFlags' 'let latest = Optional<SaveChoiceFlags>.none ?? SaveChoiceFlags' sync
+mutate "catch-up never reported done"  'result.workoutsCaughtUp = true' '' sync
+mutate "sleep appended in one request" 'static let appendChunkRows = 2000' 'static let appendChunkRows = 1000000' sleep
+mutate "empty sleep marked done"       'guard let oldest = try await source.oldestSleepRecord() else { return 0 }' 'guard let oldest = try await source.oldestSleepRecord() else { progress.sleepStagesThrough = DayKey.string(for: today, calendar: calendar); return 0 }' sleep
+mutate "workouts off ignored"          'private var mergeRecentWorkouts: Bool { saveWorkouts && !workoutsCatchUp }' 'private var mergeRecentWorkouts: Bool { !workoutsCatchUp }' sync
+mutate "workouts catch-up ignored"     'if latest.workouts && latest.workoutsCatchUp {' 'if false {' sync
+mutate "workouts appended in one request" 'try await appendInPieces(id: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh,
+                                 ids: (range: "\(SheetTabs.workouts)!H2:H", index: 7))' 'try await api.append(spreadsheetId: id, range: "\(SheetTabs.workouts)!A:H", rows: fresh)' sync
+mutate "range refusal not split"       '} catch let error where splittable(error) {' '} catch let error where false && splittable(error) {'
+mutate "split stops at whole range"    'guard days.count > 1 else { out.failedDays.append(days[0]); return }' 'out.failedDays += days; return'
+mutate "single refused day thrown"     'guard days.count > 1 else { out.failedDays.append(days[0]); return }' 'guard days.count > 1 else { throw error }'
+mutate "unread not saved per chunk"    'progress.unreadDays = Set(progress.unreadDays).union(chunk.unread.values.joined()).sorted()' '' sync
+mutate "split swallows other errors"   'out.parts.append((days, try await query(days)))' 'if let v = try? await query(days) { out.parts.append((days, v)) } else { out.failedDays += days }'
+mutate "unread cells not reported"     'result.daysWritten += rows.count
+            result.addUnread(chunk.unread)' 'result.daysWritten += rows.count' sync
+mutate "retry result ignored"          'let chunk = try await source.dailyRows(from: day, through: day)
+            result.addUnread(chunk.unread)' 'let chunk = try await source.dailyRows(from: day, through: day)' sync
+mutate "rebuild unread not reported"   'unread.addUnread(chunk.unread)' '' sync
+mutate "unread days never retried"     'try await retryUnread(id: id, before: start, existing: existing, progress: &progress, result: &result)' '' sync
+mutate "retried rows not written"      'if !ranges.isEmpty { try await api.writeRanges(spreadsheetId: id, ranges) }' '' sync
+mutate "unreached retries dropped"     '.union(earlier.dropFirst(tried.count))' '' sync
+mutate "retries unbounded"             'static let unreadRetriesPerPass = 30' 'static let unreadRetriesPerPass = 100000' sync
+mutate "refused-only chunk skipped"    'if pendingFirstWrite, !Self.hasData(rows), chunk.unread.isEmpty {' 'if pendingFirstWrite, !Self.hasData(rows) {' sync
+mutate "refused cells blank good data" 'guard !refused.isEmpty else { return [(' 'guard false else { return [(' sync
+mutate "rebuild blanks held values"    'try await keepHeldValues(id: id, refused: refused, in: &daily)' '' sync
+mutate "rebuild holds by position"     'for (i, key) in existing.enumerated() where i < values.count && !values[i].isEmpty { byDay[key] = values[i] }' 'for (i, key) in daily.map({ $0[0] }).enumerated() where i < values.count && !values[i].isEmpty { byDay[key] = values[i] }' sync
+mutate "rebuild fills unheld refused"  'if let value = held[col]?[daily[i][0]] { daily[i][col] = value }' 'daily[i][col] = held[col]?[daily[i][0]] ?? "100"' sync
+mutate "rewrite ignores refused cols"  'refused: chunk.refusedColumns(on: $0.values[0]))
+            }
+            if !plan.appends.isEmpty' 'refused: [])
+            }
+            if !plan.appends.isEmpty' sync
+mutate "5xx append resent blind"      '500...599 where attempt < maxRetries && replay == .safe:' '500...599 where attempt < maxRetries:'
+mutate "refused 403 forgets sheet"     'case .refused: return .fail(status: 403)' 'case .refused: return .spreadsheetMissing'
+mutate "scope 403 forgets sheet"       'case .scopeMissing: return .accessRevoked' 'case .scopeMissing: return .spreadsheetMissing'
+mutate "403 with a reason read as gone" 'if details.isEmpty, legacy.allSatisfy' 'if true, legacy.allSatisfy'
+mutate "numbers sent as text"          '&& SheetCell.isPlainDecimal(cell) ? NSDecimalNumber(string: cell) : cell' '&& false ? NSDecimalNumber(string: cell) : cell'
+mutate "partial row offset ignored"    'numeric.contains(start.column + j)' 'numeric.contains(j)'
+mutate "typed text sent as number"     '$0.allSatisfy { ("0"..."9").contains($0) }' '$0.allSatisfy { $0 != " " }'
+mutate "held values read as displayed" 'try await api.readValueColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!\(letter)2:\(letter)")' 'try await api.readColumn(spreadsheetId: id, range: "\(SheetTabs.daily)!\(letter)2:\(letter)")' sync
+mutate "append retry resends all rows" 'pending = pending.filter { !present.contains($0[ids.index]) }' 'pending = pending.filter { _ in true }' sleep
+mutate "append 5xx not retried"        'catch let error where SheetsResponse.isServerError(error) && retries' 'catch let error where false && retries' sleep
+mutate "append retries unbounded"      'static let appendServerRetries = 2' 'static let appendServerRetries = 3' sleep
+mutate "stored keeps padding zeros"    'while out.hasSuffix("0") { out.removeLast() }' ''
 echo "survivors: $survivors"
 [ "$survivors" -eq 0 ]
