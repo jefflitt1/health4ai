@@ -1452,8 +1452,12 @@ def get_coaching_brief() -> dict:
 
     # Sleep: Core+Deep+REM only (value 3/4/5), one source per night — same selection
     # as get_sleep, instead of the hard Oura filter that nulled sleep for everyone else.
+    # Only nights that ended in the last 7 days: the 7 most recent nights in the 14-day fetch could
+    # be a week old, and would be reported as this week's sleep.
     nights: dict[str, float] = {}
     for night_key, (_device, stage_rows) in _sleep_stage_rows_by_night(sleep_14d).items():
+        if max(_parse_ts(r["ended_at"]) for r in stage_rows) <= week_start:
+            continue
         nights[night_key] = sum(
             (_parse_ts(r["ended_at"]) - _parse_ts(r["started_at"])).total_seconds() / 3600
             for r in stage_rows

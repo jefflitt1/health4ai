@@ -96,5 +96,23 @@ def test_steps_and_energy_are_summed_in_sql_over_seven_whole_days(monkeypatch):
     assert out["data_status"]["newest_sample_at"] == newest.isoformat()
 
 
+def _night(hours_ago_start: float, hours: float) -> dict:
+    start = NOW - timedelta(hours=hours_ago_start)
+    return {"started_at": start.isoformat(), "ended_at": (start + timedelta(hours=hours)).isoformat(),
+            "value": 3.0, "unit": "", "source_device": "Apple Watch"}
+
+
+def test_sleep_averages_only_nights_that_ended_in_the_last_seven_days(monkeypatch):
+    # Seven 8-hour nights 8 to 13 days ago, then nothing tracked: no sleep this week.
+    old = [_night(24 * d, 8.0) for d in range(8, 14)] + [_night(24 * 7 + 20, 8.0)]
+    stale = _brief(monkeypatch, {tools.SLEEP: old})
+    assert stale["sleep"]["nights_tracked"] == 0
+    assert stale["sleep"]["avg_hours_last_7_nights"] is None
+    # Add one 6-hour night that ended 2 hours ago: only it counts.
+    fresh = _brief(monkeypatch, {tools.SLEEP: old + [_night(8, 6.0)]})
+    assert fresh["sleep"]["nights_tracked"] == 1
+    assert fresh["sleep"]["avg_hours_last_7_nights"] == 6.0
+
+
 def test_description_names_no_one():
     assert "Brett" not in tools.get_coaching_brief.__doc__

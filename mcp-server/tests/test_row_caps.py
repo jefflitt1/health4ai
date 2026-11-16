@@ -179,5 +179,7 @@ def test_coaching_brief_counts_every_row_in_its_windows(monkeypatch):
     assert out["training_load_30d"]["total_workouts"] == 60
     assert out["data_status"]["workouts_30d"] == 60
     assert out["data_status"]["sleep_rows_14d"] == 7 * 140
-    assert out["sleep"]["nights_tracked"] == 7
+    # Night 7 ended just over 7 days ago, so the brief averages nights 1-6. The old 500-row cap
+    # would have left about 3 of them.
+    assert out["sleep"]["nights_tracked"] >= 6
     assert out["fitness_markers"]["weight_kg_30d_ago"] == 70.58  # the oldest of the 59 readings
