@@ -74,6 +74,9 @@ control and visible persistence-failure rules. The fixed cookie-choice panel use
 16px viewport gutters and a 720px maximum width. Accept and Decline have equal
 visual weight and at least 44px touch height. Text wraps before controls at 375px.
 Cookie choices remains available at the page end with a 44px touch target.
+Global Privacy Control overrides saved acceptance; the reopened banner explains it and
+disables Accept. Unwritable storage keeps analytics off and exposes the existing recovery
+message. Recovery saves the new choice before reloading previously stopped vendor code.
 The panel is a labeled region, not a focus-trapping modal. No vendor loads before
 acceptance; PostHog replay stays disabled and Clarity recording is named explicitly.
 The no-vendor build shows no banner. Review both 375px and 1440px renders.
