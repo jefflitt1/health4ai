@@ -165,24 +165,21 @@ def test_summary_counts_sleep_and_workouts_in_sql_without_a_row_cap(monkeypatch)
 
 
 def test_coaching_brief_counts_every_row_in_its_windows(monkeypatch):
-    # 100 step rows of 10 on each of the last 6 local days (600 rows; the old cap was 500), 60
-    # workouts in 30 days (old cap 50), two sleep trackers for a week (980 rows; old cap 500), and
-    # a scale used twice a day for a month (59 rows; with the old cap of 30, "30 days ago" was
-    # really 15 days ago).
-    midnight = datetime.now(tools.TZ).replace(hour=0, minute=0, second=0, microsecond=0)
-    steps = [{"started_at": _iso(midnight - timedelta(days=k) + timedelta(hours=12, minutes=i)),
-              "value": 10.0, "unit": "count"} for k in range(1, 7) for i in range(100)]
+    # 60 workouts in 30 days (old cap 50), two sleep trackers for a week (980 rows; old cap 500),
+    # and a scale used twice a day for a month (59 rows; with the old cap of 30, "30 days ago" was
+    # really 15 days ago). Steps are summed in SQL now (test_coaching_brief_windows.py).
     workouts = [{"started_at": _iso(NOW - timedelta(hours=11 * i + 1)), "value": None,
                  "metadata": {"workout_type": "walking", "duration_seconds": 600}} for i in range(60)]
     weight = [{"started_at": _iso(NOW - timedelta(hours=12 * i + 1)), "value": 70.0 + i / 100}
               for i in range(59)]
-    _stub(monkeypatch, {tools.STEPS: steps, tools.WORKOUT: workouts, tools.SLEEP: _two_trackers(7),
-                        tools.WEIGHT: weight})
+    _stub(monkeypatch, {tools.WORKOUT: workouts, tools.SLEEP: _two_trackers(7), tools.WEIGHT: weight})
     monkeypatch.setattr(tools, "_get_tiered_daily", lambda *a, **k: [])
+    monkeypatch.setattr(tools, "_fetch_raw_daily_aggregates", lambda *a, **k: [])
     out = tools.get_coaching_brief()
     assert out["training_load_30d"]["total_workouts"] == 60
     assert out["data_status"]["workouts_30d"] == 60
     assert out["data_status"]["sleep_rows_14d"] == 7 * 140
-    assert out["sleep"]["nights_tracked"] == 7
+    # Night 7 ended just over 7 days ago, so the brief averages nights 1-6. The old 500-row cap
+    # would have left about 3 of them.
+    assert out["sleep"]["nights_tracked"] >= 6
     assert out["fitness_markers"]["weight_kg_30d_ago"] == 70.58  # the oldest of the 59 readings
-    assert out["activity_7d"]["avg_daily_steps"] == 1000.0  # 100 x 10 steps on each of 6 days
