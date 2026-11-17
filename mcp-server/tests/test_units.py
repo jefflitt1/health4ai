@@ -134,3 +134,31 @@ def test_long_term_trend_day_window_is_capped_at_max_days(monkeypatch):
     monkeypatch.setattr(tools, "_get_tiered_daily", fake_tiered)
     tools.get_long_term_trend(tools.HRV, months=tools.MAX_MONTHS)
     assert seen["days"] == tools.MAX_DAYS
+
+
+# --- body mass: one series in kg, whatever unit each day was written in ---------------
+
+def test_body_mass_days_are_converted_to_kg_and_one_date_is_one_day(monkeypatch):
+    # Day 5: 160 lb and 72.43 kg, one reading each; day 6: 72,650 g; day 7: a unit with no factor.
+    _stub(monkeypatch, summaries=[_point(_day(5), "lb", 160.0), _point(_day(5), "kg", 72.43),
+                                  _point(_day(6), "g", 72650.0), _point(_day(7), "furlong", 1.0)])
+    out = tools.query_metric(tools.WEIGHT, days=60)
+    assert out["unit"]["unit"] == "kg"
+    assert out["unit"]["days_in_other_units"] == {"furlong": 1}
+    daily = {d["date"]: d for d in out["daily"]}
+    # 160 lb = 72.5747792 kg, kept to 10 g: 72.57. With 72.43 kg the day averages 72.5.
+    assert (daily[_day(5)]["avg"], daily[_day(5)]["min"], daily[_day(5)]["max"], daily[_day(5)]["count"]) == (72.5, 72.43, 72.57, 2)
+    assert daily[_day(6)]["avg"] == 72.65
+
+
+def test_body_mass_samples_are_in_kg(monkeypatch):
+    today = tools._today_local().isoformat()
+    _stub(monkeypatch, recent_raw=[_raw(today, "g", 72650.0), _raw(today, "kg", 72.45)])
+    out = tools.query_metric(tools.WEIGHT, days=7)
+    assert [(s["value"], s["unit"]) for s in out["samples"]] == [(72.65, "kg"), (72.45, "kg")]
+    assert out["avg"] == 72.55
+
+
+def test_other_metrics_keep_their_units(monkeypatch):
+    _stub(monkeypatch, summaries=[_point(_day(5), "g", 32.0), _point(_day(5), "kg", 0.032)])
+    assert tools.query_metric(PROTEIN, days=60)["unit"]["unit"] == "g"

@@ -41,7 +41,9 @@ def _brief(monkeypatch, rows_by_metric: dict, daily_totals: dict | None = None, 
         rows = [r for r in rows_by_metric.get(metric_type, []) if r["started_at"] >= since]
         return sorted(rows, key=lambda r: r["started_at"], reverse=True)[:limit]
     monkeypatch.setattr(tools, "_fetch_metrics", fetch)
-    monkeypatch.setattr(tools, "_get_tiered_daily", lambda *a, **k: [])
+    # Daily values from the same rows (weight 30 days ago reads the daily series); no VO2 max.
+    monkeypatch.setattr(tools, "_get_tiered_daily", lambda mt, uid, days: tools._in_kg(mt, tools._daily_from_raw(
+        [r for r in rows_by_metric.get(mt, []) if mt == tools.WEIGHT])))
     def aggregates(metric_type, user_id, start_date, end_date):
         if calls is not None:
             calls.append((metric_type, start_date, end_date))
@@ -72,15 +74,49 @@ def test_no_hrv_in_the_last_seven_days_is_said_so(monkeypatch):
 
 
 def test_weight_is_reported_in_kilograms_whatever_its_unit(monkeypatch):
-    weight = [_row(1, 72650.0, "g"), _row(50, 160.0, "lb"), _row(60, 1.0, "furlong"), _row(100, 72.4, "kg")]
+    weight = [_row(1, 72650.0, "g"), _row(50, 160.0, "lb"), _row(60, 1.0, "furlong"),
+              _row(24 * 30, 11.0, "st"), _row(24 * 32, 160.0, "lb"), _row(24 * 40, 72.4, "kg")]
     no_unit = _brief(monkeypatch, {tools.WEIGHT: [{**_row(1, 71.0), "unit": None}]})
     assert no_unit["fitness_markers"]["weight_kg_latest"] == 71.0  # the app writes kg
     out = _brief(monkeypatch, {tools.WEIGHT: weight})
     assert out["fitness_markers"]["weight_kg_latest"] == 72.65
-    assert out["fitness_markers"]["weight_kg_30d_ago"] == 72.4  # the oldest convertible reading
-    lb = _brief(monkeypatch, {tools.WEIGHT: [_row(1, 160.0, "lb"), _row(2, 11.0, "st")]})
+    # The day nearest 30 days ago: 30 days old beats 32; 11 st = 69.85322498 kg.
+    assert out["fitness_markers"]["weight_kg_30d_ago"] == 69.85
+    lb = _brief(monkeypatch, {tools.WEIGHT: [_row(1, 160.0, "lb"), _row(24 * 31, 11.0, "st")]})
     assert lb["fitness_markers"]["weight_kg_latest"] == 72.57  # 160 lb = 72.5747792 kg
-    assert lb["fitness_markers"]["weight_kg_30d_ago"] == 69.85  # 11 st = 69.85322498 kg
+    assert lb["fitness_markers"]["weight_kg_30d_ago"] == 69.85
+
+
+def test_weight_30_days_ago_is_a_reading_near_that_day_or_none(monkeypatch):
+    # "30 days ago" means a day's weight within a week of that day, and at least 23 days before the
+    # latest (2026-10-25: it was the oldest reading of the last 30 days, so two recent weigh-ins
+    # read as a 30-day change). Days are UTC here, so k * 24 h ago is k days ago.
+    monkeypatch.setattr(tools, "_now", lambda: NOW)
+    monkeypatch.setattr(tools, "TZ", timezone.utc)
+    recent_only = _brief(monkeypatch, {tools.WEIGHT: [_row(1, 70.0), _row(72, 71.0)]})
+    assert recent_only["fitness_markers"]["weight_kg_30d_ago"] is None
+    # Weigh-ins 26 and 34 days ago are 8 days apart: no 30-day change.
+    apart = _brief(monkeypatch, {tools.WEIGHT: [_row(24 * 26, 70.0), _row(24 * 34, 72.0)]})
+    assert apart["fitness_markers"]["weight_kg_latest"] == 70.0
+    assert apart["fitness_markers"]["weight_kg_30d_ago"] is None
+    # Two days either side of 30 days ago: the earlier day.
+    tie = _brief(monkeypatch, {tools.WEIGHT: [_row(1, 70.0), _row(24 * 28, 71.0), _row(24 * 32, 72.0)]})
+    assert tie["fitness_markers"]["weight_kg_30d_ago"] == 72.0
+    # More than a week from that day: none.
+    far = _brief(monkeypatch, {tools.WEIGHT: [_row(1, 70.0), _row(24 * 22, 71.0)]})
+    assert far["fitness_markers"]["weight_kg_30d_ago"] is None
+    # No weigh-in in the last 30 days: nothing to compare with, so no 30-day-ago weight either.
+    stale = _brief(monkeypatch, {tools.WEIGHT: [_row(24 * 33, 72.0)]})
+    assert stale["fitness_markers"]["weight_kg_latest"] is None
+    assert stale["fitness_markers"]["weight_kg_30d_ago"] is None
+    # A day older than the raw rows (compacted into a Daily summary) still counts.
+    monkeypatch.setattr(tools, "_get_tiered_daily", lambda mt, uid, days: [] if mt != tools.WEIGHT else tools._in_kg(mt, [
+        {"date": (NOW - timedelta(days=33)).date().isoformat(), "unit": "lb", "avg_value": 160.0, "min_value": 160.0,
+         "max_value": 160.0, "sum_value": 160.0, "sample_count": 1, "source": "summary"}]))
+    def fetch(metric_type, user_id, since, limit=500, source_filter=None):
+        return [_row(1, 70.0)] if metric_type == tools.WEIGHT else []
+    monkeypatch.setattr(tools, "_fetch_metrics", fetch)
+    assert tools.get_coaching_brief()["fitness_markers"]["weight_kg_30d_ago"] == 72.57
 
 
 def test_steps_and_energy_are_summed_in_sql_over_seven_whole_days(monkeypatch):
