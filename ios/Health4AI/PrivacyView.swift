@@ -12,17 +12,29 @@ struct PrivacyView: View {
 
     var body: some View {
         NavigationStack {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-h4aiScreenshotWorkoutDetails") {
+                WorkoutDetailView()
+            } else { privacyContent }
+            #else
+            privacyContent
+            #endif
+        }
+    }
+
+    private var privacyContent: some View {
             ScrollView {
                 VStack(spacing: 24) {
                     dataFlowDiagram
                     guaranteesSection
+                    NavigationLink("Optional workout details") { WorkoutDetailView() }
+                        .frame(minHeight: 44)
                     openSourceSection
                 }
                 .padding()
             }
             .navigationTitle("Privacy")
             .navigationBarTitleDisplayMode(.large)
-        }
     }
 
     // MARK: - Data flow diagram
