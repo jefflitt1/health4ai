@@ -370,6 +370,40 @@ def _fetch_metrics_snapshot(user_id: str, day_start: str, day_end: str,
         conn.close()
 
 
+def _fetch_snapshot_highlights(user_id: str, day_start: str, day_end: str) -> dict[str, dict]:
+    """Five daily highlights independent of the capped all-metrics listing.
+
+    Body mass selects the first convertible reading and retains its original unit
+    until the shared converter runs. Unknown units remain visible in all_metrics.
+    """
+    conn = _connect()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                f"""
+                SELECT metric_type, SUM(value) AS sum_value,
+                       (array_agg(value ORDER BY started_at ASC))[1] AS first_value,
+                       (array_agg(unit ORDER BY started_at ASC))[1] AS first_unit
+                FROM {TABLE}
+                WHERE user_id = %s AND started_at >= %s AND started_at < %s
+                  AND metric_type = ANY(%s) AND value IS NOT NULL
+                  AND (metric_type <> %s OR
+                       BTRIM(COALESCE(NULLIF(unit, ''), 'kg')) = ANY(%s))
+                GROUP BY metric_type
+                """,
+                (user_id, day_start, day_end,
+                 [STEPS, ACTIVE_ENERGY, RESTING_HR, HRV, WEIGHT], WEIGHT, list(_KG_PER_UNIT)),
+            )
+            result = {r["metric_type"]: dict(r) for r in cur.fetchall()}
+        if WEIGHT in result:
+            weight = result[WEIGHT]
+            weight["first_value"] = _rows_in_kg(WEIGHT, [
+                {"value": weight["first_value"], "unit": weight["first_unit"]}
+            ])[0]["value"]
+        return result
+    finally:
+        conn.close()
+
 def _fetch_summaries(metric_type: str, user_id: str,
                      since_date: str, limit: int = 500) -> list[dict]:
     """Query daily summaries table for historical data."""
@@ -1212,6 +1246,7 @@ def get_daily_snapshot(date: str = "") -> dict:
 
     rows = [_rows_in_kg(WEIGHT, [r])[0] if r.get("metric_type") == WEIGHT else r
             for r in _fetch_metrics_snapshot(uid, day_start, day_end, limit=1000)]
+    key_metrics = _fetch_snapshot_highlights(uid, day_start, day_end)
 
     # Group by metric type
     by_type: dict[str, list[dict]] = {}
@@ -1219,23 +1254,15 @@ def get_daily_snapshot(date: str = "") -> dict:
         mt = r["metric_type"]
         by_type.setdefault(mt, []).append(r)
 
-    # Summarise key metrics
-    def first_val(metric: str) -> float | None:
-        if metric == WEIGHT:  # in kg whatever its unit, as "weight_kg" says (rows are converted above)
-            return next((r["value"] for r in by_type.get(WEIGHT, []) if r.get("unit") == "kg" and r.get("value") is not None), None)
-        return by_type[metric][0]["value"] if metric in by_type else None
-
-    def sum_val(metric: str) -> float | None:
-        vals = [r["value"] for r in by_type.get(metric, []) if r.get("value")]
-        return round(sum(vals), 0) if vals else None
-
     cutoff_date = (_now().date() - timedelta(days=RAW_CUTOFF_DAYS)).isoformat()
     is_historical = date < cutoff_date
     highlights_fallback_used = False
 
     def highlight(metric: str, cumulative: bool) -> float | None:
         nonlocal highlights_fallback_used
-        val = sum_val(metric) if cumulative else first_val(metric)
+        aggregate = key_metrics.get(metric, {})
+        raw_value = aggregate.get("sum_value" if cumulative else "first_value")
+        val = round(raw_value, 0) if cumulative and raw_value is not None else raw_value
         if val is not None or not is_historical:
             return val
         # Raw rows for this date have already been compacted away — fall back to the
@@ -1262,7 +1289,7 @@ def get_daily_snapshot(date: str = "") -> dict:
         "total_records": len(rows),
         "truncated": len(rows) >= 1000,
         "truncation_note": "Use query_metric with a specific metric_type to retrieve complete data for a single metric." if len(rows) >= 1000 else None,
-        "metrics_present": sorted(by_type.keys()),
+        "metrics_present": sorted(by_type.keys() | key_metrics.keys()),
         "highlights": highlights,
         "highlights_source": "daily_summaries (compacted)" if highlights_fallback_used else "raw",
         "workouts": [

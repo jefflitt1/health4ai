@@ -67,6 +67,7 @@ def test_get_daily_snapshot_unpadded_old_date_falls_back_to_summaries(monkeypatc
     day, unpadded = _old_day_whose_unpadded_form_sorts_after_the_cutoff()
     # Raw rows for an old day are compacted away; only its daily summary is left.
     monkeypatch.setattr(tools, "_fetch_metrics_snapshot", lambda *a, **k: [])
+    monkeypatch.setattr(tools, "_fetch_snapshot_highlights", lambda *a, **k: {})
     monkeypatch.setattr(tools, "_fetch_summaries_range",
                         lambda metric, *_a: [{"sum_value": 4321.0, "avg_value": 4321.0}]
                         if metric == tools.STEPS else [])
