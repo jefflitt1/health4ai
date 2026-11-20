@@ -104,6 +104,42 @@ def test_imprecise_points_are_skipped_and_counted():
     assert result["points_skipped_low_accuracy"] == 1
 
 
+def test_overlapping_manual_and_motion_pauses_subtracted_once():
+    # One 10 s, 30 m segment with a manual pause 2-6 s and a motion pause 3-5 s inside it:
+    # 4 s paused and 6 s moving, not 6 s paused.
+    points = line(30, step_s=10)
+    assert len(points) == 2
+    events = [event("pause", 2), event("motion_paused", 3),
+              event("motion_resumed", 5), event("resume", 6)]
+    result = compute_splits(points, unit="km", events=events, events_truncated=False)
+    assert result["splits"][0]["elapsed_seconds"] == pytest.approx(6, abs=0.05)
+
+
+def _second_route(points, route, lon_offset_deg=0.0, shift_s=0):
+    return [dict(p, route_uuid=route, longitude=p["longitude"] + lon_offset_deg,
+                 timestamp=p["timestamp"] + timedelta(seconds=shift_s)) for p in points]
+
+
+def test_routes_sharing_timestamps_are_not_interleaved():
+    # Two recordings of the same 600 m at the same times (two devices): counted once, not
+    # zeroed by alternating between routes.
+    first = line(600)
+    second = _second_route(first, str(uuid.UUID(int=2)), lon_offset_deg=0.00001)
+    result = compute_splits(first + second, unit="km", events=[], events_truncated=False)
+    assert result["total_distance_m"] == pytest.approx(600, abs=1)
+    assert result["splits"][0]["elapsed_seconds"] == pytest.approx(200, abs=0.5)
+
+
+def test_gap_between_routes_is_not_moving_time():
+    # 600 m, a 10 minute gap with no route (no pause events), then another 600 m.
+    first = line(600)
+    second = _second_route(line(600), str(uuid.UUID(int=2)), shift_s=200 + 600)
+    result = compute_splits(first + second, unit="km", events=[], events_truncated=False)
+    assert result["total_distance_m"] == pytest.approx(1200, abs=1)
+    assert result["splits"][0]["elapsed_seconds"] == pytest.approx(1000 / 3, abs=0.5)
+    assert result["splits"][1]["elapsed_seconds"] == pytest.approx(200 / 3, abs=0.5)
+
+
 def test_invalid_unit_rejected():
     with pytest.raises(ValueError):
         compute_splits(line(100), unit="furlong", events=[], events_truncated=False)

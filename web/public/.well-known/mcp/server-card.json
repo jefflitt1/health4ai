@@ -37,7 +37,7 @@
     },
     {
       "name": "get_workout_routes",
-      "description": "Optional source-checkout tool, disabled by default: paginated observed GPS route points and explicit invalid-point counts. Requires separate route consent, optional schema and HEALTH4AI_WORKOUT_ROUTES_ENABLED; not yet included in the published package."
+      "description": "Optional source-checkout tool, disabled by default: paginated observed GPS route points and explicit invalid-point counts, plus optional per-km or per-mile splits derived from the route. Requires separate route consent, optional schema and HEALTH4AI_WORKOUT_ROUTES_ENABLED; not yet included in the published package."
     },
     {
       "name": "get_daily_snapshot",

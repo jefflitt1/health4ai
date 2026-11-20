@@ -46,7 +46,39 @@ def _paused_intervals(events, end):
                 if kind == resume_kind and pause_kind in open_kind:
                     intervals.append((open_kind.pop(pause_kind), at))
     intervals.extend((start, end) for start in open_kind.values())
-    return intervals
+    # A manual pause and a motion pause can overlap; summing both would subtract the shared
+    # time twice, so overlapping intervals are merged first.
+    merged = []
+    for start, stop in sorted(intervals):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], stop))
+        else:
+            merged.append((start, stop))
+    return merged
+
+
+def _route_segments(usable):
+    """Consecutive point pairs within each route, in time order, never across routes.
+
+    Sorting every point by time interleaves routes recorded at the same moment (two devices)
+    and the same-route check then drops every segment. Each route is walked on its own, and
+    a route that starts before the previous accepted route ends is a duplicate recording of
+    the same movement and is left out, so distance is counted once. The time between two
+    routes has no route and is neither distance nor moving time.
+    """
+    by_route = {}
+    for p in usable:
+        by_route.setdefault(str(p["route_uuid"]), []).append(p)
+    routes = sorted(by_route.values(), key=lambda pts: (_ts(pts[0]["timestamp"]), str(pts[0]["route_uuid"])))
+    segments, last_end, duplicates = [], None, 0
+    for pts in routes:
+        start, stop = _ts(pts[0]["timestamp"]), _ts(pts[-1]["timestamp"])
+        if last_end is not None and start < last_end:
+            duplicates += 1
+            continue
+        segments.extend(zip(pts, pts[1:]))
+        last_end = stop
+    return segments, duplicates
 
 
 def _overlap(t0, t1, intervals):
@@ -83,13 +115,13 @@ def compute_splits(points, unit, events, events_truncated):
         current.update(distance=0.0, active=0.0, gain=0.0, loss=0.0, has_alt=False)
 
     total = 0.0
-    for prev, nxt in zip(usable, usable[1:]):
+    segments, overlapping_routes = _route_segments(usable)
+    for prev, nxt in segments:
         t0, t1 = _ts(prev["timestamp"]), _ts(nxt["timestamp"])
         active = max(0.0, (t1 - t0) - _overlap(t0, t1, paused))
-        same_route = prev["route_uuid"] == nxt["route_uuid"]
-        dist = _haversine(prev, nxt) if same_route and active > 0 else 0.0
+        dist = _haversine(prev, nxt) if active > 0 else 0.0
         climb = None
-        if same_route and prev.get("altitude") is not None and nxt.get("altitude") is not None \
+        if prev.get("altitude") is not None and nxt.get("altitude") is not None \
                 and prev.get("vertical_accuracy", -1) >= 0 and nxt.get("vertical_accuracy", -1) >= 0:
             climb = nxt["altitude"] - prev["altitude"]
         total += dist
@@ -110,6 +142,7 @@ def compute_splits(points, unit, events, events_truncated):
         "total_distance_m": round(total, 1),
         "points_used": len(usable),
         "points_skipped_low_accuracy": skipped,
+        "overlapping_routes_skipped": overlapping_routes,
         "splits": splits,
         "notes": ("Derived from exported GPS route points only (haversine, accuracy <= 50 m); "
                   "no route means no splits. Heart rate is not included."),
