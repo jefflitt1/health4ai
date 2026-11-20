@@ -42,10 +42,12 @@ PY
 }
 survivors=0
 mutate "upgrade re-arms everything"    'guard trackingStarted else {' 'guard trackingStarted || true else {'
-mutate "seen types probed again"       'completed.subtracting(seen)' 'completed'
-mutate "unfinished types probed"       'completed.subtracting(seen)' 'completed.union(seen)'
-mutate "probe outside candidates"      'let found = probed.intersection(candidates(completed: completed, seen: seen))' 'let found = probed'
-mutate "rearmed marked seen early"     'return Decision(rearm: found, seen: seen)' 'return Decision(rearm: found, seen: seen.union(found))'
-mutate "nothing ever re-armed"         'return Decision(rearm: found, seen: seen)' 'return Decision(rearm: [], seen: seen)'
-mutate "seeding forgets data types"    'return Decision(rearm: [], seen: seen.union(found))' 'return Decision(rearm: [], seen: seen)'
+mutate "seen types probed again"       'completed.subtracting(seen).subtracting(rearmed)' 'completed.subtracting(rearmed)'
+mutate "rearmed types probed again"    'completed.subtracting(seen).subtracting(rearmed)' 'completed.subtracting(seen)'
+mutate "probe outside candidates"      'let found = probed.intersection(candidates(completed: completed, seen: seen, rearmed: rearmed))' 'let found = probed'
+mutate "rearmed marked seen early"     'return Decision(rearm: found, seen: seen, rearmed:' 'return Decision(rearm: found, seen: seen.union(found), rearmed:'
+mutate "rearm not recorded"            'rearmed: rearmed.union(found),' 'rearmed: rearmed,'
+mutate "nothing ever re-armed"         'return Decision(rearm: found, seen: seen,' 'return Decision(rearm: [], seen: seen,'
+mutate "seeding forgets data types"    'return Decision(rearm: [], seen: seen.union(found), rearmed: rearmed,' 'return Decision(rearm: [], seen: seen, rearmed: rearmed,'
+mutate "failed seeding closes"         'trackingStarted: !probeFailed)' 'trackingStarted: true)'
 [ "$survivors" -eq 0 ] && echo "ALL MUTANTS KILLED" || { echo "$survivors mutant(s) survived"; exit 1; }
