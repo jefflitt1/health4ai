@@ -27,6 +27,7 @@
 		B0000018 /* ConnectAIView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000019 /* ConnectAIView.swift */; };
 		B0000020 /* SheetsLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000020 /* SheetsLogic.swift */; };
 		B0000150 /* SyncPosition.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000150 /* SyncPosition.swift */; };
+		B0000301 /* NewlyReadableTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000301 /* NewlyReadableTypes.swift */; };
 		B0000040 /* SheetsSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000040 /* SheetsSync.swift */; };
 		B0000041 /* SheetsSync+SleepStages.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000041 /* SheetsSync+SleepStages.swift */; };
 		B0000021 /* GoogleAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000021 /* GoogleAuth.swift */; };
@@ -99,6 +100,7 @@
 		A0000019 /* ConnectAIView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectAIView.swift; sourceTree = "<group>"; };
 		A0000020 /* SheetsLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SheetsLogic.swift; sourceTree = "<group>"; };
 		A0000150 /* SyncPosition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncPosition.swift; sourceTree = "<group>"; };
+		A0000301 /* NewlyReadableTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewlyReadableTypes.swift; sourceTree = "<group>"; };
 		A0000040 /* SheetsSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SheetsSync.swift; sourceTree = "<group>"; };
 		A0000041 /* SheetsSync+SleepStages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SheetsSync+SleepStages.swift"; sourceTree = "<group>"; };
 		A0000021 /* GoogleAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleAuth.swift; sourceTree = "<group>"; };
@@ -237,6 +239,7 @@
 				A0000019 /* ConnectAIView.swift */,
 				A0000020 /* SheetsLogic.swift */,
 				A0000150 /* SyncPosition.swift */,
+				A0000301 /* NewlyReadableTypes.swift */,
 				A0000040 /* SheetsSync.swift */,
 				A0000041 /* SheetsSync+SleepStages.swift */,
 				A0000021 /* GoogleAuth.swift */,
@@ -435,6 +438,7 @@
 				B0000018 /* ConnectAIView.swift in Sources */,
 				B0000020 /* SheetsLogic.swift in Sources */,
 				B0000150 /* SyncPosition.swift in Sources */,
+				B0000301 /* NewlyReadableTypes.swift in Sources */,
 				B0000040 /* SheetsSync.swift in Sources */,
 				B0000041 /* SheetsSync+SleepStages.swift in Sources */,
 				B0000021 /* GoogleAuth.swift in Sources */,

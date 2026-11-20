@@ -111,19 +111,7 @@ struct ConnectionView: View {
             }
             horizonSwitchTask?.cancel()
             horizonSwitchTask = Task {
-                // Await the actual stop before re-arming: a cancel REQUEST alone lets a
-                // second runBackfill start while the first is still writing completedTypes.
-                await BulkExportManager.shared.cancelAndWait()
-                guard !Task.isCancelled else { return }
-                syncState.isBackfilling = false
-                BulkExportManager.shared.importOlderHistory(syncState: syncState)
-                // Signed out, the arming waits: the next sign-in starts the import, as it
-                // does for any unfinished one. Live sync needs no action: its next pass
-                // reads the new horizon, drops its floor predicate and keeps its anchor,
-                // so it delivers only what is new while the bulk path sends 2013 → floor.
-                if syncState.isAuthenticated {
-                    BulkExportManager.shared.startBackfill(syncState: syncState)
-                }
+                await BulkExportManager.shared.armOlderHistoryAfterHorizonChange(syncState: syncState)
             }
         }
         .sheet(isPresented: $showSignIn) {
