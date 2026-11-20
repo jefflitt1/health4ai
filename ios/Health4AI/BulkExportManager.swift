@@ -347,7 +347,12 @@ final class BulkExportManager {
             // second runBackfill start while the first is still writing completedTypes.
             await self.cancelAndWait()
             syncState.isBackfilling = false
-            self.importOlderHistory(syncState: syncState)
+            // The setting may have gone back to Last year while the stop was awaited; this
+            // Task is not the caller's, so its cancel never reaches here. Only a horizon
+            // that is still Everything arms the older history.
+            if syncState.importHorizon == .everything {
+                self.importOlderHistory(syncState: syncState)
+            }
             // Signed out, the arming waits: the next sign-in starts the import, as it
             // does for any unfinished one. Live sync needs no action: its next pass
             // reads the new horizon, drops its floor predicate and keeps its anchor,

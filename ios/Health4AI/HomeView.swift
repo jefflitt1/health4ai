@@ -1043,11 +1043,6 @@ struct HomeView: View {
         }
     }
 
-    /// A re-run has to clear per-type completion first. `runBackfill` skips every type
-    /// already in `completedTypes`, so calling startBackfill on a finished import swept
-    /// zero types, latched "complete" again and returned instantly — leaving a user
-    /// whose data is actually missing with no way to retry. Resuming an unfinished run
-    /// must NOT reset, which is why this is only reachable once the import completed.
     /// The Health History setting's `Last year → Everything` change, run from Home.
     private func importFullHistory() {
         Task { @MainActor in
@@ -1055,6 +1050,11 @@ struct HomeView: View {
         }
     }
 
+    /// A re-run has to clear per-type completion first. `runBackfill` skips every type
+    /// already in `completedTypes`, so calling startBackfill on a finished import swept
+    /// zero types, latched "complete" again and returned instantly — leaving a user
+    /// whose data is actually missing with no way to retry. Resuming an unfinished run
+    /// must NOT reset, which is why this is only reachable once the import completed.
     private func rerunImport() {
         if syncState.backfillCompleted {
             BulkExportManager.shared.resetBackfill()
