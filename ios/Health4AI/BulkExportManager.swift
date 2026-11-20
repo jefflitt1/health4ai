@@ -38,6 +38,13 @@ final class BulkExportManager {
     // iOS 27 limited-history cutoff seen at the last check, as seconds since 1970. Absent:
     // never checked. 0: full access. Compared on each check to spot a widening.
     private static let accessLimitKey = "hkb.backfill.accessLimit"
+    /// Types whose import sweep posted at least one sample (NewlyReadableTypes).
+    private static let seenTypesKey = "hkb.backfill.seenTypes"
+    /// Set once `seenTypesKey` is trustworthy: from the first import on a new install, or
+    /// after the one-time seeding check on an install that imported before it existed.
+    private static let seenTrackingKey = "hkb.backfill.seenTracking"
+    /// Types re-armed once by the readability check (NewlyReadableTypes).
+    private static let rearmedTypesKey = "hkb.backfill.rearmedTypes"
 
     /// Types that any iPhone-carrying user necessarily has years of data for.
     ///
@@ -143,6 +150,25 @@ final class BulkExportManager {
         set {
             UserDefaults.standard.set(Array(newValue), forKey: Self.completedTypesKey)
         }
+    }
+
+    private(set) var seenTypes: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: Self.seenTypesKey) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: Self.seenTypesKey) }
+    }
+
+    /// Types already re-armed once by `rearmNewlyReadableTypes`; never re-armed by it again.
+    private(set) var rearmedTypes: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: Self.rearmedTypesKey) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: Self.rearmedTypesKey) }
+    }
+
+    /// Records a type as seen the moment one of its import batches posts, so a sweep
+    /// interrupted after its data chunks and resumed over empty ones still counts.
+    private func markSeen(_ identifier: String) {
+        var seen = seenTypes
+        guard seen.insert(identifier).inserted else { return }
+        seenTypes = seen
     }
 
     private var currentTask: Task<Void, Never>? = nil
@@ -304,12 +330,115 @@ final class BulkExportManager {
         }
     }
 
+    // MARK: - Last year → Everything
+
+    /// The one in-flight arming. Home's Import Full History sets the horizon and arms it; a
+    /// Connection screen alive in another tab sees the same horizon change and arms too.
+    /// The second caller joins the first instead of cancelling the import it just started.
+    @MainActor private var olderHistoryArming: Task<Void, Never>?
+
+    /// Called after the horizon changed `lastYear → everything`. Stops any import, arms the
+    /// window older than the year already sent (`importOlderHistory`), and starts it.
+    @MainActor
+    func armOlderHistoryAfterHorizonChange(syncState: SyncState) async {
+        if let running = olderHistoryArming { return await running.value }
+        let arming = Task { @MainActor in
+            // Await the actual stop before re-arming: a cancel REQUEST alone lets a
+            // second runBackfill start while the first is still writing completedTypes.
+            await self.cancelAndWait()
+            syncState.isBackfilling = false
+            // The setting may have gone back to Last year while the stop was awaited; this
+            // Task is not the caller's, so its cancel never reaches here. Only a horizon
+            // that is still Everything arms the older history.
+            if syncState.importHorizon == .everything {
+                self.importOlderHistory(syncState: syncState)
+            }
+            // Signed out, the arming waits: the next sign-in starts the import, as it
+            // does for any unfinished one. Live sync needs no action: its next pass
+            // reads the new horizon, drops its floor predicate and keeps its anchor,
+            // so it delivers only what is new while the bulk path sends 2013 → floor.
+            if syncState.isAuthenticated {
+                self.startBackfill(syncState: syncState)
+            }
+        }
+        olderHistoryArming = arming
+        await arming.value
+        olderHistoryArming = nil
+    }
+
+    /// Home's Import Full History: the Health History setting's change, made from Home.
+    @MainActor
+    func switchToFullHistory(syncState: SyncState) async {
+        guard syncState.importHorizon == .lastYear else { return }
+        syncState.importHorizon = .everything
+        await armOlderHistoryAfterHorizonChange(syncState: syncState)
+    }
+
+    // MARK: - Types that became readable after their sweep (GitHub #71)
+
+    /// Re-arms each finished type that posted nothing when it was swept but now has data in
+    /// the current window: a Health toggle switched on after setup. Its live-sync anchor is
+    /// already past that history, so without this only samples newer than the switch ever
+    /// arrive. One `limit: 1` query per candidate; a type found once is never probed again,
+    /// and a type is re-armed by this path at most once (`rearmedTypes`), so a sweep that
+    /// still posts nothing cannot re-send the same window on every pass.
+    /// Returns true when it armed; the caller starts the import.
+    func rearmNewlyReadableTypes(syncState: SyncState) async -> Bool {
+        let snapshot = await MainActor.run { () -> (Set<String>, Bool, Date)? in
+            guard currentTask == nil, !syncState.isBackfilling,
+                  ProtectedHealthData.isAvailable else { return nil }
+            let candidates = NewlyReadableTypes.candidates(
+                completed: completedTypes, seen: seenTypes, rearmed: rearmedTypes)
+            return (candidates,
+                    UserDefaults.standard.bool(forKey: Self.seenTrackingKey),
+                    Self.sweepFloor(for: syncState.importHorizon))
+        }
+        guard let (candidates, trackingStarted, floor) = snapshot else { return false }
+        var probed = Set<String>()
+        var probeFailed = false
+        for sampleType in HealthKitManager.sampleTypes() where candidates.contains(sampleType.identifier) {
+            if Task.isCancelled { return false }
+            do {
+                let found = try await HealthKitManager.shared.querySamples(
+                    type: sampleType, startDate: floor, limit: 1)
+                if !found.isEmpty { probed.insert(sampleType.identifier) }
+            } catch {
+                // Unknown is not "none" and not "found": this type is asked again next pass,
+                // and an upgrade's seeding stays open until every probe has answered.
+                if ProtectedHealthData.isUnavailable(error) { return false }
+                probeFailed = true
+                print("[BulkExport] Readability probe failed for \(sampleType.identifier): \(error)")
+            }
+        }
+        return await MainActor.run { () -> Bool in
+            // An import that started during the probes owns completedTypes now.
+            guard currentTask == nil, !syncState.isBackfilling else { return false }
+            let decision = NewlyReadableTypes.decide(
+                completed: completedTypes, seen: seenTypes, rearmed: rearmedTypes,
+                trackingStarted: trackingStarted, probed: probed, probeFailed: probeFailed)
+            seenTypes = decision.seen
+            rearmedTypes = decision.rearmed
+            if decision.trackingStarted {
+                UserDefaults.standard.set(true, forKey: Self.seenTrackingKey)
+            }
+            guard !decision.rearm.isEmpty else { return false }
+            resetTypes(decision.rearm, syncState: syncState)
+            print("[BulkExport] Newly readable, re-armed: \(decision.rearm.sorted())")
+            return true
+        }
+    }
+
     // MARK: - Start backfill
 
     /// Begins (or resumes) the full historical backfill.
     /// Safe to call multiple times — skips already-completed types.
     func startBackfill(syncState: SyncState) {
         guard currentTask == nil else { return } // Already running
+        // Nothing imported yet: every type this import finishes with data will be recorded,
+        // so `seenTypes` is complete from the start and needs no seeding pass (#71).
+        if !Self.hasImportHistory() {
+            UserDefaults.standard.set(true, forKey: Self.seenTrackingKey)
+        }
 
         currentTask = Task { [weak self] in
             guard let self = self else { return }
@@ -403,6 +532,9 @@ final class BulkExportManager {
                     floor: floor,
                     onBatch: { batchPosted, batchStored, earliestDate, latestDate in
                         totalPosted += batchPosted
+                        // Per batch, not from the type's returned count: a resumed sweep
+                        // returns only what it posted after the checkpoint (#71 review).
+                        if batchPosted > 0 { self.markSeen(sampleType.identifier) }
                         if let s = batchStored {
                             totalStored += s
                         } else if batchPosted > 0 {
@@ -878,6 +1010,11 @@ final class BulkExportManager {
 
     func resetBackfill() {
         completedTypes = []
+        // Every type is swept again and recorded afresh, so the record starts complete. A type
+        // left in it from the old sweep would never be probed if the new sweep finds it empty.
+        seenTypes = []
+        rearmedTypes = []
+        UserDefaults.standard.set(true, forKey: Self.seenTrackingKey)
         UserDefaults.standard.removeObject(forKey: "hkb.backfillCompleted")
         UserDefaults.standard.removeObject(forKey: "hkb.backfillProgress")
         UserDefaults.standard.removeObject(forKey: Self.backfillInProgressKey)

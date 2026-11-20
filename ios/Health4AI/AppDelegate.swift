@@ -82,10 +82,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Sheets checks for widened Health access on every pass (SheetsSink).
         guard !isSheetsMode else { return }
         #endif
-        // Access is widened in Settings or the Health app, so it is noticed on return.
+        // Access is widened in Settings or the Health app, so it is noticed on return. A
+        // per-type toggle switched on there is noticed the same way (GitHub #71).
         Task { @MainActor in
             let syncState = SyncEngine.sharedSyncState
-            guard await BulkExportManager.shared.rearmIfHistoryAccessWidened(syncState: syncState) else { return }
+            let widened = await BulkExportManager.shared.rearmIfHistoryAccessWidened(syncState: syncState)
+            let newlyReadable = await BulkExportManager.shared.rearmNewlyReadableTypes(syncState: syncState)
+            guard widened || newlyReadable else { return }
             if UIApplication.shared.applicationState == .background {
                 // The person left before the check finished; sceneEnteredBackground already ran
                 // and skipped scheduling because the import was complete then. Schedule it now
@@ -187,6 +190,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             await BulkExportManager.shared.publishFailedImportTypes(syncState: syncState)
             syncState.refusedHourMetricNames = RefusedHours.shared.pendingNames()
             _ = await BulkExportManager.shared.rearmIfHistoryAccessWidened(syncState: syncState)
+            _ = await BulkExportManager.shared.rearmNewlyReadableTypes(syncState: syncState)
             if BulkExportManager.shared.backfillNeeded {
                 BulkExportManager.shared.startBackfill(syncState: syncState)
             }

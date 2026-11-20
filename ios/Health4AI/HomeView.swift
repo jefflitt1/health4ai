@@ -1043,6 +1043,13 @@ struct HomeView: View {
         }
     }
 
+    /// The Health History setting's `Last year → Everything` change, run from Home.
+    private func importFullHistory() {
+        Task { @MainActor in
+            await BulkExportManager.shared.switchToFullHistory(syncState: syncState)
+        }
+    }
+
     /// A re-run has to clear per-type completion first. `runBackfill` skips every type
     /// already in `completedTypes`, so calling startBackfill on a finished import swept
     /// zero types, latched "complete" again and returned instantly — leaving a user
@@ -1062,6 +1069,14 @@ struct HomeView: View {
         VStack(spacing: 0) {
             Button {
                 SyncEngine.shared.performForegroundSync(trigger: .manual)
+                // Sync Now is where someone looks after switching a metric on (GitHub #71):
+                // a type that became readable since its sweep gets its history, not only
+                // what arrived after the switch.
+                Task { @MainActor in
+                    if await BulkExportManager.shared.rearmNewlyReadableTypes(syncState: syncState) {
+                        BulkExportManager.shared.startBackfill(syncState: syncState)
+                    }
+                }
             } label: {
                 HStack {
                     Image(systemName: "arrow.clockwise")
@@ -1118,6 +1133,13 @@ struct HomeView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .confirmationDialog("Import again from scratch?",
                             isPresented: $confirmStartOver, titleVisibility: .visible) {
+            // Under the one-year default this was the only history action on Home, and it
+            // re-sends the same year. Someone after older data (GitHub #71) never found the
+            // Health History setting, so the full import is offered here too. It adds only
+            // what is older than the year already sent.
+            if syncState.importHorizon == .lastYear {
+                Button("Import Full History") { importFullHistory() }
+            }
             Button("Import Again from Scratch", role: .destructive) { rerunImport() }
             Button("Cancel", role: .cancel) { }
         } message: {
@@ -1126,8 +1148,9 @@ struct HomeView: View {
             Text(syncState.importHorizon == .everything
                  ? "This discards where the last import got to and re-sends your full "
                    + "history from 2013. It can take hours."
-                 : "This discards where the last import got to and re-sends the last "
-                   + "year of your history. It can take a while.")
+                 : "Import Full History adds everything older than the last year, back to "
+                   + "2013, for every metric Health shares with health4ai. It can take hours. "
+                   + "Import Again from Scratch re-sends only the last year.")
         }
     }
 }
