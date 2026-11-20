@@ -55,6 +55,21 @@ def exercise_routes(sql, check, denied, user, other, workout):
     first = get_workout_routes(workout, limit=1)
     check(first['points'][0]['altitude'] is None and first['invalid_counts'] == counts,
           'MCP preserves unknown altitude and visible invalid count')
+    # The core ingest table always exists in a real deployment; this disposable database
+    # loads only the optional schema, so a minimal core shape stands in for it. The UUID is
+    # stored upper-case, as iOS writes uuidString, to prove the case-insensitive match.
+    sql('RESET ROLE')
+    sql('''CREATE TABLE IF NOT EXISTS public.healthkit_metrics(user_id uuid, metric_type text,
+        started_at timestamptz, metadata jsonb)''')
+    sql("INSERT INTO public.healthkit_metrics VALUES(%s,'HKWorkoutTypeIdentifier','2026-11-16T10:00:00Z',%s)",
+        (user, Json({'workout_uuid': workout.upper(), 'workout_events': [],
+                     'workout_events_truncated': False})))
+    sql('SET ROLE service_role')
+    with_splits = get_workout_routes(workout, limit=1, splits='km')
+    check(with_splits['points'] == first['points'] and with_splits['splits']['unit'] == 'km'
+          and with_splits['splits']['points_used'] >= 2
+          and with_splits['splits']['time_basis'] == 'moving_excluding_recorded_pauses',
+          'route splits read the whole snapshot and the upper-case workout event row on real PostgreSQL')
     second = get_workout_routes(workout, cursor=first['next_cursor'], limit=1)
     check(second['points'][0]['point_index'] == 2 and second['next_cursor'] is None,
           'route cursor traverses original source index gaps')

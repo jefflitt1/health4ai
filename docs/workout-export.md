@@ -17,7 +17,9 @@ backend; health4ai does not receive it.
 Types include lap, segment, marker, pause, resume, motion pause/resume, and
 pause/resume request. Unknown types keep their numeric value. Events are recorded
 markers, not synthesized mile/kilometer splits. A pause/resume *request* is not
-proof that a pause/resume occurred.
+proof that a pause/resume occurred. Derived per-km or per-mile splits are computed
+from exported GPS route points by the MCP (`get_workout_routes` with `splits`),
+never stored; recorded pauses are excluded only when this event array is complete.
 
 The ingest endpoint permits at most 4 KiB of serialized metadata. Existing metadata
 is preserved and only as many events as fit are added. Inspect the total and
