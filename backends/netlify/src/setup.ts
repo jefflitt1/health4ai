@@ -6,10 +6,16 @@
 //   GET  /api/setup/keys               -> { keys: [...] }
 //   POST /api/setup/keys {label}       -> { id, key, key_prefix, label }   (key shown once)
 //   POST /api/setup/keys/:id/revoke    -> 204, or 404 if no such active key
+//   POST /api/setup/samples {samples}  -> stores Samples for the Owner, with /api/ingest's limits,
+//                                         checks and response (the CPAP import page)
 
 import { json } from './http.ts'
+import { ingestBatch } from './ingest.ts'
 import { setupSecretMatches } from './keys.ts'
-import { ensureOwner, issueDeviceKey, listDeviceKeys, revokeDeviceKey, setupSecret, type Queryable } from './store.ts'
+import {
+  ensureOwner, issueDeviceKey, listDeviceKeys, replaceMergedHours, revokeDeviceKey, setupSecret, upsertDeviceRows,
+  type Queryable,
+} from './store.ts'
 
 export const SETUP_SECRET_HEADER = 'X-Setup-Secret'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -32,6 +38,13 @@ export async function handleSetup(req: Request, getDb: () => Queryable): Promise
 
   if (path === '/api/setup' && req.method === 'GET') {
     return json({ person_id: ownerId })
+  }
+
+  if (path === '/api/setup/samples' && req.method === 'POST') {
+    return ingestBatch(req, ownerId, {
+      upsertDeviceRows: (rows) => upsertDeviceRows(db, rows),
+      replaceMergedHours: (userId, rows) => replaceMergedHours(db, userId, rows),
+    })
   }
 
   if (path === '/api/setup/keys' && req.method === 'GET') {

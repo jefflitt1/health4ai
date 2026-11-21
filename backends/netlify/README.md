@@ -11,6 +11,13 @@ account. Vocabulary: [GLOSSARY.md](GLOSSARY.md).
   less is skipped, not stored, and counted in a `skipped_merged_hours` response field.
 - `/` and `/api/setup/*`: a setup page, behind a setup secret the first deploy generates, that
   issues and revokes Device keys and shows your person ID.
+- `/cpap.html`: a CPAP import page, behind the same secret. Pick a ResMed AirSense 11 SD card's top
+  folder; the browser reads `STR.edf`, the `DATALOG` event files and the leak signal of each
+  session's trend file (never the breathing waveforms), and uploads for you, as Samples, each
+  Night's `cpap.ahi`, `cpap.usage_hours`, `cpap.leak_p95` and `cpap.pressure_median`, every
+  `cpap.event.<type>`, and the `cpap.leak_trace` (`POST /api/setup/samples`). Importing the same
+  card again, or a later one that overlaps it, replaces those Nights instead of doubling them, as
+  long as the time zone is the same. `scripts/cpap-import.mjs` does the same from a terminal.
 - `netlify/database/migrations/`: the schema, applied by Netlify on every deploy.
 
 ## Set up
@@ -56,4 +63,6 @@ Tools are pinned in `mise.toml`.
 pnpm install --frozen-lockfile
 pnpm test        # unit tests + migrations and SQL against a local Netlify Database
 pnpm typecheck
+CPAP_CARD=/path/to/card pnpm test:cpap
+                 # the CPAP reader on a real SD card: checks that print counts, never readings
 ```

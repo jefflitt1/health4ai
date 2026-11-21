@@ -106,14 +106,8 @@ export async function handleIngest(req: Request, deps: IngestDeps): Promise<Resp
   // Fast path only: a Content-Length that is present and too large is refused before any work.
   // A MISSING header is not refused: HTTP/2 does not require it and a proxy hop may drop it, and
   // the app does not retry 4xx. The real limit is enforced on the bytes that arrive.
-  const contentLengthHeader = req.headers.get('content-length')
-  if (contentLengthHeader !== null) {
-    const contentLength = Number(contentLengthHeader)
-    if (!Number.isFinite(contentLength) || contentLength > MAX_BODY_BYTES) {
-      await releaseBody(req.body)
-      return json({ error: 'Request body exceeds maximum size' }, 413)
-    }
-  }
+  const tooLarge = await refuseDeclaredOversize(req)
+  if (tooLarge) return tooLarge
 
   const authHeader = req.headers.get('Authorization')
   if (!authHeader?.startsWith('Bearer ')) {
@@ -121,7 +115,27 @@ export async function handleIngest(req: Request, deps: IngestDeps): Promise<Resp
   }
   const userId = await deps.authenticate(authHeader.slice(7))
   if (!userId) return json({ error: 'Unauthorized' }, 401)
+  return ingestBatch(req, userId, deps)
+}
 
+/** A 413 for a Content-Length that is present and too large (or unreadable), before any work. */
+async function refuseDeclaredOversize(req: Request): Promise<Response | null> {
+  const contentLengthHeader = req.headers.get('content-length')
+  if (contentLengthHeader === null) return null
+  const contentLength = Number(contentLengthHeader)
+  if (Number.isFinite(contentLength) && contentLength <= MAX_BODY_BYTES) return null
+  await releaseBody(req.body)
+  return json({ error: 'Request body exceeds maximum size' }, 413)
+}
+
+/**
+ * Validates and stores one batch for a person the caller has already authenticated: /api/ingest
+ * after its Device key check, and the setup API's sample upload (the CPAP import page) after its
+ * setup-secret check. Same limits, checks and response either way.
+ */
+export async function ingestBatch(req: Request, userId: string, deps: Omit<IngestDeps, 'authenticate'>): Promise<Response> {
+  const tooLarge = await refuseDeclaredOversize(req)
+  if (tooLarge) return tooLarge
   const bodyText = await readBodyCapped(req, MAX_BODY_BYTES)
   if (bodyText === null) {
     return json({ error: 'Request body exceeds maximum size' }, 413)

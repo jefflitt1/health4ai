@@ -1,6 +1,6 @@
 # health4ai
 
-Moves people's Apple Health data into storage they own, so an AI client can query it.
+Moves people's Apple Health and CPAP data into storage they own, so an AI client can query it.
 
 ## People and places
 
@@ -43,3 +43,7 @@ _Avoid_: Aggregate, rollup
 **Daily summary**:
 One day's rollup of one metric, with day boundaries in the Person's time zone.
 _Avoid_: Daily aggregate
+
+**Night**:
+One sleep period from noon to noon, dated by the evening it began: sleep that starts before noon belongs to the previous date. A CPAP card import stores each Night's summary Samples from its first mask-on, with the date in `metadata.night`.
+_Avoid_: Day, session
