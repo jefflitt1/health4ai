@@ -439,13 +439,17 @@ export function readCard(card, { timeZone }) {
     return values
   }
   const maskOn = signal('MaskOn'), maskOff = signal('MaskOff'), ahi = signal('AHI')
-  const leak = signal('Leak.95'), pressure = signal('MaskPress.50')
+  // Leak and pressure are summaries of their own: without them the Night, its events and its leak
+  // trace still import.
+  const leak = str.values('Leak.95'), pressure = str.values('MaskPress.50')
   /** @type {{ path: string, reason: string }[]} */
   const unreadable = []
   // Leak is read in L/min; the AirSense 11 writes Leak.95 in L/s. Any other unit is not guessed at.
   const leakUnit = str.signals.find((s) => s.label === 'Leak.95')?.unit.trim().toLowerCase()
   const leakToLpm = leakUnit === 'l/s' ? 60 : leakUnit === 'l/min' ? 1 : null
-  if (leakToLpm === null) unreadable.push({ path: 'STR.edf', reason: `Leak.95 is in an unknown unit (${leakUnit || 'none'}); leak skipped` })
+  if (!leak) unreadable.push({ path: 'STR.edf', reason: 'STR.edf has no Leak.95 signal; leak skipped' })
+  else if (leakToLpm === null) unreadable.push({ path: 'STR.edf', reason: `Leak.95 is in an unknown unit (${leakUnit || 'none'}); leak skipped` })
+  if (!pressure) unreadable.push({ path: 'STR.edf', reason: 'STR.edf has no MaskPress.50 signal; pressure skipped' })
 
   /** @typedef {{ date: string, record: number, sessions: { on: number, off: number }[], events: number }} Night */
   /** @type {Map<string, Night>} */
@@ -571,8 +575,8 @@ export function readCard(card, { timeZone }) {
     const nightly = [
       { metric_type: 'cpap.ahi', value: tidy(ahi[r][0]), unit: 'events/h', ...at },
       { metric_type: 'cpap.usage_hours', value: usageHours(n), unit: 'h', ...at },
-      ...(leakToLpm === null ? [] : [{ metric_type: 'cpap.leak_p95', value: tidy(leak[r][0] * leakToLpm), unit: 'L/min', ...at }]),
-      { metric_type: 'cpap.pressure_median', value: tidy(pressure[r][0]), unit: 'cmH2O', ...at },
+      ...(!leak || leakToLpm === null ? [] : [{ metric_type: 'cpap.leak_p95', value: tidy(leak[r][0] * leakToLpm), unit: 'L/min', ...at }]),
+      ...(!pressure ? [] : [{ metric_type: 'cpap.pressure_median', value: tidy(pressure[r][0]), unit: 'cmH2O', ...at }]),
     ]
     // A signal whose header gives no scale (digital min = max) reads as NaN: leave it out rather
     // than upload a null.
@@ -617,6 +621,7 @@ export async function uploadSamples(samples, { post, wait = (ms) => new Promise(
     for (let tries = 1; ; tries++) {
       const res = await post(batch)
       if (res.status === 429 && tries < 3) {
+        await res.json().catch(() => {}) // read, so the response does not hold its connection while we wait
         await wait(60_000)
         continue
       }

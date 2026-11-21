@@ -364,6 +364,18 @@ describe('reading a card', () => {
     expect(unknown.stats.unreadable).toEqual([{ path: 'STR.edf', reason: 'Leak.95 is in an unknown unit (cfm); leak skipped' }])
   })
 
+  test('an STR.edf without Leak.95 or MaskPress.50 still reads, without that metric, and says so', () => {
+    const str = buildEdf({ startDate: '10.01.24', startTime: '12.00.00', recordSeconds: 86400,
+      signals: [{ label: 'MaskOn', ...minutes }, { label: 'MaskOff', ...minutes }, one('AHI', 0, 240, 0, 2400)],
+      records: [[slots(660), slots(1080), [52]]] })
+    const card = readCard({ str, events: [] }, { timeZone: 'UTC' })
+    expect(card.samples.map((x) => x.metric_type).sort()).toEqual(['cpap.ahi', 'cpap.usage_hours'])
+    expect(card.stats.unreadable).toEqual([
+      { path: 'STR.edf', reason: 'STR.edf has no Leak.95 signal; leak skipped' },
+      { path: 'STR.edf', reason: 'STR.edf has no MaskPress.50 signal; pressure skipped' },
+    ])
+  })
+
   test('an STR.edf without a needed signal, or not one record a day, is refused by name', () => {
     const without = buildEdf({ startDate: '10.01.24', startTime: '12.00.00', recordSeconds: 86400,
       signals: [{ label: 'MaskOn', ...minutes }, { label: 'MaskOff', ...minutes }], records: [] })
@@ -474,12 +486,15 @@ describe('uploading', () => {
     const waits: number[] = []
     const statuses = [429, 200]
     const sent: number[] = []
+    const replies: Response[] = []
     await uploadSamples(samples(5), {
-      post: async (batch) => { sent.push(batch.length); return reply(statuses.shift()!, { inserted: batch.length }) },
+      post: async (batch) => { sent.push(batch.length); replies.push(reply(statuses.shift()!, { inserted: batch.length })); return replies.at(-1)! },
       wait: async (ms) => { waits.push(ms) },
     })
     expect(waits).toEqual([60_000])
     expect(sent).toEqual([5, 5])
+    // The 429's body is read before the wait, so its connection is not held for the minute.
+    expect(replies.every((r) => r.bodyUsed)).toBe(true)
 
     await expect(uploadSamples(samples(5), {
       post: async () => reply(429, { error: 'slow down' }),
