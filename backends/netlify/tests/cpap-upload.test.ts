@@ -99,3 +99,29 @@ test('GET is not an upload', async () => {
   const res = await handleSetup(new Request('https://example.test/api/setup/samples', { headers: { 'X-Setup-Secret': secret } }), () => pool)
   expect(res.status).toBe(404)
 })
+
+async function clocks(presented = secret) {
+  const res = await handleSetup(new Request('https://example.test/api/setup/cpap-clock', { headers: { 'X-Setup-Secret': presented } }), () => pool)
+  return { status: res.status, body: await res.json() }
+}
+
+test('the Machine clocks earlier imports used, so the page can warn before storing a Night twice', async () => {
+  expect(await clocks()).toEqual({ status: 200, body: { clocks: [], unrecorded: false } })
+  const clocked = (clock: string | null, from: number) => nights(2).map((s, i) => ({
+    ...s, metric_type: 'cpap.usage_hours', unit: 'h', started_at: new Date(NOW - (from + i + 1) * D).toISOString(),
+    metadata: clock ? { ...s.metadata, clock } : s.metadata,
+  }))
+  await upload({ samples: [...clocked('-05:00', 0), ...clocked('America/Toronto', 2), ...clocked(null, 4)] })
+  // Only nightly usage Samples are looked at; an event with another clock does not count.
+  await upload({ samples: [{ ...nights(1)[0], metric_type: 'cpap.event.hypopnea', metadata: { night: 'x', clock: '+01:00' } }] })
+  // Nor does another person's data.
+  const other = (await pool.query<{ id: string }>("INSERT INTO people (display_name) VALUES ('Other') RETURNING id")).rows[0].id
+  await pool.query(`INSERT INTO healthkit_metrics (user_id, metric_type, value, unit, source_device, started_at, metadata)
+    VALUES ($1, 'cpap.usage_hours', 7, 'h', 'AirSense 11', now(), '{"night": "y", "clock": "+09:00"}')`, [other])
+  // Nights imported before clocks were recorded count as an unknown clock.
+  expect(await clocks()).toEqual({ status: 200, body: { clocks: ['-05:00', 'America/Toronto'], unrecorded: true } })
+})
+
+test('the Machine clocks are behind the setup secret', async () => {
+  expect((await clocks('wrong')).status).toBe(403)
+})

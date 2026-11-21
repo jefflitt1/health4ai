@@ -8,12 +8,17 @@
 //   POST /api/setup/keys/:id/revoke    -> 204, or 404 if no such active key
 //   POST /api/setup/samples {samples}  -> stores Samples for the Owner, with /api/ingest's limits,
 //                                         checks and response (the CPAP import page)
+//   GET  /api/setup/cpap-clock         -> { clocks: [...], unrecorded }: the Machine clocks
+//                                         (metadata.clock) the Owner's earlier CPAP imports were
+//                                         read with, unrecorded true if some predate recording it,
+//                                         so the import page can warn before an import on another
+//                                         clock stores the same Nights again
 
 import { json } from './http.ts'
 import { ingestBatch } from './ingest.ts'
 import { setupSecretMatches } from './keys.ts'
 import {
-  ensureOwner, issueDeviceKey, listDeviceKeys, replaceMergedHours, revokeDeviceKey, setupSecret, upsertDeviceRows,
+  cpapClocks, ensureOwner, issueDeviceKey, listDeviceKeys, replaceMergedHours, revokeDeviceKey, setupSecret, upsertDeviceRows,
   type Queryable,
 } from './store.ts'
 
@@ -45,6 +50,10 @@ export async function handleSetup(req: Request, getDb: () => Queryable): Promise
       upsertDeviceRows: (rows) => upsertDeviceRows(db, rows),
       replaceMergedHours: (userId, rows) => replaceMergedHours(db, userId, rows),
     })
+  }
+
+  if (path === '/api/setup/cpap-clock' && req.method === 'GET') {
+    return json(await cpapClocks(db, ownerId))
   }
 
   if (path === '/api/setup/keys' && req.method === 'GET') {
