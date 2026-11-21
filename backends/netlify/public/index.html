@@ -173,7 +173,14 @@
     if ($('issue-btn').disabled) return
     $('issue-btn').disabled = true
     try {
-      const issued = await api('/api/setup/keys', { method: 'POST', body: JSON.stringify({ label: $('label').value, scope: $('scope').value }) })
+      const asked = $('scope').value
+      const issued = await api('/api/setup/keys', { method: 'POST', body: JSON.stringify({ label: $('label').value, scope: asked }) })
+      // A setup API from before scopes ignores the field and issues a write key: never offer that
+      // key as the one asked for.
+      if ((issued.scope ?? 'write') !== asked) {
+        await loadKeys()
+        throw new Error(`This site issued a ${issued.scope ?? 'write'} key, not a ${asked} key. Revoke "${issued.label || issued.key_prefix}" below.`)
+      }
       issuedId = issued.id
       $('new-key-value').textContent = issued.key
       $('new-key-scope').textContent = issued.scope === 'read' ? 'Read key' : 'Write key'

@@ -23,6 +23,7 @@ function fixture() {
   const bodies: unknown[] = []
   let release: (() => void) | undefined
   let holdIssue = false
+  let withoutScope = false
   const keys = [
     { id: 'older', label: 'Older', key_prefix: 'h4a_old', last_used_at: null, revoked_at: null as string | null },
     { id: 'issued', label: 'New', key_prefix: 'h4a_new', last_used_at: null, revoked_at: null as string | null },
@@ -42,13 +43,13 @@ function fixture() {
         bodies.push(JSON.parse((init as { body?: string }).body ?? 'null'))
         if (holdIssue) await new Promise<void>(resolve => { release = resolve })
         // As the API does, the issued key carries the scope it was asked for.
-        const scope = (bodies.at(-1) as { scope?: string } | null)?.scope
+        const scope = withoutScope ? undefined : (bodies.at(-1) as { scope?: string } | null)?.scope
         return { status: 201, ok: true, json: async () => ({ id: 'issued', key: 'h4a_SYNTHETIC', scope }) }
       }
       return { status: 200, ok: true, json: async () => ({ keys, person_id: 'fixture' }) }
     },
   })
-  return { get, posts: () => posts, bodies, hold: () => { holdIssue = true }, release: () => release!(),
+  return { get, posts: () => posts, bodies, answerWithoutScope: () => { withoutScope = true }, hold: () => { holdIssue = true }, release: () => release!(),
     revoke: async (index: number) => {
       const row = get('keys').children[index]
       await row.children[3].children[0].onclick!()
@@ -101,4 +102,16 @@ test('the issued key says its scope, and the next key goes back to Write', async
   await f.get('issue-btn').onclick!()
   expect(f.bodies.map((b) => (b as { scope: string }).scope)).toEqual(['read', 'write'])
   expect(f.get('new-key-scope').textContent).toBe('Write key')
+})
+
+test('a key issued with another scope than the one picked is not shown, and the page says so', async () => {
+  // A setup API from before scopes ignores the field and issues a write key, with no scope in its reply.
+  const f = fixture()
+  f.get('scope').value = 'read'
+  f.answerWithoutScope()
+  await f.get('issue-btn').onclick!()
+  expect(f.get('new-key').hidden).toBe(true)
+  expect(f.get('new-key-value').textContent).toBe('')
+  expect(f.get('panel-error').hidden).toBe(false)
+  expect(f.get('panel-error').textContent).toContain('not a read key')
 })

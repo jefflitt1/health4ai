@@ -3,7 +3,7 @@
 // Database.
 
 import type { MergedHourRow, MetricRow } from './ingest.ts'
-import { generateDeviceKey, hashDeviceKey } from './keys.ts'
+import { generateDeviceKey, hashDeviceKey, type KeyScope } from './keys.ts'
 
 export interface Queryable {
   query<R extends Record<string, unknown> = Record<string, unknown>>(
@@ -29,8 +29,7 @@ export async function setupSecret(db: Queryable): Promise<string> {
   return made
 }
 
-/** A Device key writes (a phone, accepted by /api/ingest) or reads (for a reader such as a dashboard). */
-export type KeyScope = 'write' | 'read'
+export type { KeyScope }
 
 /**
  * The person an active Device key of `scope` belongs to, or null, so a key of the other scope is
@@ -46,7 +45,7 @@ export async function personForDeviceKey(db: Queryable, plaintext: string, scope
         WHERE d.id = k.id AND (d.last_used_at IS NULL OR d.last_used_at < now() - interval '1 hour')
      )
      SELECT person_id FROM k`,
-    [hashDeviceKey(plaintext), scope],
+    [hashDeviceKey(plaintext, scope), scope],
   )
   return rows[0]?.person_id ?? null
 }
@@ -98,7 +97,7 @@ export type DeviceKeySummary = {
 }
 
 export async function issueDeviceKey(db: Queryable, personId: string, label: string, scope: KeyScope = 'write') {
-  const key = generateDeviceKey()
+  const key = generateDeviceKey(scope)
   const { rows } = await db.query<{ id: string }>(
     `INSERT INTO device_keys (person_id, key_hash, key_prefix, label, scope)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,

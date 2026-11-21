@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import { NetlifyDB } from '@netlify/database-dev'
 import pg from 'pg'
 import { handleIngest } from '../src/ingest.ts'
+import { hashDeviceKey } from '../src/keys.ts'
 import { handleSetup } from '../src/setup.ts'
 import { ensureOwner, issueDeviceKey, personForDeviceKey, replaceMergedHours, revokeDeviceKey, upsertDeviceRows } from '../src/store.ts'
 
@@ -39,6 +40,16 @@ test('a key row written without a scope writes, and no scope but write or read i
   expect((await pool.query('SELECT scope FROM device_keys')).rows).toEqual([{ scope: 'write' }])
   await expect(pool.query(`INSERT INTO device_keys (person_id, key_hash, key_prefix, label, scope) VALUES ($1, 'h2', 'h4a_two', 'x', 'admin')`, [owner]))
     .rejects.toThrow(/device_keys_scope_valid/)
+})
+
+test('a read key is not stored under the hash a write lookup computes, so code from before scopes cannot accept it', async () => {
+  // A deploy rolled back to before scopes looks keys up by key_hash = sha256(key) alone, keeping
+  // the rows this code wrote. A write key must still match that; a read key must not.
+  const phone = await issueDeviceKey(pool, owner, 'Phone')
+  const reader = await issueDeviceKey(pool, owner, 'Dashboard', 'read')
+  const legacy = async (key: string) => (await pool.query(
+    'SELECT person_id FROM device_keys WHERE key_hash = $1 AND revoked_at IS NULL', [hashDeviceKey(key)])).rows.length
+  expect([await legacy(phone.key), await legacy(reader.key)]).toEqual([1, 0])
 })
 
 test('a lookup for one scope never accepts a key of the other', async () => {
