@@ -18,6 +18,8 @@ account. Vocabulary: [GLOSSARY.md](GLOSSARY.md).
   `cpap.event.<type>`, and the `cpap.leak_trace` (`POST /api/setup/samples`). Importing the same
   card again, or a later one that overlaps it, replaces those Nights instead of doubling them, as
   long as the time zone is the same. `scripts/cpap-import.mjs` does the same from a terminal.
+  The machine keeps every Night's summary in `STR.edf`, but it seems to delete older `DATALOG`
+  folders, so Nights older than the card's `DATALOG` get a summary and no events or leak trace.
 - `netlify/database/migrations/`: the schema, applied by Netlify on every deploy.
 
 ## Set up
