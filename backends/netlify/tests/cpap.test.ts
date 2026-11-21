@@ -8,7 +8,7 @@
 // end) is the one a real AirSense 11 card shows; every value in these files is made up.
 
 import { describe, expect, test } from 'vitest'
-import { parseEdf, pickCardFiles, readCard, readLeakTrace, uploadSamples, wallToInstant } from '../public/cpap.js'
+import { parseEdf, pickCardFiles, readCard, readCardClock, readLeakTrace, uploadSamples, wallToInstant } from '../public/cpap.js'
 import { ANNOTATIONS, buildEdf, concat, tal } from './edf-builder.ts'
 
 describe('EDF', () => {
@@ -126,6 +126,45 @@ describe('device wall clock to UTC', () => {
   test('an unknown time zone is refused', () => {
     expect(() => wallToInstant(0, 'Mars/Olympus')).toThrow(RangeError)
   })
+
+  // A fixed offset from UTC, as an AirSense 11 keeps its clock: the same offset all year.
+  test.each([
+    ['-05:00 in summer stays -5', wall(2026, 7, 15, 23, 0), '-05:00', '2026-07-16T04:00:00.000Z'],
+    ['-05:00 in winter', wall(2026, 1, 15, 23, 0), '-05:00', '2026-01-16T04:00:00.000Z'],
+    ['-05:00 in the hour Toronto repeats', wall(2026, 11, 1, 1, 30), '-05:00', '2026-11-01T06:30:00.000Z'],
+    ['+05:30', wall(2026, 7, 15, 23, 0), '+05:30', '2026-07-15T17:30:00.000Z'],
+    ['+00:00', wall(2026, 7, 15, 23, 0), '+00:00', '2026-07-15T23:00:00.000Z'],
+  ])('fixed offset: %s', (_name, w, offset, expected) => {
+    expect(iso(wallToInstant(w, offset))).toBe(expected)
+  })
+
+  test.each(['-5:00', '-0500', '+15:00', '-05:60', '05:00'])('a malformed offset %s is refused', (offset) => {
+    expect(() => wallToInstant(0, offset)).toThrow(RangeError)
+  })
+})
+
+describe('the machine clock from the card settings', () => {
+  const settings = (featureProfiles: unknown) => new TextEncoder().encode(JSON.stringify({
+    FlowGenerator: { SettingProfiles: { Attributes: { AppliedDateTime: '2026-06-12T04:24:29.707Z' }, FeatureProfiles: featureProfiles } },
+  }))
+
+  test('TimeZoneOffset is the machine clock', () => {
+    expect(readCardClock(settings({ TimeZoneFeature: { TimeZoneOffset: '-05:00' } }))).toBe('-05:00')
+  })
+
+  test('no TimeZoneOffset, or a file that is not JSON, gives none', () => {
+    expect(readCardClock(settings({ AutoRampFeature: { RampTime: 10 } }))).toBeNull()
+    expect(readCardClock(new TextEncoder().encode('not json'))).toBeNull()
+  })
+
+  test('a TimeZoneOffset left null (a disabled profile) is passed over for the real one', () => {
+    expect(readCardClock(settings({ Old: { TimeZoneOffset: null }, TimeZoneFeature: { TimeZoneOffset: '+01:00' } }))).toBe('+01:00')
+    expect(readCardClock(settings({ Old: { TimeZoneOffset: null } }))).toBeNull()
+  })
+
+  test('a TimeZoneOffset that is not ±HH:MM is refused by name, never guessed at', () => {
+    expect(() => readCardClock(settings({ TimeZoneFeature: { TimeZoneOffset: 'EST' } }))).toThrow(/TimeZoneOffset/)
+  })
 })
 
 describe('picking files from the card', () => {
@@ -143,10 +182,12 @@ describe('picking files from the card', () => {
       'AirSense11/DATALOG/20240110/notes_EVE.edf',
       'AirSense11/DATALOG/2024011/20240110_230030_EVE.edf',
       'AirSense11/Backup/STR.edf',
+      'AirSense11/Backup/SETTINGS/CurrentSettings.json',
       'Other/DATALOG/20240110/20240110_230030_EVE.edf',
     ])
     expect(picked).toEqual({
       str: 'AirSense11/STR.edf',
+      settings: 'AirSense11/SETTINGS/CurrentSettings.json',
       events: ['AirSense11/DATALOG/20240110/20240110_230030_EVE.edf', 'AirSense11/DATALOG/20240110/20240110_230030_CSL.edf'],
       leaks: ['AirSense11/DATALOG/20240110/20240110_230038_PLD.edf'],
     })
@@ -154,17 +195,17 @@ describe('picking files from the card', () => {
 
   test('names in another case are picked too (the card is FAT)', () => {
     expect(pickCardFiles(['CARD/STR.EDF', 'CARD/DATALOG/20240110/20240110_230030_eve.EDF', 'CARD/DATALOG/20240110/20240110_230038_BRP.EDF',
-      'CARD/DATALOG/20240110/20240110_230038_pld.EDF']))
-      .toEqual({ str: 'CARD/STR.EDF', events: ['CARD/DATALOG/20240110/20240110_230030_eve.EDF'], leaks: ['CARD/DATALOG/20240110/20240110_230038_pld.EDF'] })
+      'CARD/DATALOG/20240110/20240110_230038_pld.EDF', 'CARD/settings/currentsettings.JSON']))
+      .toEqual({ str: 'CARD/STR.EDF', settings: 'CARD/settings/currentsettings.JSON', events: ['CARD/DATALOG/20240110/20240110_230030_eve.EDF'], leaks: ['CARD/DATALOG/20240110/20240110_230038_pld.EDF'] })
   })
 
   test('works when the card itself is the root', () => {
     expect(pickCardFiles(['DATALOG/20240110/20240110_230030_EVE.edf', 'STR.edf']))
-      .toEqual({ str: 'STR.edf', events: ['DATALOG/20240110/20240110_230030_EVE.edf'], leaks: [] })
+      .toEqual({ str: 'STR.edf', settings: null, events: ['DATALOG/20240110/20240110_230030_EVE.edf'], leaks: [] })
   })
 
   test('no STR.edf means nothing is picked', () => {
-    expect(pickCardFiles(['AirSense11/DATALOG/20240110/20240110_230030_EVE.edf'])).toEqual({ str: null, events: [], leaks: [] })
+    expect(pickCardFiles(['AirSense11/DATALOG/20240110/20240110_230030_EVE.edf'])).toEqual({ str: null, settings: null, events: [], leaks: [] })
   })
 })
 
@@ -262,7 +303,7 @@ describe('reading a card', () => {
     { path: `${dir}20240111/20240111_230000_EVE.edf`, bytes: eventFile('11.01.24', '23.00.00', tal('+60', '10', 'Hypopnea')) },
     { path: unreadable, bytes: new Uint8Array(10) },
   ]
-  const night = { night: '2024-01-10' }
+  const night = { night: '2024-01-10', clock: 'America/Toronto' }
   const nightly = { source_device: 'AirSense 11', started_at: '2024-01-11T04:00:00.000Z', ended_at: '2024-01-11T12:20:00.000Z', metadata: night }
   const event = (type: string, label: string, seconds: number, start: string, end: string) => ({
     metric_type: `cpap.event.${type}`, value: seconds, unit: 's', source_device: 'AirSense 11',
@@ -284,6 +325,20 @@ describe('reading a card', () => {
     expect(card.nights).toEqual([{ date: '2024-01-10', sessions: 2, usageHours: 8, events: 4 }])
     expect(card.stats).toEqual({ nights: 1, sessions: 2, stubSessions: 2, events: 4, droppedEvents: 3, leakMinutes: 0, droppedLeakFiles: 0,
       unreadable: [{ path: unreadable, reason: 'Not an EDF file: the header is cut short' }], skippedSummaries: [] })
+  })
+
+  test('with the machine clock as a fixed offset, a summer Night is not moved by daylight time', () => {
+    // 2024-07-10: 23:00-06:00 by a clock kept at UTC-5. Noon is 17:00Z; 660 and 1080 minutes later
+    // are 04:00Z and 11:00Z on 07-11. Toronto (EDT, UTC-4) would have put them an hour earlier.
+    const card = readCard({ str: strFor('10.07.24', [660], [1080]), events: [
+      { path: `${dir}20240710/20240710_230030_EVE.edf`, bytes: eventFile('10.07.24', '23.00.30', tal('+600', '20', 'Hypopnea')) },
+    ] }, { timeZone: '-05:00' })
+    const ahi = card.samples.find((x) => x.metric_type === 'cpap.ahi')!
+    expect([ahi.started_at, ahi.ended_at]).toEqual(['2024-07-11T04:00:00.000Z', '2024-07-11T11:00:00.000Z'])
+    expect(ahi.metadata).toEqual({ night: '2024-07-10', clock: '-05:00' })
+    const hypopnea = card.samples.find((x) => x.metric_type === 'cpap.event.hypopnea')!
+    expect([hypopnea.started_at, hypopnea.ended_at]).toEqual(['2024-07-11T04:10:10.000Z', '2024-07-11T04:10:30.000Z'])
+    expect(card.nights.map((n) => n.date)).toEqual(['2024-07-10'])
   })
 
   test('reading the same card twice gives the same Samples', () => {
@@ -343,7 +398,7 @@ describe('reading a card', () => {
       { path: `${dir}20240110/20240110_115940_EVE.edf`, bytes: eventFile('10.01.24', '11.59.40', tal('+600', '10', 'Hypopnea')) },
     ] }, { timeZone: 'UTC' })
     const hypopnea = card.samples.find((x) => x.metric_type === 'cpap.event.hypopnea')
-    expect([hypopnea?.started_at, hypopnea?.metadata]).toEqual(['2024-01-10T12:09:30.000Z', { night: '2024-01-10', label: 'Hypopnea' }])
+    expect([hypopnea?.started_at, hypopnea?.metadata]).toEqual(['2024-01-10T12:09:30.000Z', { night: '2024-01-10', label: 'Hypopnea', clock: 'UTC' }])
     expect(card.stats.droppedEvents).toBe(0)
   })
 
@@ -442,7 +497,7 @@ describe('reading a card\'s leak traces', () => {
     ] }, { timeZone: 'America/Toronto' })
     const sample = (value: number, start: string, end: string, minute0: string, values: (number | null)[]) => ({
       metric_type: 'cpap.leak_trace', value, unit: 'L/min', source_device: 'AirSense 11', started_at: start, ended_at: end,
-      metadata: { night: '2024-01-10', minute0, lpm: values },
+      metadata: { night: '2024-01-10', minute0, lpm: values, clock: 'America/Toronto' },
     })
     expect(leaks(card)).toEqual([
       sample(10, '2024-01-11T04:00:30.000Z', '2024-01-11T05:00:00.000Z', '2024-01-11T04:00:00.000Z', lpm.slice(0, 60)),

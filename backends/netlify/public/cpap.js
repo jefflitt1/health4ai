@@ -5,7 +5,8 @@
 //
 // The EDF and EDF+ parsing follows the specification at edfplus.info. Card times are the device's
 // wall clock with no zone, so a parsed time is a "wall" number: milliseconds as if that wall clock
-// were UTC. wallToInstant() turns one into a real instant for a chosen IANA time zone.
+// were UTC. wallToInstant() turns one into a real instant by the Machine clock: the card's fixed
+// offset from UTC (readCardClock), or an IANA time zone for a card that records none.
 
 /**
  * @typedef {object} EdfSignal
@@ -204,12 +205,36 @@ function zoneOffset(ms, timeZone) {
   return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - wholeSecond
 }
 
+const FIXED_OFFSET = /^([+-])(\d\d):(\d\d)$/
+
 /**
- * The instant a wall-clock time in `timeZone` names. In the hour a clock repeats when it falls
- * back, the first occurrence; in the hour it skips when it springs forward, the time the clock
- * would show had it not jumped (02:30 becomes 03:30), so every wall time has exactly one answer.
+ * A fixed offset from UTC ("-05:00", "+05:30") in milliseconds; null for anything else, which is
+ * then taken as an IANA zone. Throws a RangeError for text shaped like an offset that is not
+ * ±HH:MM, or has hours over 14 or minutes over 59. Parsed here rather than handed to Intl, which
+ * not every browser accepts offsets in.
+ * @param {string} text
+ * @returns {number | null}
+ */
+function fixedOffset(text) {
+  const m = FIXED_OFFSET.exec(text)
+  // Anything else that starts like an offset ("-0500", "05:00") is refused here, not handed to
+  // Intl, which accepts some of those forms in one runtime and not another.
+  if (!m) {
+    if (/^[+\-\d]/.test(text)) throw new RangeError(`Invalid UTC offset: ${text} (use ±HH:MM, e.g. -05:00)`)
+    return null
+  }
+  const [hours, minutes] = [Number(m[2]), Number(m[3])]
+  if (hours > 14 || minutes > 59) throw new RangeError(`Invalid UTC offset: ${text}`)
+  return (m[1] === '-' ? -1 : 1) * (hours * 60 + minutes) * 60_000
+}
+
+/**
+ * The instant a wall-clock time names, by a fixed offset from UTC ("-05:00") or an IANA zone. In a
+ * zone's hour a clock repeats when it falls back, the first occurrence; in the hour it skips when
+ * it springs forward, the time the clock would show had it not jumped (02:30 becomes 03:30), so
+ * every wall time has exactly one answer.
  * @param {number} wall wall-clock milliseconds, as if the wall clock were UTC
- * @param {string} timeZone an IANA zone, e.g. "America/Toronto"
+ * @param {string} timeZone "±HH:MM", or an IANA zone, e.g. "America/Toronto"
  * @returns {number} epoch milliseconds
  */
 export function wallToInstant(wall, timeZone) {
@@ -217,13 +242,16 @@ export function wallToInstant(wall, timeZone) {
 }
 
 /**
- * Every instant a wall-clock time in `timeZone` names, earliest first: two in the hour a clock
- * repeats when it falls back, otherwise one (for a skipped time, as wallToInstant gives it).
+ * Every instant a wall-clock time in `timeZone` names, earliest first: two in the hour a zone's
+ * clock repeats when it falls back, otherwise one (for a skipped time, as wallToInstant gives it).
+ * A fixed offset always gives one.
  * @param {number} wall wall-clock milliseconds, as if the wall clock were UTC
- * @param {string} timeZone an IANA zone
+ * @param {string} timeZone "±HH:MM" or an IANA zone
  * @returns {number[]} epoch milliseconds
  */
 function wallToInstants(wall, timeZone) {
+  const offset = fixedOffset(timeZone)
+  if (offset !== null) return [wall - offset]
   // A day either side brackets any transition near this wall time.
   const before = zoneOffset(wall - 86_400_000, timeZone)
   const after = zoneOffset(wall + 86_400_000, timeZone)
@@ -305,25 +333,58 @@ const SESSION_SLACK_MS = 60_000
 // Case-insensitive: the card is FAT, and some tools and mounts change the case of its names.
 const EVENT_FILE = /^DATALOG\/\d{8}\/\d{8}_\d{6}_(EVE|CSL)\.edf$/i
 const LEAK_FILE = /^DATALOG\/\d{8}\/\d{8}_\d{6}_PLD\.edf$/i
+const SETTINGS_FILE = /^SETTINGS\/CurrentSettings\.json$/i
 /** A leak trace Sample covers at most this many clock minutes, so its metadata stays small. */
 export const LEAK_CHUNK_MINUTES = 60
 
 /**
  * The files a card import reads, from every path under the picked folder: the shallowest
- * STR.edf, and the EVE, CSL and PLD files in DATALOG/<YYYYMMDD>/ beside it. Nothing when there is
- * no STR.edf.
+ * STR.edf, the SETTINGS/CurrentSettings.json beside it (the Machine clock), and the EVE, CSL and
+ * PLD files in DATALOG/<YYYYMMDD>/ beside it. Nothing when there is no STR.edf.
  * @param {string[]} paths
- * @returns {{ str: string | null, events: string[], leaks: string[] }}
+ * @returns {{ str: string | null, settings: string | null, events: string[], leaks: string[] }}
  */
 export function pickCardFiles(paths) {
   const depth = (/** @type {string} */ p) => p.split('/').length
   const isStr = (/** @type {string} */ p) => p.toLowerCase() === 'str.edf' || p.toLowerCase().endsWith('/str.edf')
   const strs = paths.filter(isStr)
-  if (!strs.length) return { str: null, events: [], leaks: [] }
+  if (!strs.length) return { str: null, settings: null, events: [], leaks: [] }
   const str = strs.reduce((a, b) => (depth(b) < depth(a) ? b : a))
   const root = str.slice(0, -'STR.edf'.length)
   const under = (/** @type {RegExp} */ name) => paths.filter((p) => p.startsWith(root) && name.test(p.slice(root.length)))
-  return { str, events: under(EVENT_FILE), leaks: under(LEAK_FILE) }
+  return { str, settings: under(SETTINGS_FILE)[0] ?? null, events: under(EVENT_FILE), leaks: under(LEAK_FILE) }
+}
+
+/**
+ * The Machine clock's offset from UTC ("-05:00") as the card's settings file records it (the first
+ * non-null TimeZoneOffset in the JSON), or null when the file has none or is not JSON. An
+ * AirSense 11 keeps this offset all year; it does not follow daylight time. Throws when
+ * TimeZoneOffset is there but not ±HH:MM, so a card is never read on a guessed clock.
+ * @param {Uint8Array} bytes SETTINGS/CurrentSettings.json
+ * @returns {string | null}
+ */
+export function readCardClock(bytes) {
+  let settings
+  try {
+    settings = JSON.parse(new TextDecoder().decode(bytes))
+  } catch {
+    return null
+  }
+  /** @type {unknown} */
+  let found
+  // A null TimeZoneOffset (a disabled profile) says nothing; the search goes on past it.
+  const visit = (/** @type {unknown} */ node) => {
+    if (found !== undefined || !node || typeof node !== 'object') return
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'TimeZoneOffset' && value !== null) { found = value; return }
+      visit(value)
+    }
+  }
+  visit(settings)
+  if (found === undefined) return null
+  if (typeof found !== 'string' || !FIXED_OFFSET.test(found)) throw new Error(`The card's TimeZoneOffset is not ±HH:MM (${JSON.stringify(found)})`)
+  fixedOffset(found) // out-of-range hours or minutes throw here
+  return found
 }
 
 /**
@@ -418,8 +479,10 @@ const snake = (/** @type {string} */ label) => label.trim().toLowerCase().replac
  * seconds before each onset, a card's own flow waveform is flat for nearly every apnea, and the
  * seconds after it are not. So started_at is onset minus duration and ended_at is the onset.
  *
- * Times are the device's wall clock, made instants in `timeZone`; import a card with the same zone
- * every time, or the same Night lands at another started_at and is stored twice. A file that cannot
+ * Times are the Machine clock's, made instants by `timeZone`: the card's own offset from UTC
+ * (readCardClock) when it has one, since the machine does not follow daylight time. Every Sample's
+ * metadata.clock records it. Import a card with the same clock every time, or the same Night lands
+ * at another started_at and is stored twice. A file that cannot
  * be parsed is listed in stats.unreadable and skipped; an STR.edf that cannot is an error. A
  * leak or pressure summary STR.edf lacks, or gives in an unknown unit, is left out and listed in
  * stats.skippedSummaries.
@@ -548,7 +611,7 @@ export function readCard(card, { timeZone }) {
       night.events++
       samples.push({
         metric_type: `cpap.event.${type}`, value, unit: 's', source_device: SOURCE_DEVICE,
-        started_at: iso(start), ended_at: iso(end), metadata: { night: night.date, label },
+        started_at: iso(start), ended_at: iso(end), metadata: { night: night.date, label, clock: timeZone },
       })
     }
     droppedEvents += open.size
@@ -581,7 +644,7 @@ export function readCard(card, { timeZone }) {
         unit: 'L/min', source_device: SOURCE_DEVICE,
         started_at: iso(fileStart + (k === 0 ? t.first : minute0)),
         ended_at: iso(fileStart + Math.min(end, minute0 + LEAK_CHUNK_MINUTES * 60_000)),
-        metadata: { night: night.date, minute0: iso(fileStart + minute0), lpm },
+        metadata: { night: night.date, minute0: iso(fileStart + minute0), lpm, clock: timeZone },
       })
     }
   }
@@ -592,7 +655,7 @@ export function readCard(card, { timeZone }) {
     const r = n.record
     // First mask-on and last mask-off, whatever order the device filled its slots in.
     const at = {
-      source_device: SOURCE_DEVICE, metadata: { night: n.date },
+      source_device: SOURCE_DEVICE, metadata: { night: n.date, clock: timeZone },
       started_at: iso(Math.min(...n.sessions.map((s) => s.on))), ended_at: iso(Math.max(...n.sessions.map((s) => s.off))),
     }
     const nightly = [
