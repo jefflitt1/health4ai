@@ -85,9 +85,9 @@ if (opts['dry-run']) process.exit(0)
 
 // Checked above: an upload (not --dry-run) has a secret.
 const headers = { 'X-Setup-Secret': /** @type {string} */ (secret), 'Content-Type': 'application/json' }
-// Nights already stored on another clock would be stored again at other times: say so, then go on,
-// as the page does (the earlier clock may be the wrong one, with its Nights about to be removed). A
-// failed check (a site without the route, or a redirect, never followed) only loses the warning.
+// Nights already stored on another clock would be stored a second time at other times: say so, then
+// go on, as the page does (the earlier clock may be the wrong one). A failed check (a site without the route, or a redirect, never followed)
+// is said too, and the upload goes on.
 const clockRes = await fetch(new URL('/api/setup/cpap-clock', base), { headers, redirect: 'error' }).catch(() => null)
 const clockBody = clockRes?.ok ? await clockRes.json().catch(() => ({})) : {}
 if (!clockRes?.ok) console.warn(`Could not check the clocks of earlier imports (${clockRes ? clockRes.status : 'no response'}); uploading anyway.`)

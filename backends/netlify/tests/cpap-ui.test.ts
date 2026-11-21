@@ -144,12 +144,31 @@ test('a clock typed before picking is kept, whatever the card says', async () =>
   expect(f.get('zone-note').textContent).toContain('the card says UTC-05:00')
 })
 
-test('an unreadable clock on the card is said, and the card is still read', async () => {
+test('an unreadable clock on the card is said, and the card waits for a typed clock', async () => {
   const f = fixture()
   await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', 'bad'))
   expect(f.get('zone-note').textContent).toContain('TimeZoneOffset')
+  expect(f.get('panel-error').textContent).toContain('Type the machine\'s clock')
+  expect(f.get('result').hidden).toBe(true)
+  f.get('zone').value = '-05:00'; f.get('zone').oninput!()
+  await f.get('zone').onchange!()
   expect(f.get('summary').textContent).toContain('card A')
-  expect(f.get('panel-error').hidden).toBe(true)
+  expect(f.get('result').hidden).toBe(false)
+})
+
+test('clearing a typed clock hands the field back to the card', async () => {
+  const f = fixture()
+  f.get('zone').value = '+01:00'; f.get('zone').oninput!()
+  f.get('zone').value = ''; f.get('zone').oninput!()
+  await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
+  expect(f.get('zone').value).toBe('-05:00')
+})
+
+test('the note follows the clock field before any card is read', async () => {
+  const f = fixture()
+  f.get('zone').value = '-05:00'; f.get('zone').oninput!()
+  await f.get('zone').onchange!()
+  expect(f.get('zone-note').textContent).toContain('Using the clock you typed (-05:00)')
 })
 
 test('an unknown clock is refused by name', async () => {

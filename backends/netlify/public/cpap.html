@@ -88,16 +88,17 @@
 
   const computerZone = Intl.DateTimeFormat().resolvedOptions().timeZone
   $('zone').value = computerZone
-  // Once a clock is typed, the page never fills the field again.
+  // A clock typed in the field is kept when a card is picked; emptying the field hands it back to the
+  // card.
   let typedClock = false
-  $('zone').oninput = () => { typedClock = true }
+  $('zone').oninput = () => { typedClock = $('zone').value.trim() !== '' }
   // What the picked card says about its clock, for the note under the field.
   let cardClock = null, cardClockError = null
   function noteClock() {
-    $('zone-note').textContent = cardClockError
-      ? `${cardClockError.message}. Type the machine's clock, such as -05:00.`
-      : typedClock
-        ? `Using the clock you typed (${$('zone').value.trim()})${cardClock ? `; the card says UTC${cardClock}` : ''}.`
+    $('zone-note').textContent = typedClock
+      ? `Using the clock you typed (${$('zone').value.trim()})${cardClockError ? `; the card's could not be read: ${cardClockError.message}` : cardClock ? `; the card says UTC${cardClock}` : ''}.`
+      : cardClockError
+        ? `${cardClockError.message}. Type the machine's clock, such as -05:00, to read this card.`
         : cardClock
           ? `The machine's clock is UTC${cardClock}, from the card. It does not follow daylight time. Change it only if the machine's clock was set wrong.`
           : `The card does not record its clock's offset from UTC, so this computer's time zone (${computerZone}) is used. If the machine keeps a fixed clock all year, type its offset, such as -05:00.`
@@ -197,9 +198,16 @@
     }
   }
 
-  $('zone').onchange = () => { if (card) { if (typedClock) cardClockError = null; noteClock(); clearError(); show() } }
+  $('zone').onchange = () => { noteClock(); if (card) { clearError(); show() } }
 
   function show() {
+    // The card's clock could not be read and none was typed: nothing is read on a guessed clock.
+    if (cardClockError && !typedClock) {
+      $('result').hidden = true
+      imported = null
+      showError('panel-error', new Error(`${cardClockError.message}. Type the machine's clock, such as -05:00, to read this card.`))
+      return
+    }
     const timeZone = $('zone').value.trim()
     try {
       wallToInstant(0, timeZone)

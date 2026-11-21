@@ -160,8 +160,12 @@ describe('the machine clock from the card settings', () => {
     expect(() => readCardClock(new TextEncoder().encode('{"FlowGenerator": {"Setting'))).toThrow(/CurrentSettings\.json/)
   })
 
-  test('two TimeZoneOffsets that disagree are refused; the same one twice is fine', () => {
-    expect(() => readCardClock(settings({ Old: { TimeZoneOffset: '-06:00' }, TimeZoneFeature: { TimeZoneOffset: '-05:00' } }))).toThrow(/-06:00.*-05:00/)
+  test('the TimeZoneFeature\'s offset wins over a stale one elsewhere', () => {
+    expect(readCardClock(settings({ Old: { TimeZoneOffset: '-06:00' }, TimeZoneFeature: { TimeZoneOffset: '-05:00' } }))).toBe('-05:00')
+  })
+
+  test('two TimeZoneOffsets that disagree, neither the TimeZoneFeature\'s, are refused; the same one twice is fine', () => {
+    expect(() => readCardClock(settings({ Old: { TimeZoneOffset: '-06:00' }, Other: { TimeZoneOffset: '-05:00' } }))).toThrow(/-06:00.*-05:00/)
     expect(readCardClock(settings({ Old: { TimeZoneOffset: '-05:00' }, TimeZoneFeature: { TimeZoneOffset: '-05:00' } }))).toBe('-05:00')
   })
 

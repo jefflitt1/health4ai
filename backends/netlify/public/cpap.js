@@ -356,11 +356,12 @@ export function pickCardFiles(paths) {
 }
 
 /**
- * The Machine clock's offset from UTC ("-05:00") as the card's settings file records it (its
- * TimeZoneOffset, wherever it sits in the JSON), or null when the file has none. An AirSense 11
- * keeps this offset all year; it does not follow daylight time. Throws, so a card is never read on
- * a guessed clock, when the file is not JSON, when TimeZoneOffset is not ±HH:MM, or when two
- * TimeZoneOffsets disagree. A null one (a disabled profile) says nothing and is passed over.
+ * The Machine clock's offset from UTC ("-05:00") as the card's settings file records it: the
+ * TimeZoneOffset of its TimeZoneFeature (where an AirSense 11 keeps it), else the one elsewhere in
+ * the JSON, or null when the file has none. An AirSense 11 keeps this offset all year; it does not
+ * follow daylight time. Throws, so a card is never read on a guessed clock, when the file is not
+ * JSON, when the chosen TimeZoneOffset is not ±HH:MM, or when the candidates disagree. A null one
+ * (a disabled profile) says nothing and is passed over.
  * @param {Uint8Array} bytes SETTINGS/CurrentSettings.json
  * @returns {string | null}
  */
@@ -372,15 +373,18 @@ export function readCardClock(bytes) {
     throw new Error("The card's SETTINGS/CurrentSettings.json is not JSON, so its clock cannot be read")
   }
   /** @type {unknown[]} */
-  const found = []
-  const visit = (/** @type {unknown} */ node) => {
+  const anywhere = []
+  /** @type {unknown[]} */
+  const inFeature = []
+  const visit = (/** @type {unknown} */ node, /** @type {string} */ parent) => {
     if (!node || typeof node !== 'object') return
     for (const [key, value] of Object.entries(node)) {
-      if (key === 'TimeZoneOffset' && value !== null) found.push(value)
-      else visit(value)
+      if (key === 'TimeZoneOffset' && value !== null) (parent === 'TimeZoneFeature' ? inFeature : anywhere).push(value)
+      else visit(value, key)
     }
   }
-  visit(settings)
+  visit(settings, '')
+  const found = inFeature.length ? inFeature : anywhere
   if (!found.length) return null
   for (const value of found) {
     if (typeof value !== 'string' || !FIXED_OFFSET.test(value)) throw new Error(`The card's TimeZoneOffset is not ±HH:MM (${JSON.stringify(value)})`)
