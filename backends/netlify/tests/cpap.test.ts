@@ -443,6 +443,21 @@ describe('reading a card\'s leak traces', () => {
     expect(traces.at(-1)).toMatchObject({ started_at: '2024-01-11T06:00:00.000Z', ended_at: '2024-01-11T06:01:00.000Z', metadata: { lpm: [10] } })
   })
 
+  test('a file starting on the next session\'s mask-on belongs to that session, not the one just ended', () => {
+    // UTC. Sessions 22:00-22:30 and 22:31-23:30 (STR minutes 600-630 and 631-690 from noon). Both
+    // files hold 59 minutes at 10 L/min; one starts at 22:31:00 exactly, the other at 22:30:50, which
+    // STR rounds to session 2's 22:31.
+    for (const [seconds, file] of [[0, '20240110_223100_PLD.edf'], [50, '20240110_223050_PLD.edf']] as const) {
+      const start = seconds ? wall(22, 30, seconds) : wall(22, 31, 0)
+      const card = readCard({ str: strFor([600, 631], [630, 690]), events: [], leaks: [
+        { path: `${dir}${file}`, trace: { startWall: start, first: 0, end: 59 * 60_000, minute0: -seconds * 1000, lpm: Array(59).fill(10) } },
+      ] }, { timeZone: 'UTC' })
+      expect(card.stats.leakMinutes).toBe(59)
+      expect(card.stats.droppedLeakFiles).toBe(0)
+      expect(leaks(card).map((x) => x.started_at)).toEqual([new Date(start).toISOString()])
+    }
+  })
+
   test('sessions that share a clock minute never share a started_at', () => {
     // UTC. 22:05-23:05 and 23:06-00:00; the first file ends 23:05:20, the second starts 23:05:50.
     const card = readCard({ str: strFor([605, 666], [665, 720]), events: [], leaks: [

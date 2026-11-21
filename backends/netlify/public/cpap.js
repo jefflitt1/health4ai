@@ -470,8 +470,14 @@ export function readCard(card, { timeZone }) {
     if (sessions.length) nights.set(nightOf(noonWall), { date: nightOf(noonWall), record: r, sessions, events: 0 })
   }
 
-  const sessionAt = (/** @type {Night} */ n, /** @type {number} */ ms) =>
-    n.sessions.find((s) => ms >= s.on - SESSION_SLACK_MS && ms <= s.off + SESSION_SLACK_MS)
+  // The session `ms` falls in, or else the nearest one within SESSION_SLACK_MS: sessions can be a
+  // minute apart, and a moment on the next one's mask-on belongs to it, not to the one just ended.
+  const sessionAt = (/** @type {Night} */ n, /** @type {number} */ ms) => {
+    const gap = (/** @type {{ on: number, off: number }} */ s) => Math.max(s.on - ms, ms - s.off, 0)
+    let best
+    for (const s of n.sessions) if (gap(s) <= SESSION_SLACK_MS && (!best || gap(s) < gap(best))) best = s
+    return best
+  }
   const inSession = (/** @type {Night} */ n, /** @type {number} */ ms) => sessionAt(n, ms) !== undefined
   // A file's start is a wall time; in the hour a clock repeats it names two instants, and the one
   // where the file's first reading falls inside one of its Night's sessions is the right one.
