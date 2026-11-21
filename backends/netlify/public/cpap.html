@@ -88,8 +88,20 @@
 
   const computerZone = Intl.DateTimeFormat().resolvedOptions().timeZone
   $('zone').value = computerZone
-  // What the page last put in the clock field; anything else there was typed and is kept.
-  let filledClock = computerZone
+  // Once a clock is typed, the page never fills the field again.
+  let typedClock = false
+  $('zone').oninput = () => { typedClock = true }
+  // What the picked card says about its clock, for the note under the field.
+  let cardClock = null, cardClockError = null
+  function noteClock() {
+    $('zone-note').textContent = cardClockError
+      ? `${cardClockError.message}. Type the machine's clock, such as -05:00.`
+      : typedClock
+        ? `Using the clock you typed (${$('zone').value.trim()})${cardClock ? `; the card says UTC${cardClock}` : ''}.`
+        : cardClock
+          ? `The machine's clock is UTC${cardClock}, from the card. It does not follow daylight time. Change it only if the machine's clock was set wrong.`
+          : `The card does not record its clock's offset from UTC, so this computer's time zone (${computerZone}) is used. If the machine keeps a fixed clock all year, type its offset, such as -05:00.`
+  }
 
   // Earlier imports read on another clock put the same Nights at other times, so they would be
   // stored twice: say so before Upload. A failed check says nothing rather than blocking the import.
@@ -99,17 +111,24 @@
     $('clock-warning').hidden = true
     const clock = $('zone').value.trim()
     if (!card) return
+    // The import still works when the check fails; the page says the check did not run.
+    const couldNot = () => {
+      if (check !== clockCheck) return
+      $('clock-warning').textContent = 'Could not check which clock earlier imports used, so Nights stored on another clock may be stored a second time.'
+      $('clock-warning').hidden = false
+    }
     try {
       const res = await fetch('/api/setup/cpap-clock', { headers: headers() })
-      if (!res.ok || check !== clockCheck) return
+      if (check !== clockCheck) return
+      if (!res.ok) return couldNot()
       const { clocks, unrecorded } = await res.json()
       if (check !== clockCheck) return
       const others = [...clocks.filter((c) => c !== clock), ...(unrecorded ? ['an unrecorded clock (imports made before clocks were recorded)'] : [])]
       if (!others.length) return
       $('clock-warning').textContent = `Earlier imports used ${others.join(', ')}; this one uses ${clock}. ` +
-        'Nights already stored on another clock would be stored again at other times. Upload only if the earlier clock was wrong and its Nights will be removed.'
+        'Uploading stores the Nights they share a second time, at other times, and this page cannot remove the earlier ones.'
       $('clock-warning').hidden = false
-    } catch { /* the import still works; only the warning is missing */ }
+    } catch { couldNot() }
   }
 
   $('unlock-btn').onclick = async () => {
@@ -153,15 +172,10 @@
       let clock = null, unreadable = null
       try { clock = picked.settings ? readCardClock(await read(picked.settings)) : null } catch (e) { unreadable = e }
       if (!current()) return
-      const typed = $('zone').value.trim() !== filledClock
-      if (!typed) $('zone').value = filledClock = clock ?? computerZone
-      $('zone-note').textContent = unreadable
-        ? `${unreadable.message}. Type the machine's clock, such as -05:00.`
-        : typed
-          ? `Using the clock you typed (${$('zone').value.trim()})${clock ? `; the card says UTC${clock}` : ''}.`
-          : clock
-            ? `The machine's clock is UTC${clock}, from the card. It does not follow daylight time. Change it only if the machine's clock was set wrong.`
-            : `The card does not record its clock's offset from UTC, so this computer's time zone (${computerZone}) is used. If the machine keeps a fixed clock all year, type its offset, such as -05:00.`
+      cardClock = clock
+      cardClockError = unreadable
+      if (!typedClock) $('zone').value = clock ?? computerZone
+      noteClock()
       const str = await read(picked.str)
       if (!current()) return
       const events = await Promise.all(picked.events.map(async (path) => ({ path, bytes: await read(path) })))
@@ -183,7 +197,7 @@
     }
   }
 
-  $('zone').onchange = () => { if (card) { clearError(); show() } }
+  $('zone').onchange = () => { if (card) { if (typedClock) cardClockError = null; noteClock(); clearError(); show() } }
 
   function show() {
     const timeZone = $('zone').value.trim()

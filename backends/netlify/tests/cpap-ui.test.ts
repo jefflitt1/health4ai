@@ -10,7 +10,7 @@ class Element {
   hidden = false; disabled = false; value = 'UTC'; textContent = ''
   files: unknown[] = []
   children: Element[] = []
-  onclick?: () => Promise<void>; onchange?: () => Promise<void>
+  onclick?: () => Promise<void>; onchange?: () => Promise<void>; oninput?: () => void
   append(child: Element) { this.children.push(child) }
   replaceChildren() { this.children = [] }
   addEventListener() {}
@@ -29,7 +29,7 @@ function file(path: string, text: string, held = false) {
   }
 }
 
-function fixture(stored: { clocks: string[]; unrecorded: boolean } = { clocks: [], unrecorded: false }) {
+function fixture(stored: { clocks: string[]; unrecorded: boolean } | null = { clocks: [], unrecorded: false }) {
   const elements = new Map<string, Element>()
   const get = (id: string) => {
     if (!elements.has(id)) elements.set(id, new Element())
@@ -44,7 +44,7 @@ function fixture(stored: { clocks: string[]; unrecorded: boolean } = { clocks: [
     // This computer's zone, whatever the machine running the tests is set to.
     Intl: { DateTimeFormat: () => ({ resolvedOptions: () => ({ timeZone: 'America/Toronto' }) }) },
     // GET /api/setup/cpap-clock answers with the clocks earlier imports used.
-    fetch: async (url: string) => ({ ok: url === '/api/setup/cpap-clock', status: 200, json: async () => stored }),
+    fetch: async (url: string) => (stored ? { ok: url === '/api/setup/cpap-clock', status: 200, json: async () => stored } : { ok: false, status: 429, json: async () => ({}) }),
     STUB_MINUTES: 5,
     pickCardFiles: (paths: string[]) => ({ str: paths.find((p) => p.endsWith('STR.edf')) ?? null,
       settings: paths.find((p) => p.endsWith('CurrentSettings.json')) ?? null, events: [], leaks: [] }),
@@ -138,7 +138,7 @@ test('a card without a clock keeps the computer\'s zone and says the card has no
 
 test('a clock typed before picking is kept, whatever the card says', async () => {
   const f = fixture()
-  f.get('zone').value = '+01:00'
+  f.get('zone').value = '+01:00'; f.get('zone').oninput!()
   await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
   expect(f.get('zone').value).toBe('+01:00')
   expect(f.get('zone-note').textContent).toContain('the card says UTC-05:00')
@@ -154,7 +154,7 @@ test('an unreadable clock on the card is said, and the card is still read', asyn
 
 test('an unknown clock is refused by name', async () => {
   const f = fixture()
-  f.get('zone').value = 'Nowhere'
+  f.get('zone').value = 'Nowhere'; f.get('zone').oninput!()
   await f.pick(file('A/STR.edf', 'card A'))
   expect(f.get('panel-error').textContent).toContain('Unknown clock "Nowhere"')
   expect(f.get('result').hidden).toBe(true)
@@ -176,4 +176,35 @@ test('earlier imports on the same clock bring no warning', async () => {
   await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
   await new Promise((r) => setTimeout(r, 0))
   expect(f.get('clock-warning').hidden).toBe(true)
+})
+
+test('typing the computer\'s own zone still counts as typed', async () => {
+  const f = fixture()
+  f.get('zone').value = 'America/Toronto'; f.get('zone').oninput!()
+  await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
+  expect(f.get('zone').value).toBe('America/Toronto')
+})
+
+test('the note follows a clock typed after picking', async () => {
+  const f = fixture()
+  await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', 'bad'))
+  f.get('zone').value = '-05:00'; f.get('zone').oninput!()
+  await f.get('zone').onchange!()
+  expect(f.get('zone-note').textContent).toContain('Using the clock you typed (-05:00)')
+})
+
+test('a clock check that fails says so instead of showing nothing', async () => {
+  const f = fixture(null)
+  await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
+  await new Promise((r) => setTimeout(r, 0))
+  expect(f.get('clock-warning').hidden).toBe(false)
+  expect(f.get('clock-warning').textContent).toContain('Could not check')
+})
+
+test('the warning says what uploading does, and promises no removal the page cannot do', async () => {
+  const f = fixture({ clocks: ['America/Toronto'], unrecorded: false })
+  await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
+  await new Promise((r) => setTimeout(r, 0))
+  expect(f.get('clock-warning').textContent).toContain('a second time')
+  expect(f.get('clock-warning').textContent).not.toContain('will be removed')
 })

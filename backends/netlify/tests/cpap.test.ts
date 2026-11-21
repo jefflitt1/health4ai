@@ -152,9 +152,17 @@ describe('the machine clock from the card settings', () => {
     expect(readCardClock(settings({ TimeZoneFeature: { TimeZoneOffset: '-05:00' } }))).toBe('-05:00')
   })
 
-  test('no TimeZoneOffset, or a file that is not JSON, gives none', () => {
+  test('no TimeZoneOffset gives none', () => {
     expect(readCardClock(settings({ AutoRampFeature: { RampTime: 10 } }))).toBeNull()
-    expect(readCardClock(new TextEncoder().encode('not json'))).toBeNull()
+  })
+
+  test('a settings file that is not JSON is refused, not read as having no clock', () => {
+    expect(() => readCardClock(new TextEncoder().encode('{"FlowGenerator": {"Setting'))).toThrow(/CurrentSettings\.json/)
+  })
+
+  test('two TimeZoneOffsets that disagree are refused; the same one twice is fine', () => {
+    expect(() => readCardClock(settings({ Old: { TimeZoneOffset: '-06:00' }, TimeZoneFeature: { TimeZoneOffset: '-05:00' } }))).toThrow(/-06:00.*-05:00/)
+    expect(readCardClock(settings({ Old: { TimeZoneOffset: '-05:00' }, TimeZoneFeature: { TimeZoneOffset: '-05:00' } }))).toBe('-05:00')
   })
 
   test('a TimeZoneOffset left null (a disabled profile) is passed over for the real one', () => {

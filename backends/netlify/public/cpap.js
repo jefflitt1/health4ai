@@ -356,10 +356,11 @@ export function pickCardFiles(paths) {
 }
 
 /**
- * The Machine clock's offset from UTC ("-05:00") as the card's settings file records it (the first
- * non-null TimeZoneOffset in the JSON), or null when the file has none or is not JSON. An
- * AirSense 11 keeps this offset all year; it does not follow daylight time. Throws when
- * TimeZoneOffset is there but not ±HH:MM, so a card is never read on a guessed clock.
+ * The Machine clock's offset from UTC ("-05:00") as the card's settings file records it (its
+ * TimeZoneOffset, wherever it sits in the JSON), or null when the file has none. An AirSense 11
+ * keeps this offset all year; it does not follow daylight time. Throws, so a card is never read on
+ * a guessed clock, when the file is not JSON, when TimeZoneOffset is not ±HH:MM, or when two
+ * TimeZoneOffsets disagree. A null one (a disabled profile) says nothing and is passed over.
  * @param {Uint8Array} bytes SETTINGS/CurrentSettings.json
  * @returns {string | null}
  */
@@ -368,23 +369,26 @@ export function readCardClock(bytes) {
   try {
     settings = JSON.parse(new TextDecoder().decode(bytes))
   } catch {
-    return null
+    throw new Error("The card's SETTINGS/CurrentSettings.json is not JSON, so its clock cannot be read")
   }
-  /** @type {unknown} */
-  let found
-  // A null TimeZoneOffset (a disabled profile) says nothing; the search goes on past it.
+  /** @type {unknown[]} */
+  const found = []
   const visit = (/** @type {unknown} */ node) => {
-    if (found !== undefined || !node || typeof node !== 'object') return
+    if (!node || typeof node !== 'object') return
     for (const [key, value] of Object.entries(node)) {
-      if (key === 'TimeZoneOffset' && value !== null) { found = value; return }
-      visit(value)
+      if (key === 'TimeZoneOffset' && value !== null) found.push(value)
+      else visit(value)
     }
   }
   visit(settings)
-  if (found === undefined) return null
-  if (typeof found !== 'string' || !FIXED_OFFSET.test(found)) throw new Error(`The card's TimeZoneOffset is not ±HH:MM (${JSON.stringify(found)})`)
-  fixedOffset(found) // out-of-range hours or minutes throw here
-  return found
+  if (!found.length) return null
+  for (const value of found) {
+    if (typeof value !== 'string' || !FIXED_OFFSET.test(value)) throw new Error(`The card's TimeZoneOffset is not ±HH:MM (${JSON.stringify(value)})`)
+    fixedOffset(value) // out-of-range hours or minutes throw here
+  }
+  const distinct = [...new Set(found)]
+  if (distinct.length > 1) throw new Error(`The card's settings give more than one TimeZoneOffset (${distinct.join(', ')})`)
+  return /** @type {string} */ (distinct[0])
 }
 
 /**

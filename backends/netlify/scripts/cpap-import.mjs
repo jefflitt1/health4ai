@@ -95,7 +95,7 @@ const otherClocks = /** @type {string[]} */ (clockBody.clocks ?? []).filter((c) 
 if (otherClocks.length || clockBody.unrecorded) {
   const earlier = [...otherClocks, ...(clockBody.unrecorded ? ['an unrecorded clock (imports made before clocks were recorded)'] : [])]
   console.warn(`Warning: earlier imports used ${earlier.join(', ')}; this one uses ${timeZone}. ` +
-    'Nights stored on another clock are stored again at other times unless they are removed.')
+    'Uploading stores the Nights they share a second time, at other times; nothing here removes the earlier ones.')
 }
 const { inserted, batches } = await uploadSamples(samples, {
   // A redirect would carry the secret and the Samples to wherever it points, over any scheme: refuse it.
