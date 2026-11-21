@@ -175,6 +175,7 @@
       stats.stubSessions && `${stats.stubSessions} sessions under ${STUB_MINUTES} minutes (mask checks) skipped`,
       stats.droppedEvents && `${stats.droppedEvents} events outside therapy left out`,
       stats.droppedLeakFiles && `${stats.droppedLeakFiles} leak traces outside therapy or with no records left out`,
+      ...stats.skippedSummaries,
       stats.unreadable.length && `${stats.unreadable.length} files could not be read: ${stats.unreadable.map((u) => `${u.path} (${u.reason})`).join(', ')}`,
     ].filter(Boolean)
     $('summary').textContent = parts.join(', ') + '.' + (skipped.length ? ' ' + skipped.join('; ') + '.' : '')

@@ -60,6 +60,10 @@ describe('EDF', () => {
   ])('%s is refused', (_name, bytes) => {
     expect(() => parseEdf(bytes)).toThrow(/EDF/)
   })
+
+  test('a file that ends inside its signal headers is called cut short', () => {
+    expect(() => parseEdf(file().slice(0, 300))).toThrow('Not an EDF file: the header is cut short')
+  })
 })
 
 describe('EDF+ annotations', () => {
@@ -279,7 +283,7 @@ describe('reading a card', () => {
     ])
     expect(card.nights).toEqual([{ date: '2024-01-10', sessions: 2, usageHours: 8, events: 4 }])
     expect(card.stats).toEqual({ nights: 1, sessions: 2, stubSessions: 2, events: 4, droppedEvents: 3, leakMinutes: 0, droppedLeakFiles: 0,
-      unreadable: [{ path: unreadable, reason: 'Not an EDF file: the header is cut short' }] })
+      unreadable: [{ path: unreadable, reason: 'Not an EDF file: the header is cut short' }], skippedSummaries: [] })
   })
 
   test('reading the same card twice gives the same Samples', () => {
@@ -383,7 +387,9 @@ describe('reading a card', () => {
     expect(perMinute.samples.find((x) => x.metric_type === 'cpap.leak_p95')!.value).toBe(0.24) // 12 of 100 steps of 0..2
     const unknown = readCard({ str: strFor('10.01.24', [660], [1080], { leakUnit: 'cfm' }), events: [] }, { timeZone: 'UTC' })
     expect(unknown.samples.some((x) => x.metric_type === 'cpap.leak_p95')).toBe(false)
-    expect(unknown.stats.unreadable).toEqual([{ path: 'STR.edf', reason: 'Leak.95 is in an unknown unit (cfm); leak skipped' }])
+    // STR.edf was read; only one of its summaries is left out, so it is no unreadable file.
+    expect(unknown.stats.unreadable).toEqual([])
+    expect(unknown.stats.skippedSummaries).toEqual(['Leak.95 is in an unknown unit (cfm); leak skipped'])
   })
 
   test('an STR.edf without Leak.95 or MaskPress.50 still reads, without that metric, and says so', () => {
@@ -392,10 +398,8 @@ describe('reading a card', () => {
       records: [[slots(660), slots(1080), [52]]] })
     const card = readCard({ str, events: [] }, { timeZone: 'UTC' })
     expect(card.samples.map((x) => x.metric_type).sort()).toEqual(['cpap.ahi', 'cpap.usage_hours'])
-    expect(card.stats.unreadable).toEqual([
-      { path: 'STR.edf', reason: 'STR.edf has no Leak.95 signal; leak skipped' },
-      { path: 'STR.edf', reason: 'STR.edf has no MaskPress.50 signal; pressure skipped' },
-    ])
+    expect(card.stats.unreadable).toEqual([])
+    expect(card.stats.skippedSummaries).toEqual(['STR.edf has no Leak.95 signal; leak skipped', 'STR.edf has no MaskPress.50 signal; pressure skipped'])
   })
 
   test('an STR.edf without a needed signal, or not one record a day, is refused by name', () => {

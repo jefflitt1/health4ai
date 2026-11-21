@@ -104,9 +104,9 @@ test.skipIf(!CARD)('a real card reads into sane, repeatable Samples without touc
   // A second read of the same card gives the same Samples, compared without printing them.
   expect(JSON.stringify(readCard(readPicked().card, { timeZone: TZ }).samples) === JSON.stringify(samples)).toBe(true)
 
-  // The upload fits the setup API: under its 60 requests a minute, each batch under 5 MB.
+  // The upload fits the setup API: under its 30 requests a minute, each batch under 5 MB.
   const batches = Math.ceil(samples.length / BATCH_SIZE)
-  expect(batches).toBeLessThan(50)
+  expect(batches).toBeLessThan(30)
   for (let i = 0; i < samples.length; i += BATCH_SIZE) {
     expect(JSON.stringify({ samples: samples.slice(i, i + BATCH_SIZE) }).length).toBeLessThan(5 * 1024 * 1024)
   }

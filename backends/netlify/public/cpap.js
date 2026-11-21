@@ -72,9 +72,10 @@ export function parseEdf(bytes) {
   const declaredRecords = number(236, 8, 'the record count')
   const recordSeconds = number(244, 8, 'the record duration')
   const ns = number(252, 4, 'the signal count')
-  if (headerBytes !== 256 + ns * 256 || bytes.length < headerBytes) {
+  if (!Number.isInteger(ns) || ns < 0 || headerBytes !== 256 + ns * 256) {
     throw new Error('Not an EDF file: the header length does not match its signal count')
   }
+  if (bytes.length < headerBytes) throw new Error('Not an EDF file: the header is cut short')
 
   // After the fixed header, each field holds one value per signal, one field after another.
   let fieldStart = 256
@@ -283,7 +284,7 @@ function wallToInstants(wall, timeZone) {
  * @typedef {object} CardImport
  * @property {Sample[]} samples sorted by started_at, then metric_type
  * @property {NightSummary[]} nights oldest first
- * @property {{ nights: number, sessions: number, stubSessions: number, events: number, droppedEvents: number, leakMinutes: number, droppedLeakFiles: number, unreadable: { path: string, reason: string }[] }} stats
+ * @property {{ nights: number, sessions: number, stubSessions: number, events: number, droppedEvents: number, leakMinutes: number, droppedLeakFiles: number, unreadable: { path: string, reason: string }[], skippedSummaries: string[] }} stats
  */
 
 export const SOURCE_DEVICE = 'AirSense 11'
@@ -362,7 +363,7 @@ export function readLeakTrace(bytes) {
   const step = edf.recordSeconds / signal.samplesPerRecord * 1000
   /** @type {Map<number, { sum: number, n: number }>} by clock minute, as wall-clock ms */
   const minutes = new Map()
-  let first = Infinity, end = -Infinity
+  let first = Infinity, end = -Infinity, firstMinute = Infinity, lastMinute = -Infinity
   const records = /** @type {number[][]} */ (edf.values(signal.label))
   records.forEach((record, r) => {
     record.forEach((value, j) => {
@@ -375,13 +376,14 @@ export function readLeakTrace(bytes) {
       minutes.set(minute, m)
       first = Math.min(first, offset)
       end = Math.max(end, offset + step)
+      firstMinute = Math.min(firstMinute, minute)
+      lastMinute = Math.max(lastMinute, minute)
     })
   })
   if (!minutes.size) throw new Error(`${signal.label} has no readings`)
-  const firstMinute = Math.min(...minutes.keys())
   // A corrupt record onset would otherwise size the minute array from it.
-  if (Math.max(...minutes.keys()) - firstMinute > DAY_MS) throw new Error(`${signal.label} spans more than a day`)
-  const count = (Math.max(...minutes.keys()) - firstMinute) / 60_000 + 1
+  if (lastMinute - firstMinute > DAY_MS) throw new Error(`${signal.label} spans more than a day`)
+  const count = (lastMinute - firstMinute) / 60_000 + 1
   const lpm = Array.from({ length: count }, (_, i) => {
     const m = minutes.get(firstMinute + i * 60_000)
     return m ? Math.round(m.sum / m.n * 10) / 10 : null
@@ -418,7 +420,9 @@ const snake = (/** @type {string} */ label) => label.trim().toLowerCase().replac
  *
  * Times are the device's wall clock, made instants in `timeZone`; import a card with the same zone
  * every time, or the same Night lands at another started_at and is stored twice. A file that cannot
- * be parsed is listed in stats.unreadable and skipped; an STR.edf that cannot is an error.
+ * be parsed is listed in stats.unreadable and skipped; an STR.edf that cannot is an error. A
+ * leak or pressure summary STR.edf lacks, or gives in an unknown unit, is left out and listed in
+ * stats.skippedSummaries.
  * @param {{ str: Uint8Array, events: CardFile[], leaks?: LeakFile[] }} card
  * @param {{ timeZone: string }} options
  * @returns {CardImport}
@@ -447,9 +451,11 @@ export function readCard(card, { timeZone }) {
   // Leak is read in L/min; the AirSense 11 writes Leak.95 in L/s. Any other unit is not guessed at.
   const leakUnit = str.signals.find((s) => s.label === 'Leak.95')?.unit.trim().toLowerCase()
   const leakToLpm = leakUnit === 'l/s' ? 60 : leakUnit === 'l/min' ? 1 : null
-  if (!leak) unreadable.push({ path: 'STR.edf', reason: 'STR.edf has no Leak.95 signal; leak skipped' })
-  else if (leakToLpm === null) unreadable.push({ path: 'STR.edf', reason: `Leak.95 is in an unknown unit (${leakUnit || 'none'}); leak skipped` })
-  if (!pressure) unreadable.push({ path: 'STR.edf', reason: 'STR.edf has no MaskPress.50 signal; pressure skipped' })
+  /** @type {string[]} */
+  const skippedSummaries = []
+  if (!leak) skippedSummaries.push('STR.edf has no Leak.95 signal; leak skipped')
+  else if (leakToLpm === null) skippedSummaries.push(`Leak.95 is in an unknown unit (${leakUnit || 'none'}); leak skipped`)
+  if (!pressure) skippedSummaries.push('STR.edf has no MaskPress.50 signal; pressure skipped')
 
   /** @typedef {{ date: string, record: number, sessions: { on: number, off: number }[], events: number }} Night */
   /** @type {Map<string, Night>} */
@@ -595,8 +601,8 @@ export function readCard(card, { timeZone }) {
       ...(!leak || leakToLpm === null ? [] : [{ metric_type: 'cpap.leak_p95', value: tidy(leak[r][0] * leakToLpm), unit: 'L/min', ...at }]),
       ...(!pressure ? [] : [{ metric_type: 'cpap.pressure_median', value: tidy(pressure[r][0]), unit: 'cmH2O', ...at }]),
     ]
-    // A signal whose header gives no scale (digital min = max) reads as NaN: leave it out rather
-    // than upload a null.
+    // A signal whose header gives no scale (digital min = max) reads as NaN or an infinity: leave
+    // it out rather than upload a null.
     samples.push(...nightly.filter((sample) => Number.isFinite(sample.value)))
   }
 
@@ -612,7 +618,7 @@ export function readCard(card, { timeZone }) {
     nights: summaries.map((n) => ({ date: n.date, sessions: n.sessions.length, usageHours: usageHours(n), events: n.events })),
     stats: {
       nights: summaries.length, sessions: summaries.reduce((n, s) => n + s.sessions.length, 0),
-      stubSessions, events, droppedEvents, leakMinutes, droppedLeakFiles, unreadable,
+      stubSessions, events, droppedEvents, leakMinutes, droppedLeakFiles, unreadable, skippedSummaries,
     },
   }
 }

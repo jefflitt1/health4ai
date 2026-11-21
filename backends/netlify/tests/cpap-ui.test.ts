@@ -49,7 +49,7 @@ function fixture() {
       const name = new TextDecoder().decode(card.str)
       if (name === 'bad') throw new Error('Not an EDF file')
       return { nights: [{ date: name, usageHours: 1, sessions: 1, events: 0 }], samples: [{ name }],
-        stats: { nights: 1, events: 0, leakMinutes: 0, stubSessions: 0, droppedEvents: 0, droppedLeakFiles: 0, unreadable: [] } }
+        stats: { nights: 1, events: 0, leakMinutes: 0, stubSessions: 0, droppedEvents: 0, droppedLeakFiles: 0, unreadable: [], skippedSummaries: [] } }
     },
     uploadSamples: async (samples: unknown[]) => { uploaded.push(samples); return { inserted: samples.length, batches: 1 } },
   })

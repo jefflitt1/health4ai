@@ -1,3 +1,4 @@
+// @ts-check
 // Imports a CPAP SD card from the command line, with the same reader and upload as the CPAP import
 // page (public/cpap.js). Prints counts only, never readings.
 //
@@ -62,9 +63,11 @@ console.log(`${stats.nights} Nights, ${stats.events} events, ${Math.round(stats.
   `${stats.stubSessions} short sessions skipped, ${stats.droppedEvents} events outside therapy and ${stats.droppedLeakFiles} leak traces outside therapy or with no records left out, ` +
   `${stats.unreadable.length} files unreadable`)
 for (const { path, reason } of stats.unreadable) console.log(`  unreadable: ${path} (${reason})`)
+for (const reason of stats.skippedSummaries) console.log(`  ${reason}`)
 if (opts['dry-run']) process.exit(0)
 
-const headers = { 'X-Setup-Secret': secret, 'Content-Type': 'application/json' }
+// Checked above: an upload (not --dry-run) has a secret.
+const headers = { 'X-Setup-Secret': /** @type {string} */ (secret), 'Content-Type': 'application/json' }
 const { inserted, batches } = await uploadSamples(samples, {
   // A redirect would carry the secret and the Samples to wherever it points, over any scheme: refuse it.
   post: (batch) => fetch(new URL('/api/setup/samples', base), { method: 'POST', headers, body: JSON.stringify({ samples: batch }), redirect: 'error' }),
