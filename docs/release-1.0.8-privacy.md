@@ -24,11 +24,12 @@ before it (`git merge-base --is-ancestor fd4fc4e fa5be1a` is false, verified
    the public label is not the full console record.
 2. Inspect the signed 1.0.8 archive's privacy manifest and report (Precise
    Location, Health, Fitness all linked, no tracking).
-3. Privacy policy: the workout/route item still says "planned for a later
-   release". Its update (UX gate approved 2026-11-20) is held for release day,
-   because merging `web/` publishes at once: apply
-   `~/review/health4ai-release-1-0-8/privacy-page-1.0.8-on-release.patch` in its
-   own PR when 1.0.8 goes live.
+3. Privacy policy: the workout/route item said "planned for a later release".
+   Its update (UX gate approved 2026-11-20) goes out at submission, not on
+   release day (Jeff 2026-11-20), because App Review reads the live policy and
+   the 1.0.8 build already contains the feature. The new wording ("iOS app
+   version 1.0.8 and later") is accurate before release. Shipped in its own PR
+   (#77), merged just before submitting.
 4. Review notes: say both exports are off by default and how a reviewer reaches
    them (Privacy, Optional workout details). The physical-device demo video should
    show the switches and their consent text.
