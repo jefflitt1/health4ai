@@ -212,11 +212,22 @@ function zoneOffset(ms, timeZone) {
  * @returns {number} epoch milliseconds
  */
 export function wallToInstant(wall, timeZone) {
+  return wallToInstants(wall, timeZone)[0]
+}
+
+/**
+ * Every instant a wall-clock time in `timeZone` names, earliest first: two in the hour a clock
+ * repeats when it falls back, otherwise one (for a skipped time, as wallToInstant gives it).
+ * @param {number} wall wall-clock milliseconds, as if the wall clock were UTC
+ * @param {string} timeZone an IANA zone
+ * @returns {number[]} epoch milliseconds
+ */
+function wallToInstants(wall, timeZone) {
   // A day either side brackets any transition near this wall time.
   const before = zoneOffset(wall - 86_400_000, timeZone)
   const after = zoneOffset(wall + 86_400_000, timeZone)
-  const fits = [before, after].map((o) => wall - o).filter((t) => t + zoneOffset(t, timeZone) === wall)
-  return fits.length ? Math.min(...fits) : wall - before
+  const fits = [...new Set([before, after].map((o) => wall - o).filter((t) => t + zoneOffset(t, timeZone) === wall))]
+  return fits.length ? fits.sort((a, b) => a - b) : [wall - before]
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -368,6 +379,8 @@ export function readLeakTrace(bytes) {
   })
   if (!minutes.size) throw new Error(`${signal.label} has no readings`)
   const firstMinute = Math.min(...minutes.keys())
+  // A corrupt record onset would otherwise size the minute array from it.
+  if (Math.max(...minutes.keys()) - firstMinute > DAY_MS) throw new Error(`${signal.label} spans more than a day`)
   const count = (Math.max(...minutes.keys()) - firstMinute) / 60_000 + 1
   const lpm = Array.from({ length: count }, (_, i) => {
     const m = minutes.get(firstMinute + i * 60_000)
@@ -445,15 +458,23 @@ export function readCard(card, { timeZone }) {
     const sessions = []
     for (let i = 0; i < maskOn[r].length; i++) {
       const on = maskOn[r][i], off = maskOff[r][i]
-      if (on < 0 || off < on) continue // -1 marks an unused slot
+      // -1 marks an unused slot; a value that is not a number (no scale in the header) is none either.
+      if (!Number.isFinite(on) || !Number.isFinite(off) || on < 0 || off < on) continue
       if (off - on < STUB_MINUTES) { stubSessions++; continue }
       sessions.push({ on: noon + on * 60_000, off: noon + off * 60_000 })
     }
     if (sessions.length) nights.set(nightOf(noonWall), { date: nightOf(noonWall), record: r, sessions, events: 0 })
   }
 
-  const inSession = (/** @type {Night} */ n, /** @type {number} */ ms) =>
-    n.sessions.some((s) => ms >= s.on - SESSION_SLACK_MS && ms <= s.off + SESSION_SLACK_MS)
+  const sessionAt = (/** @type {Night} */ n, /** @type {number} */ ms) =>
+    n.sessions.find((s) => ms >= s.on - SESSION_SLACK_MS && ms <= s.off + SESSION_SLACK_MS)
+  const inSession = (/** @type {Night} */ n, /** @type {number} */ ms) => sessionAt(n, ms) !== undefined
+  // A file's start is a wall time; in the hour a clock repeats it names two instants, and the one
+  // where the file's first reading falls inside one of its Night's sessions is the right one.
+  const placed = (/** @type {number} */ wall, /** @type {Night | undefined} */ n, /** @type {number} */ firstMs) => {
+    const candidates = wallToInstants(wall, timeZone)
+    return (n && candidates.find((t) => inSession(n, t + firstMs))) ?? candidates[0]
+  }
 
   /** @type {Sample[]} */
   const samples = []
@@ -467,7 +488,7 @@ export function readCard(card, { timeZone }) {
       continue
     }
     const night = nights.get(nightOf(edf.startWall))
-    const fileStart = instant(edf.startWall)
+    const fileStart = placed(edf.startWall, night, 0)
     /** @type {Map<string, number>} "CSR Start" waiting for its "CSR End", by "CSR" */
     const open = new Map()
     for (const a of edf.annotations) {
@@ -515,10 +536,15 @@ export function readCard(card, { timeZone }) {
     const t = file.trace
     if (!t) { droppedLeakFiles++; continue } // no records: a session that ended within seconds
     const night = nights.get(nightOf(t.startWall))
-    const fileStart = instant(t.startWall)
-    if (!night || !inSession(night, fileStart + t.first)) { droppedLeakFiles++; continue } // a mask check, or a Night without therapy
-    for (let k = 0; k < t.lpm.length; k += LEAK_CHUNK_MINUTES) {
-      const lpm = t.lpm.slice(k, k + LEAK_CHUNK_MINUTES)
+    const fileStart = placed(t.startWall, night, t.first)
+    const session = night && sessionAt(night, fileStart + t.first)
+    if (!night || !session) { droppedLeakFiles++; continue } // a mask check, or a Night without therapy
+    // The device can record for minutes after STR's mask-off; leak then is the mask lying off, not
+    // therapy, so the trace ends where an event would stop counting.
+    const end = Math.min(t.end, session.off + SESSION_SLACK_MS - fileStart)
+    const kept = t.lpm.slice(0, Math.max(0, Math.ceil((end - t.minute0) / 60_000)))
+    for (let k = 0; k < kept.length; k += LEAK_CHUNK_MINUTES) {
+      const lpm = kept.slice(k, k + LEAK_CHUNK_MINUTES)
       const known = /** @type {number[]} */ (lpm.filter((v) => v !== null))
       if (!known.length) continue
       leakMinutes += known.length
@@ -527,7 +553,7 @@ export function readCard(card, { timeZone }) {
         metric_type: 'cpap.leak_trace', value: Math.round(known.reduce((a, b) => a + b, 0) / known.length * 10) / 10,
         unit: 'L/min', source_device: SOURCE_DEVICE,
         started_at: iso(fileStart + (k === 0 ? t.first : minute0)),
-        ended_at: iso(fileStart + Math.min(t.end, minute0 + LEAK_CHUNK_MINUTES * 60_000)),
+        ended_at: iso(fileStart + Math.min(end, minute0 + LEAK_CHUNK_MINUTES * 60_000)),
         metadata: { night: night.date, minute0: iso(fileStart + minute0), lpm },
       })
     }

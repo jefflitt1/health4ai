@@ -199,6 +199,15 @@ describe('leak from a PLD file', () => {
     expect(() => readLeakTrace(pld(leak('L/s', 'Leak.2s', 0)))).toThrow('Leak.2s has no readings')
   })
 
+  test('a record onset more than a day from the first is refused, not allocated', () => {
+    // EDF+D: each record carries its own onset in a TAL. A second record 10^9 s on is corrupt.
+    const edf = buildEdf({
+      startDate: '10.01.24', startTime: '23.00.30', recordSeconds: 60, reserved: 'EDF+D', signals: [press, leak(), ANNOTATIONS],
+      records: [[Array(30).fill(500), [...fifteen(10), ...fifteen(10)], tal('+0', null)], [Array(30).fill(500), [...fifteen(10), ...fifteen(10)], tal('+1000000000', null)]],
+    })
+    expect(() => readLeakTrace(edf)).toThrow('Leak.2s spans more than a day')
+  })
+
   test('a file with no records is no trace, not an error', () => {
     // As the AirSense 11 writes a session that ends within seconds: the header, and a record count of 0.
     expect(readLeakTrace(buildEdf({ startDate: '10.01.24', startTime: '23.00.30', recordSeconds: 60, signals: [press, leak()], records: [] }))).toBeNull()
@@ -309,6 +318,32 @@ describe('reading a card', () => {
     expect([hypopnea.started_at, hypopnea.ended_at]).toEqual(['2024-11-03T07:00:10.000Z', '2024-11-03T07:00:30.000Z'])
   })
 
+  test('a file started in the hour a clock repeats is placed in the session it belongs to', () => {
+    // Toronto falls back at 02:00 EDT on 2024-11-03, so 01:00-02:00 happens twice. Noon EDT on 11-02
+    // is 16:00Z. Sessions 600-780 (22:00-01:00 EDT, 02:00Z-05:00Z) and 870-1200 (06:30Z-12:00Z,
+    // which is 01:30-07:00 EST, the second 01:30).
+    const card = readCard({ str: strFor('02.11.24', [600, 870], [780, 1200]), events: [
+      // Starts at the second 01:30 (06:30Z); a 10 s hypopnea ending 600 s later spans 06:39:50Z-06:40:00Z.
+      { path: `${dir}20241102/20241103_013000_EVE.edf`, bytes: eventFile('03.11.24', '01.30.00', tal('+600', '10', 'Hypopnea')) },
+    ] }, { timeZone: 'America/Toronto' })
+    const hypopnea = card.samples.find((x) => x.metric_type === 'cpap.event.hypopnea')
+    expect([hypopnea?.started_at, hypopnea?.ended_at]).toEqual(['2024-11-03T06:39:50.000Z', '2024-11-03T06:40:00.000Z'])
+    expect(card.stats.droppedEvents).toBe(0)
+  })
+
+  test('a mask slot with no scale is no session, and the card still reads', () => {
+    // MaskOn with digital min = max = 5: a slot holding 5 scales as 0/0, not a number.
+    const noScale = buildEdf({
+      startDate: '10.01.24', startTime: '12.00.00', recordSeconds: 86400,
+      signals: [{ label: 'MaskOn', physMin: 0, physMax: 1440, digMin: 5, digMax: 5, samplesPerRecord: 20 }, { label: 'MaskOff', ...minutes },
+        one('AHI', 0, 240, 0, 2400), one('Leak.95', 0, 2, 0, 100, 'L/s'), one('MaskPress.50', 0, 40, 0, 2000)],
+      records: [[slots(5), slots(1080), [52], [12], [512]]],
+    })
+    const card = readCard({ str: noScale, events: [] }, { timeZone: 'UTC' })
+    expect(card.nights).toEqual([])
+    expect(card.samples).toEqual([])
+  })
+
   test('the Night spans its first mask-on to its last mask-off whatever the slot order', () => {
     const card = readCard({ str: strFor('10.01.24', [1100, 660], [1160, 1080]), events: [] }, { timeZone: 'UTC' })
     const ahi = card.samples.find((x) => x.metric_type === 'cpap.ahi')!
@@ -381,6 +416,19 @@ describe('reading a card\'s leak traces', () => {
     // The mask check's trace, and the file with no records.
     expect(card.stats.droppedLeakFiles).toBe(2)
     expect(card.stats.unreadable).toEqual([{ path: `${dir}20240110_230031_PLD.edf`, reason: 'No leak signal (the file has MaskPress.2s)' }])
+  })
+
+  test('a trace that runs on after mask-off is cut a minute after it', () => {
+    // UTC. One session 23:00-06:00 (STR minutes 660-1080 from noon). The file starts 23:00:30 and
+    // holds 425 minutes at 10 L/min, to 06:05; mask-off plus a minute is 06:01:00.
+    const card = readCard({ str: strFor([660], [1080]), events: [], leaks: [
+      { path: `${dir}20240110_230030_PLD.edf`, trace: { startWall: wall(23, 0, 30), first: 0, end: 424 * 60_000 + 30_000, minute0: -30_000, lpm: Array(425).fill(10) } },
+    ] }, { timeZone: 'UTC' })
+    const traces = leaks(card)
+    // Minutes 23:00 to 06:00 are kept: 421 of them, in seven full hours and one minute.
+    expect(card.stats.leakMinutes).toBe(421)
+    expect(traces.length).toBe(8)
+    expect(traces.at(-1)).toMatchObject({ started_at: '2024-01-11T06:00:00.000Z', ended_at: '2024-01-11T06:01:00.000Z', metadata: { lpm: [10] } })
   })
 
   test('sessions that share a clock minute never share a started_at', () => {

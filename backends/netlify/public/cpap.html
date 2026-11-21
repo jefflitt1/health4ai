@@ -132,11 +132,19 @@
   $('zone').onchange = () => { if (card) { clearError(); show() } }
 
   function show() {
+    const timeZone = $('zone').value.trim()
     try {
-      imported = readCard(card, { timeZone: $('zone').value.trim() })
+      new Intl.DateTimeFormat('en', { timeZone })
+    } catch {
+      $('result').hidden = true
+      showError('panel-error', new Error(`Unknown time zone "${timeZone}". Use one like America/Toronto.`))
+      return
+    }
+    try {
+      imported = readCard(card, { timeZone })
     } catch (e) {
       $('result').hidden = true
-      showError('panel-error', e instanceof RangeError ? new Error(`Unknown time zone "${$('zone').value}". Use one like America/Toronto.`) : e)
+      showError('panel-error', e)
       return
     }
     const { nights, stats, samples } = imported
@@ -178,7 +186,7 @@
     $('upload-status').hidden = false
     $('upload-status').textContent = `Uploading ${samples.length} Samples…`
     try {
-      await uploadSamples(samples, {
+      const { inserted } = await uploadSamples(samples, {
         post: (batch) => fetch('/api/setup/samples', {
           method: 'POST',
           headers: headers(),
@@ -193,7 +201,7 @@
           $('upload-status').textContent = `Uploaded ${sent} of ${total} Samples…`
         },
       })
-      $('upload-status').textContent = `Stored ${samples.length} Samples.`
+      $('upload-status').textContent = `Stored ${inserted} Samples.`
     } catch (e) {
       showError('panel-error', e)
       $('upload-status').textContent = 'Upload stopped. What was sent is stored; upload again to finish, nothing is stored twice.'
