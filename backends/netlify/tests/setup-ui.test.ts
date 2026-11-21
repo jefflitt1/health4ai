@@ -41,7 +41,9 @@ function fixture() {
         posts++
         bodies.push(JSON.parse((init as { body?: string }).body ?? 'null'))
         if (holdIssue) await new Promise<void>(resolve => { release = resolve })
-        return { status: 201, ok: true, json: async () => ({ id: 'issued', key: 'h4a_SYNTHETIC' }) }
+        // As the API does, the issued key carries the scope it was asked for.
+        const scope = (bodies.at(-1) as { scope?: string } | null)?.scope
+        return { status: 201, ok: true, json: async () => ({ id: 'issued', key: 'h4a_SYNTHETIC', scope }) }
       }
       return { status: 200, ok: true, json: async () => ({ keys, person_id: 'fixture' }) }
     },
@@ -88,4 +90,15 @@ test('a key is issued with the scope picked, and a read key is marked in the lis
   expect(f.bodies).toEqual([{ label: 'Dashboard', scope: 'read' }])
   const keyCells = f.get('keys').children.map((row) => row.children[1].textContent)
   expect(keyCells).toEqual(['h4a_old…', 'h4a_new…', 'h4a_rd… (Read)'])
+})
+
+test('the issued key says its scope, and the next key goes back to Write', async () => {
+  const f = fixture()
+  f.get('scope').value = 'read'
+  await f.get('issue-btn').onclick!()
+  expect(f.get('new-key-scope').textContent).toBe('Read key')
+  expect(f.get('scope').value).toBe('write')
+  await f.get('issue-btn').onclick!()
+  expect(f.bodies.map((b) => (b as { scope: string }).scope)).toEqual(['read', 'write'])
+  expect(f.get('new-key-scope').textContent).toBe('Write key')
 })

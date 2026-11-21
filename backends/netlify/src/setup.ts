@@ -45,7 +45,7 @@ export async function handleSetup(req: Request, getDb: () => Queryable): Promise
     try {
       const body = await req.json()
       if (body && typeof body.label === 'string') label = body.label.trim()
-      if (body && 'scope' in body) scope = body.scope
+      if (body && typeof body === 'object' && 'scope' in body) scope = body.scope
     } catch {
       return json({ error: 'Body must be JSON: {"label": "..."}' }, 400)
     }

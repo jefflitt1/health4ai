@@ -94,3 +94,8 @@ test.each([['admin'], [''], [1], [null]])('the setup API refuses scope %j and is
   expect(res).toEqual({ status: 400, body: { error: 'scope must be "write" or "read"' } })
   expect((await pool.query('SELECT count(*)::int AS n FROM device_keys')).rows[0].n).toBe(0)
 })
+
+test.each([['"hello"'], ['5'], ['true']])('a JSON body that is not an object (%s) still issues a write key, as before scopes', async (body) => {
+  const res = await setup('/api/setup/keys', { method: 'POST', body })
+  expect([res.status, res.body.scope, res.body.label]).toEqual([201, 'write', ''])
+})

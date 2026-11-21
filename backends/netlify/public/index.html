@@ -74,10 +74,10 @@
         <option value="write">Write: a phone that syncs</option>
         <option value="read">Read: a reader such as a dashboard</option>
       </select>
-      <p id="scope-help" class="muted">A read key cannot send data, and a write key cannot read it. The iOS app needs a write key.</p>
+      <p id="scope-help" class="muted">A read key cannot send data, and a write key cannot read it. The iOS app needs a write key. Nothing in this backend accepts a read key yet.</p>
       <button id="issue-btn">Issue key</button>
       <div id="new-key" hidden>
-        <p><strong>Copy this key now.</strong> It is shown once and cannot be recovered.</p>
+        <p><strong>Copy this key now.</strong> <span id="new-key-scope"></span>. It is shown once and cannot be recovered.</p>
         <div class="row"><code id="new-key-value"></code><button class="secondary" data-copy="new-key-value">Copy</button></div>
       </div>
     </section>
@@ -176,8 +176,11 @@
       const issued = await api('/api/setup/keys', { method: 'POST', body: JSON.stringify({ label: $('label').value, scope: $('scope').value }) })
       issuedId = issued.id
       $('new-key-value').textContent = issued.key
+      $('new-key-scope').textContent = issued.scope === 'read' ? 'Read key' : 'Write key'
       $('new-key').hidden = false
       $('label').value = ''
+      // A phone's key is the common case: a Read key is asked for each time, never inherited.
+      $('scope').value = 'write'
       await loadKeys()
     } catch (e) { showError('panel-error', e) }
     finally { $('issue-btn').disabled = false }
