@@ -76,6 +76,8 @@
   /** @type {{ str: Uint8Array, events: { path: string, bytes: Uint8Array }[], leaks: import('./cpap.js').LeakFile[] } | null} */
   let card = null
   let imported = null
+  // Picks are numbered; a read that a later pick overtook changes nothing on the page.
+  let pick = 0
   const $ = (id) => document.getElementById(id)
 
   const headers = () => ({ 'X-Setup-Secret': secret, 'Content-Type': 'application/json' })
@@ -103,30 +105,42 @@
   $('secret').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('unlock-btn').click() })
 
   $('folder').onchange = async () => {
+    const mine = ++pick
+    const current = () => mine === pick
     clearError()
     $('result').hidden = true
     card = null
+    imported = null
     const files = new Map([...$('folder').files].map((f) => [f.webkitRelativePath || f.name, f]))
     const picked = pickCardFiles([...files.keys()])
     if (!picked.str) {
       showError('panel-error', new Error('No STR.edf in that folder. Pick the SD card\'s top folder.'))
       return
     }
+    $('reading').textContent = 'Reading the card…'
     $('reading').hidden = false
     try {
       // Only the picked files are read; the waveform files are listed by the browser but never opened.
       const read = async (path) => new Uint8Array(await files.get(path).arrayBuffer())
       const str = await read(picked.str)
+      if (!current()) return
       const events = await Promise.all(picked.events.map(async (path) => ({ path, bytes: await read(path) })))
+      if (!current()) return
       // A year of trend files is a lot of bytes: each is read in turn and kept only as its leak trace.
       const leaks = []
       for (const [i, path] of picked.leaks.entries()) {
         $('reading').textContent = `Reading leak from session ${i + 1} of ${picked.leaks.length}…`
-        leaks.push(readLeakFile(path, await read(path)))
+        const bytes = await read(path)
+        if (!current()) return
+        leaks.push(readLeakFile(path, bytes))
       }
       card = { str, events, leaks }
       show()
-    } catch (e) { showError('panel-error', e) } finally { $('reading').hidden = true; $('reading').textContent = 'Reading the card…' }
+    } catch (e) {
+      if (current()) showError('panel-error', e)
+    } finally {
+      if (current()) $('reading').hidden = true
+    }
   }
 
   $('zone').onchange = () => { if (card) { clearError(); show() } }
@@ -137,6 +151,7 @@
       new Intl.DateTimeFormat('en', { timeZone })
     } catch {
       $('result').hidden = true
+      imported = null
       showError('panel-error', new Error(`Unknown time zone "${timeZone}". Use one like America/Toronto.`))
       return
     }
@@ -144,6 +159,7 @@
       imported = readCard(card, { timeZone })
     } catch (e) {
       $('result').hidden = true
+      imported = null
       showError('panel-error', e)
       return
     }
@@ -177,7 +193,7 @@
   }
 
   $('upload-btn').onclick = async () => {
-    if ($('upload-btn').disabled) return
+    if ($('upload-btn').disabled || !imported) return
     const { samples } = imported
     clearError()
     for (const id of ['upload-btn', 'folder', 'zone']) $(id).disabled = true
