@@ -485,6 +485,16 @@ export function readCard(card, { timeZone }) {
     const candidates = wallToInstants(wall, timeZone)
     return (n && candidates.find((t) => inSession(n, t + firstMs))) ?? candidates[0]
   }
+  // A file's Night is its start's, by the noon rule, unless its first moment falls in a session of
+  // the Night either side: STR rounds mask-on to the minute, so a file can start seconds before the
+  // noon that begins its Night's record.
+  const nightFor = (/** @type {number} */ wall, /** @type {number} */ firstMs) => {
+    const own = nights.get(nightOf(wall))
+    for (const n of [own, nights.get(nightOf(wall + SESSION_SLACK_MS)), nights.get(nightOf(wall - SESSION_SLACK_MS))]) {
+      if (n && wallToInstants(wall, timeZone).some((t) => inSession(n, t + firstMs))) return n
+    }
+    return own
+  }
 
   /** @type {Sample[]} */
   const samples = []
@@ -497,7 +507,7 @@ export function readCard(card, { timeZone }) {
       unreadable.push({ path: file.path, reason: /** @type {Error} */ (err).message })
       continue
     }
-    const night = nights.get(nightOf(edf.startWall))
+    const night = nightFor(edf.startWall, 0)
     const fileStart = placed(edf.startWall, night, 0)
     /** @type {Map<string, number>} "CSR Start" waiting for its "CSR End", by "CSR" */
     const open = new Map()
@@ -524,7 +534,8 @@ export function readCard(card, { timeZone }) {
         start = at - (a.duration ?? 0) * 1000
       }
       const type = snake(label)
-      if (!type || !night || !inSession(night, start)) {
+      // Ingest refuses a whole batch over a metric_type longer than 256 characters.
+      if (!type || `cpap.event.${type}`.length > 256 || !night || !inSession(night, start)) {
         droppedEvents++
         continue
       }
@@ -545,7 +556,7 @@ export function readCard(card, { timeZone }) {
     }
     const t = file.trace
     if (!t) { droppedLeakFiles++; continue } // no records: a session that ended within seconds
-    const night = nights.get(nightOf(t.startWall))
+    const night = nightFor(t.startWall, t.first)
     const fileStart = placed(t.startWall, night, t.first)
     const session = night && sessionAt(night, fileStart + t.first)
     if (!night || !session) { droppedLeakFiles++; continue } // a mask check, or a Night without therapy

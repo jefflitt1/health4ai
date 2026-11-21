@@ -331,6 +331,28 @@ describe('reading a card', () => {
     expect(card.stats.droppedEvents).toBe(0)
   })
 
+  test('a file started in the minute before noon belongs to the Night whose session it starts', () => {
+    // UTC. STR's record from noon on 2024-01-10 has a session from minute 0 (12:00, mask-on rounded
+    // to the minute) to 420. The EVE file starts at 11:59:40, before that noon; its hypopnea ends
+    // 600 s later, at 12:09:40.
+    const card = readCard({ str: strFor('10.01.24', [0], [420]), events: [
+      { path: `${dir}20240110/20240110_115940_EVE.edf`, bytes: eventFile('10.01.24', '11.59.40', tal('+600', '10', 'Hypopnea')) },
+    ] }, { timeZone: 'UTC' })
+    const hypopnea = card.samples.find((x) => x.metric_type === 'cpap.event.hypopnea')
+    expect([hypopnea?.started_at, hypopnea?.metadata]).toEqual(['2024-01-10T12:09:30.000Z', { night: '2024-01-10', label: 'Hypopnea' }])
+    expect(card.stats.droppedEvents).toBe(0)
+  })
+
+  test('an event whose label would make a metric type over 256 characters is left out, not uploaded', () => {
+    // Ingest refuses a whole batch with a metric_type over 256 characters, so one such event must not reach it.
+    const wide = { ...ANNOTATIONS, samplesPerRecord: 250 }
+    const bytes = buildEdf({ startDate: '10.01.24', startTime: '23.00.00', reserved: 'EDF+D', recordSeconds: 0, signals: [wide],
+      records: [[concat(tal('+0', null), tal('+600', '10', 'Hypopnea'), tal('+700', '10', 'X'.repeat(300)))]] })
+    const card = readCard({ str: strFor('10.01.24', [660], [1080]), events: [{ path: `${dir}20240110/20240110_230000_EVE.edf`, bytes }] }, { timeZone: 'UTC' })
+    expect(card.samples.filter((x) => x.metric_type.startsWith('cpap.event.')).map((x) => x.metric_type)).toEqual(['cpap.event.hypopnea'])
+    expect(card.stats.droppedEvents).toBe(1)
+  })
+
   test('a mask slot with no scale is no session, and the card still reads', () => {
     // MaskOn with digital min = max = 5: a slot holding 5 scales as 0/0, not a number.
     const noScale = buildEdf({

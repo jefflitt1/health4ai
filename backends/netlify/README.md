@@ -16,8 +16,8 @@ account. Vocabulary: [GLOSSARY.md](GLOSSARY.md).
   session's trend file (never the breathing waveforms), and uploads for you, as Samples, each
   Night's `cpap.ahi`, `cpap.usage_hours`, `cpap.leak_p95` and `cpap.pressure_median`, every
   `cpap.event.<type>`, and the `cpap.leak_trace` (`POST /api/setup/samples`). Importing the same
-  card again, or a later one that overlaps it, replaces those Nights instead of doubling them, as
-  long as the time zone is the same. `scripts/cpap-import.mjs` does the same from a terminal.
+  card again, or a later one that overlaps it, overwrites the matching Samples instead of adding
+  them twice, as long as the time zone is the same; it never removes a Sample. `scripts/cpap-import.mjs` does the same from a terminal.
   Events and leak traces come from the card's `DATALOG` folders, so a Night whose folder is not on
   the card (the card was not in the machine that night, or another tool such as OSCAR removed it)
   gets its summary from `STR.edf` and no events or leak trace.
