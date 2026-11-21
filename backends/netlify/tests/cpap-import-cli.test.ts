@@ -30,6 +30,7 @@ test.each(['https://example.test', 'http://localhost:8888', 'http://127.0.0.1:88
 
 test.each([
   ['an unknown --tz', ['--tz', 'America/Torono'], { H4A_SETUP_SECRET: 'synthetic' }, 'Unknown time zone'],
+  ['a malformed offset', ['--tz=-0500'], { H4A_SETUP_SECRET: 'synthetic' }, 'Unknown time zone or offset'],
   ['no setup secret', [], { H4A_SETUP_SECRET: '' }, 'Set H4A_SETUP_SECRET'],
 ])('%s is refused before the card is read', (_name, args, env, message) => {
   const { status, stderr } = spawnSync(process.execPath, ['scripts/cpap-import.mjs', '/no/such/card', 'https://example.test', ...args], {
@@ -38,6 +39,44 @@ test.each([
   expect(stderr).toContain(message)
   expect(stderr).not.toContain('ENOENT')
   expect(status).toBe(2)
+})
+
+// A one-night card: STR.edf with a session 23:00-06:00 on 2024-01-10, and a settings file if given.
+function oneNightCard(settings?: string) {
+  const minutes = { physMin: 0, physMax: 1440, digMin: 0, digMax: 1440, samplesPerRecord: 20 }
+  const one = (label: string, physMax: number, digMax: number, unit = '') => ({ label, physMin: 0, physMax, digMin: 0, digMax, samplesPerRecord: 1, unit })
+  const slots = (...v: number[]) => [...v, ...Array(20 - v.length).fill(-1)]
+  const card = join(mkdtempSync(join(tmpdir(), 'cpap-cli-')), 'CARD')
+  mkdirSync(card)
+  writeFileSync(join(card, 'STR.edf'), buildEdf({
+    startDate: '10.01.24', startTime: '12.00.00', recordSeconds: 86400,
+    signals: [{ label: 'MaskOn', ...minutes }, { label: 'MaskOff', ...minutes }, one('AHI', 240, 2400), one('Leak.95', 2, 100, 'L/s'), one('MaskPress.50', 40, 2000)],
+    records: [[slots(660), slots(1080), [52], [12], [512]]],
+  }))
+  if (settings !== undefined) {
+    mkdirSync(join(card, 'SETTINGS'))
+    writeFileSync(join(card, 'SETTINGS', 'CurrentSettings.json'), settings)
+  }
+  return card
+}
+
+const dryRun = (card: string, ...args: string[]) => spawnSync(process.execPath, ['scripts/cpap-import.mjs', card, '--dry-run', ...args], {
+  env: { ...process.env, H4A_SETUP_SECRET: '' }, encoding: 'utf8',
+})
+
+test('the clock on the card is used, and --tz overrides it', () => {
+  const card = oneNightCard('{"FlowGenerator":{"TimeZoneOffset":"-05:00"}}')
+  expect(dryRun(card).stdout).toContain('machine clock -05:00, from the card')
+  expect(dryRun(card, '--tz', 'UTC').stdout).toContain('machine clock UTC, --tz')
+})
+
+test('an unreadable clock on the card stops the script unless --tz gives one', () => {
+  const card = oneNightCard('{"TimeZoneOffset":"EST"}')
+  const refused = dryRun(card)
+  expect(refused.status).toBe(2)
+  expect(refused.stderr).toContain('TimeZoneOffset')
+  expect(refused.stderr).toContain('--tz=')
+  expect(dryRun(card, '--tz=-05:00').stdout).toContain('machine clock -05:00, --tz')
 })
 
 test('a redirect stops the upload: the place it points to receives nothing', async () => {
@@ -70,7 +109,8 @@ test('a redirect stops the upload: the place it points to receives nothing', asy
         { env: { ...process.env, H4A_SETUP_SECRET: 'synthetic' } },
         (err, _stdout, stderr) => resolve({ code: err ? (err as { code?: number }).code ?? 1 : 0, stderr }))
     })
-    expect(redirected).toBe(1)
+    // The clock check and the first batch both carry the secret; neither follows the redirect.
+    expect(redirected).toBe(2)
     expect(reached).toBe(0)
     expect(result.code).not.toBe(0)
   } finally {

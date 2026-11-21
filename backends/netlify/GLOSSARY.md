@@ -45,5 +45,9 @@ One day's rollup of one metric, with day boundaries in the Person's time zone.
 _Avoid_: Daily aggregate
 
 **Night**:
-One sleep period from noon to noon, dated by the evening it began: sleep that starts before noon belongs to the previous date. A CPAP card import stores each Night's summary Samples from its first mask-on, with the date in `metadata.night`.
+One sleep period from noon to noon, dated by the evening it began: sleep that starts before noon belongs to the previous date. For CPAP the noon is the Machine clock's. A CPAP card import stores each Night's summary Samples from its first mask-on, with the date in `metadata.night`.
 _Avoid_: Day, session
+
+**Machine clock**:
+The time a CPAP machine keeps: a fixed offset from UTC that does not follow daylight time, so in summer it can read an hour behind local time.
+_Avoid_: Machine time zone

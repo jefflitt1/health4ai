@@ -29,7 +29,7 @@
 <body>
 <main>
   <h1>Import a CPAP SD card</h1>
-  <p class="lede">Reads a ResMed AirSense 11 card in this browser and stores each Night's AHI, usage, leak and pressure, every event, and a minute-by-minute leak trace. Only the summary, event and trend files are opened, and of the trend files only the leak signal is decoded; the breathing waveforms are never opened, and nothing is sent until you press Upload.</p>
+  <p class="lede">Reads a ResMed AirSense 11 card in this browser and stores each Night's AHI, usage, leak and pressure, every event, and a minute-by-minute leak trace. Only the summary, settings, event and trend files are opened, and of the trend files only the leak signal is decoded; the breathing waveforms are never opened, and nothing is sent until you press Upload.</p>
   <p class="muted">Back to <a href="/">setup</a>.</p>
 
   <section class="card" id="unlock">
@@ -42,9 +42,9 @@
   <div id="panel" hidden>
     <h2>Card</h2>
     <section class="card">
-      <label for="zone">The machine's time zone</label>
+      <label for="zone">The machine's clock</label>
       <input id="zone" spellcheck="false" autocomplete="off">
-      <p class="muted">The card records the machine's clock, not a time zone. Use the same zone every time you import, or the same Night is stored twice.</p>
+      <p id="zone-note" class="muted">The machine keeps its own clock. Its offset from UTC is read from the card when you pick it; until then, or if the card has none, this computer's time zone is used. Type an offset such as -05:00, or a time zone such as America/Toronto, to read the card another way.</p>
       <label for="folder" class="gap">SD card folder</label>
       <input id="folder" type="file" webkitdirectory multiple>
       <p class="muted">Pick the card's top folder, the one holding STR.edf and DATALOG.</p>
@@ -55,6 +55,7 @@
       <h2>On this card</h2>
       <section class="card">
         <p id="summary"></p>
+        <p id="clock-warning" class="error" role="alert" hidden></p>
         <table>
           <thead><tr><th>Night</th><th>Hours</th><th>Sessions</th><th>Events</th></tr></thead>
           <tbody id="nights"></tbody>
@@ -69,7 +70,7 @@
   </div>
 </main>
 <script type="module">
-  import { STUB_MINUTES, pickCardFiles, readCard, readLeakFile, uploadSamples } from './cpap.js'
+  import { STUB_MINUTES, pickCardFiles, readCard, readCardClock, readLeakFile, uploadSamples, wallToInstant } from './cpap.js'
 
   // The secret lives only in this variable: never stored, so closing the tab locks the page.
   let secret = ''
@@ -85,7 +86,31 @@
   function showError(id, err) { $(id).textContent = err.message; $(id).hidden = false }
   function clearError() { $('panel-error').hidden = true }
 
-  $('zone').value = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const computerZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  $('zone').value = computerZone
+  // What the page last put in the clock field; anything else there was typed and is kept.
+  let filledClock = computerZone
+
+  // Earlier imports read on another clock put the same Nights at other times, so they would be
+  // stored twice: say so before Upload. A failed check says nothing rather than blocking the import.
+  let clockCheck = 0
+  async function checkClock() {
+    const check = ++clockCheck
+    $('clock-warning').hidden = true
+    const clock = $('zone').value.trim()
+    if (!card) return
+    try {
+      const res = await fetch('/api/setup/cpap-clock', { headers: headers() })
+      if (!res.ok || check !== clockCheck) return
+      const { clocks, unrecorded } = await res.json()
+      if (check !== clockCheck) return
+      const others = [...clocks.filter((c) => c !== clock), ...(unrecorded ? ['an unrecorded clock (imports made before clocks were recorded)'] : [])]
+      if (!others.length) return
+      $('clock-warning').textContent = `Earlier imports used ${others.join(', ')}; this one uses ${clock}. ` +
+        'Nights already stored on another clock would be stored again at other times. Upload only if the earlier clock was wrong and its Nights will be removed.'
+      $('clock-warning').hidden = false
+    } catch { /* the import still works; only the warning is missing */ }
+  }
 
   $('unlock-btn').onclick = async () => {
     if ($('unlock-btn').disabled) return
@@ -123,6 +148,20 @@
     try {
       // Only the picked files are read; the waveform files are listed by the browser but never opened.
       const read = async (path) => new Uint8Array(await files.get(path).arrayBuffer())
+      // The machine's own offset from UTC, when the card records it, fills the clock field, unless a
+      // clock was typed there. An unreadable offset is said, not fatal: a clock can be typed instead.
+      let clock = null, unreadable = null
+      try { clock = picked.settings ? readCardClock(await read(picked.settings)) : null } catch (e) { unreadable = e }
+      if (!current()) return
+      const typed = $('zone').value.trim() !== filledClock
+      if (!typed) $('zone').value = filledClock = clock ?? computerZone
+      $('zone-note').textContent = unreadable
+        ? `${unreadable.message}. Type the machine's clock, such as -05:00.`
+        : typed
+          ? `Using the clock you typed (${$('zone').value.trim()})${clock ? `; the card says UTC${clock}` : ''}.`
+          : clock
+            ? `The machine's clock is UTC${clock}, from the card. It does not follow daylight time. Change it only if the machine's clock was set wrong.`
+            : `The card does not record its clock's offset from UTC, so this computer's time zone (${computerZone}) is used. If the machine keeps a fixed clock all year, type its offset, such as -05:00.`
       const str = await read(picked.str)
       if (!current()) return
       const events = await Promise.all(picked.events.map(async (path) => ({ path, bytes: await read(path) })))
@@ -149,11 +188,11 @@
   function show() {
     const timeZone = $('zone').value.trim()
     try {
-      new Intl.DateTimeFormat('en', { timeZone })
+      wallToInstant(0, timeZone)
     } catch {
       $('result').hidden = true
       imported = null
-      showError('panel-error', new Error(`Unknown time zone "${timeZone}". Use one like America/Toronto.`))
+      showError('panel-error', new Error(`Unknown clock "${timeZone}". Use an offset such as -05:00 or a time zone such as America/Toronto.`))
       return
     }
     try {
@@ -188,6 +227,7 @@
       }
       tbody.append(tr)
     }
+    checkClock()
     $('upload-btn').disabled = samples.length === 0
     $('progress').hidden = true
     $('upload-status').hidden = true
@@ -220,6 +260,7 @@
         },
       })
       $('upload-status').textContent = `Stored ${inserted} Samples.`
+      $('clock-warning').hidden = true
     } catch (e) {
       showError('panel-error', e)
       $('upload-status').textContent = 'Upload stopped. What was sent is stored; upload again to finish, nothing is stored twice.'

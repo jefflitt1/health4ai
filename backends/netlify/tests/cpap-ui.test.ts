@@ -29,7 +29,7 @@ function file(path: string, text: string, held = false) {
   }
 }
 
-function fixture() {
+function fixture(stored: { clocks: string[]; unrecorded: boolean } = { clocks: [], unrecorded: false }) {
   const elements = new Map<string, Element>()
   const get = (id: string) => {
     if (!elements.has(id)) elements.set(id, new Element())
@@ -40,9 +40,21 @@ function fixture() {
     .replace(/^\s*import .* from '\.\/cpap\.js'\s*$/m, '')
   vm.runInNewContext(script, {
     document: { getElementById: get, createElement: () => new Element() },
-    setTimeout, Intl, Uint8Array,
+    setTimeout, Uint8Array, TextDecoder,
+    // This computer's zone, whatever the machine running the tests is set to.
+    Intl: { DateTimeFormat: () => ({ resolvedOptions: () => ({ timeZone: 'America/Toronto' }) }) },
+    // GET /api/setup/cpap-clock answers with the clocks earlier imports used.
+    fetch: async (url: string) => ({ ok: url === '/api/setup/cpap-clock', status: 200, json: async () => stored }),
     STUB_MINUTES: 5,
-    pickCardFiles: (paths: string[]) => ({ str: paths.find((p) => p.endsWith('STR.edf')) ?? null, events: [], leaks: [] }),
+    pickCardFiles: (paths: string[]) => ({ str: paths.find((p) => p.endsWith('STR.edf')) ?? null,
+      settings: paths.find((p) => p.endsWith('CurrentSettings.json')) ?? null, events: [], leaks: [] }),
+    // The settings file's text is the clock it records; "bad" is unreadable, "" records none.
+    readCardClock: (bytes: Uint8Array) => {
+      const text = new TextDecoder().decode(bytes)
+      if (text === 'bad') throw new Error('The card\'s TimeZoneOffset is not ±HH:MM ("bad")')
+      return text || null
+    },
+    wallToInstant: (_wall: number, clock: string) => { if (clock === 'Nowhere') throw new RangeError('Invalid time zone'); return 0 },
     readLeakFile: () => { throw new Error('no leak files here') },
     // The card's "STR.edf" text names it; each card reads as one Sample carrying that name.
     readCard: (card: { str: Uint8Array }) => {
@@ -107,4 +119,61 @@ test('a folder without STR.edf picked while another is being read clears the rea
   expect(f.get('reading').hidden).toBe(true)
   expect(f.get('panel-error').textContent).toContain('No STR.edf')
   expect(f.get('result').hidden).toBe(true)
+})
+
+test('the clock on the card fills the clock field and says so', async () => {
+  const f = fixture()
+  await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
+  expect(f.get('zone').value).toBe('-05:00')
+  expect(f.get('zone-note').textContent).toContain('UTC-05:00, from the card')
+  expect(f.get('summary').textContent).toContain('card A')
+})
+
+test('a card without a clock keeps the computer\'s zone and says the card has none', async () => {
+  const f = fixture()
+  await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', ''))
+  expect(f.get('zone').value).toBe('America/Toronto')
+  expect(f.get('zone-note').textContent).toContain('does not record')
+})
+
+test('a clock typed before picking is kept, whatever the card says', async () => {
+  const f = fixture()
+  f.get('zone').value = '+01:00'
+  await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
+  expect(f.get('zone').value).toBe('+01:00')
+  expect(f.get('zone-note').textContent).toContain('the card says UTC-05:00')
+})
+
+test('an unreadable clock on the card is said, and the card is still read', async () => {
+  const f = fixture()
+  await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', 'bad'))
+  expect(f.get('zone-note').textContent).toContain('TimeZoneOffset')
+  expect(f.get('summary').textContent).toContain('card A')
+  expect(f.get('panel-error').hidden).toBe(true)
+})
+
+test('an unknown clock is refused by name', async () => {
+  const f = fixture()
+  f.get('zone').value = 'Nowhere'
+  await f.pick(file('A/STR.edf', 'card A'))
+  expect(f.get('panel-error').textContent).toContain('Unknown clock "Nowhere"')
+  expect(f.get('result').hidden).toBe(true)
+})
+
+test.each([
+  ['another clock', { clocks: ['America/Toronto'], unrecorded: false }, 'America/Toronto'],
+  ['an unrecorded clock', { clocks: [], unrecorded: true }, 'unrecorded'],
+])('earlier imports on %s are warned about before Upload', async (_name, stored, named) => {
+  const f = fixture(stored)
+  await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
+  await new Promise((r) => setTimeout(r, 0))
+  expect(f.get('clock-warning').hidden).toBe(false)
+  expect(f.get('clock-warning').textContent).toContain(named)
+})
+
+test('earlier imports on the same clock bring no warning', async () => {
+  const f = fixture({ clocks: ['-05:00'], unrecorded: false })
+  await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
+  await new Promise((r) => setTimeout(r, 0))
+  expect(f.get('clock-warning').hidden).toBe(true)
 })

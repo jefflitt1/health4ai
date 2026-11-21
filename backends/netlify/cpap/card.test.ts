@@ -9,10 +9,10 @@
 import { expect, test } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
-import { BATCH_SIZE, parseEdf, pickCardFiles, readCard, readLeakFile, type Sample } from '../public/cpap.js'
+import { BATCH_SIZE, parseEdf, pickCardFiles, readCard, readCardClock, readLeakFile, type Sample } from '../public/cpap.js'
 
 const CARD = process.env.CPAP_CARD
-const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
+const COMPUTER_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
 const MINUTE = 60_000
 
 /** Reads the picked files, and only those, recording every path read. */
@@ -25,25 +25,27 @@ function readPicked() {
     reads.push(path)
     return new Uint8Array(readFileSync(join(dirname(CARD!), path)))
   }
+  // The clock the page would use: the card's own offset, else this computer's zone.
+  const clock = (picked.settings ? readCardClock(read(picked.settings)) : null) ?? COMPUTER_ZONE
   const card = {
     str: read(picked.str!),
     events: picked.events.map((path) => ({ path, bytes: read(path) })),
     leaks: picked.leaks.map((path) => readLeakFile(path, read(path))),
   }
-  return { relative, picked, reads, card }
+  return { relative, picked, reads, card, clock }
 }
 
 const count = <T>(items: T[], bad: (item: T) => boolean) => items.filter(bad).length
 
 test.skipIf(!CARD)('a real card reads into sane, repeatable Samples without touching the waveforms', () => {
-  const { relative, picked, reads, card } = readPicked()
+  const { relative, picked, reads, card, clock } = readPicked()
   const eventFiles = relative.filter((p) => /\/DATALOG\/\d{8}\/[^/]+_(EVE|CSL)\.edf$/.test(p))
   const trendFiles = relative.filter((p) => /\/DATALOG\/\d{8}\/[^/]+_PLD\.edf$/.test(p))
   expect(picked.str).not.toBeNull()
   expect(count(reads, (p) => /_(BRP|SA2)\.edf$/i.test(p))).toBe(0)
-  expect(reads.length).toBe(1 + eventFiles.length + trendFiles.length)
+  expect(reads.length).toBe(1 + (picked.settings ? 1 : 0) + eventFiles.length + trendFiles.length)
 
-  const { samples, nights, stats } = readCard(card, { timeZone: TZ })
+  const { samples, nights, stats } = readCard(card, { timeZone: clock })
   // The reasons name files and signals, never readings.
   if (stats.unreadable.length) console.log('unreadable:', [...new Set(stats.unreadable.map((u) => u.reason))].join('; '))
   expect(stats.unreadable.length).toBe(0)
@@ -102,7 +104,8 @@ test.skipIf(!CARD)('a real card reads into sane, repeatable Samples without touc
   expect(samples.length - new Set(samples.map((s) => `${s.metric_type} ${Date.parse(s.started_at)}`)).size).toBe(0)
 
   // A second read of the same card gives the same Samples, compared without printing them.
-  expect(JSON.stringify(readCard(readPicked().card, { timeZone: TZ }).samples) === JSON.stringify(samples)).toBe(true)
+  expect(JSON.stringify(readCard(readPicked().card, { timeZone: clock }).samples) === JSON.stringify(samples)).toBe(true)
+  expect(count(samples, (s) => (s.metadata as { clock?: string }).clock !== clock)).toBe(0)
 
   // The upload fits the setup API: under its 30 requests a minute, each batch under 5 MB.
   const batches = Math.ceil(samples.length / BATCH_SIZE)
@@ -116,4 +119,39 @@ test.skipIf(!CARD)('a real card reads into sane, repeatable Samples without touc
     `${stats.stubSessions} stub sessions skipped, ${stats.events} events of ${types} types, ` +
     `${stats.droppedEvents} events dropped, ${Math.round(stats.leakMinutes / 60)} hours of leak trace in ${leakTraces.length} Samples, ` +
     `${reads.length} files read, ${batches} upload batches`)
+})
+
+// Reading a card on a fixed clock instead of a zone with daylight time moves each Sample by the
+// zone's daylight hour or not at all, and changes nothing else: the same Nights, values and counts.
+// Opt-in like the test above; skipped for a card that records no clock.
+test.skipIf(!CARD)('the card\'s fixed clock and a daylight-time zone differ only by whole hours', () => {
+  const { card, clock } = readPicked()
+  if (!/^[+-]\d\d:\d\d$/.test(clock)) return
+  const fixed = readCard(card, { timeZone: clock })
+  const zoned = readCard(card, { timeZone: 'America/Toronto' })
+  expect(zoned.stats).toEqual(fixed.stats)
+  expect(zoned.nights).toEqual(fixed.nights)
+  // Paired by type, Night and order within them; the clock is the only metadata that may differ.
+  const key = (s: Sample) => `${s.metric_type} ${(s.metadata as { night: string }).night}`
+  const groups = (samples: Sample[]) => {
+    const out = new Map<string, Sample[]>()
+    for (const s of samples) out.set(key(s), [...(out.get(key(s)) ?? []), s])
+    return out
+  }
+  const [a, b] = [groups(fixed.samples), groups(zoned.samples)]
+  expect([...b.keys()].sort()).toEqual([...a.keys()].sort())
+  const shifts = new Map<number, number>()
+  let other = 0
+  for (const [k, fs] of a) {
+    fs.forEach((f, i) => {
+      const z = b.get(k)![i]
+      const shift = Date.parse(f.started_at) - Date.parse(z.started_at)
+      shifts.set(shift, (shifts.get(shift) ?? 0) + 1)
+      const strip = (s: Sample) => ({ ...s, started_at: '', ended_at: '', metadata: { ...(s.metadata as object), clock: '', minute0: '' } })
+      if (JSON.stringify(strip(f)) !== JSON.stringify(strip(z))) other++
+    })
+  }
+  expect(other).toBe(0)
+  expect([...shifts.keys()].filter((ms) => ms !== 0 && Math.abs(ms) !== 3_600_000)).toEqual([])
+  console.log(`clock ${clock} vs America/Toronto: ${[...shifts].map(([ms, n]) => `${n} Samples moved ${ms / 1000} s`).join(', ')}`)
 })
