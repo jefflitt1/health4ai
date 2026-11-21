@@ -107,6 +107,8 @@ test('the issued key says its scope, and the next key goes back to Write', async
 test('a key issued with another scope than the one picked is not shown, and the page says so', async () => {
   // A setup API from before scopes ignores the field and issues a write key, with no scope in its reply.
   const f = fixture()
+  await f.get('issue-btn').onclick!() // an earlier key, still on screen
+  expect(f.get('new-key').hidden).toBe(false)
   f.get('scope').value = 'read'
   f.answerWithoutScope()
   await f.get('issue-btn').onclick!()

@@ -79,7 +79,7 @@ describe('owner and device keys', () => {
     const owner = await ensureOwner(pool)
     const issued = await issueDeviceKey(pool, owner, 'iPhone')
     const { rows } = await pool.query('SELECT key_hash FROM device_keys')
-    expect(rows[0].key_hash).toBe(hashDeviceKey(issued.key))
+    expect(rows[0].key_hash).toBe(hashDeviceKey(issued.key, 'write'))
     expect(JSON.stringify(rows)).not.toContain(issued.key)
 
     expect(await personForDeviceKey(pool, issued.key, 'write')).toBe(owner)

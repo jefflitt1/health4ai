@@ -7,7 +7,7 @@ import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import { NetlifyDB } from '@netlify/database-dev'
 import pg from 'pg'
 import { handleIngest } from '../src/ingest.ts'
-import { hashDeviceKey } from '../src/keys.ts'
+import { createHash } from 'node:crypto'
 import { handleSetup } from '../src/setup.ts'
 import { ensureOwner, issueDeviceKey, personForDeviceKey, replaceMergedHours, revokeDeviceKey, upsertDeviceRows } from '../src/store.ts'
 
@@ -48,7 +48,7 @@ test('a read key is not stored under the hash a write lookup computes, so code f
   const phone = await issueDeviceKey(pool, owner, 'Phone')
   const reader = await issueDeviceKey(pool, owner, 'Dashboard', 'read')
   const legacy = async (key: string) => (await pool.query(
-    'SELECT person_id FROM device_keys WHERE key_hash = $1 AND revoked_at IS NULL', [hashDeviceKey(key)])).rows.length
+    'SELECT person_id FROM device_keys WHERE key_hash = $1 AND revoked_at IS NULL', [createHash('sha256').update(key).digest('hex')])).rows.length
   expect([await legacy(phone.key), await legacy(reader.key)]).toEqual([1, 0])
 })
 

@@ -19,7 +19,7 @@ export interface NewDeviceKey {
 /** A Device key writes (a phone, accepted by /api/ingest) or reads (for a reader such as a dashboard). */
 export type KeyScope = 'write' | 'read'
 
-export function generateDeviceKey(scope: KeyScope = 'write'): NewDeviceKey {
+export function generateDeviceKey(scope: KeyScope): NewDeviceKey {
   const plaintext = KEY_PREFIX + randomBytes(24).toString('base64url')
   return { plaintext, hash: hashDeviceKey(plaintext, scope), displayPrefix: plaintext.slice(0, DISPLAY_PREFIX_LENGTH) }
 }
@@ -29,7 +29,7 @@ export function generateDeviceKey(scope: KeyScope = 'write'): NewDeviceKey {
  * taken over a "read:" prefix, so code from before scopes, which looks keys up by the plain hash
  * (a deploy rolled back past this change, say), can never accept a read key as a write key.
  */
-export function hashDeviceKey(plaintext: string, scope: KeyScope = 'write'): string {
+export function hashDeviceKey(plaintext: string, scope: KeyScope): string {
   return createHash('sha256').update(scope === 'read' ? `read:${plaintext}` : plaintext, 'utf8').digest('hex')
 }
 

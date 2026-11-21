@@ -47,7 +47,7 @@ export async function handleSetup(req: Request, getDb: () => Queryable): Promise
       if (body && typeof body.label === 'string') label = body.label.trim()
       if (body && typeof body === 'object' && 'scope' in body) scope = body.scope
     } catch {
-      return json({ error: 'Body must be JSON: {"label": "..."}' }, 400)
+      return json({ error: 'Body must be JSON: {"label": "...", "scope": "write" or "read"}' }, 400)
     }
     if (label.length > MAX_LABEL) return json({ error: `Label exceeds ${MAX_LABEL} characters` }, 400)
     if (scope !== 'write' && scope !== 'read') return json({ error: 'scope must be "write" or "read"' }, 400)

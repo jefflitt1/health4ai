@@ -178,8 +178,12 @@
       // A setup API from before scopes ignores the field and issues a write key: never offer that
       // key as the one asked for.
       if ((issued.scope ?? 'write') !== asked) {
-        await loadKeys()
-        throw new Error(`This site issued a ${issued.scope ?? 'write'} key, not a ${asked} key. Revoke "${issued.label || issued.key_prefix}" below.`)
+        $('new-key').hidden = true; $('new-key-value').textContent = ''; issuedId = null
+        showError('panel-error', new Error(`This site issued a ${issued.scope ?? 'write'} key, not a ${asked} key. Revoke "${issued.label || issued.key_prefix}" below.`))
+        // The list shows the unwanted key to revoke; a failure to refresh it must not hide the message.
+        await loadKeys().catch(() => {})
+        $('panel-error').hidden = false
+        return
       }
       issuedId = issued.id
       $('new-key-value').textContent = issued.key
