@@ -103,6 +103,22 @@ export async function issueDeviceKey(db: Queryable, personId: string, label: str
   return { id: rows[0].id, key: key.plaintext, key_prefix: key.displayPrefix, label }
 }
 
+/**
+ * The Machine clocks a person's earlier CPAP imports were read with (metadata.clock on their
+ * nightly usage Samples), so an import on another clock can be warned about before it stores the
+ * same Nights again at other times. `unrecorded` is true when some were imported before clocks were
+ * recorded, on a clock that cannot be known now.
+ */
+export async function cpapClocks(db: Queryable, personId: string): Promise<{ clocks: string[]; unrecorded: boolean }> {
+  const { rows } = await db.query<{ clock: string | null }>(
+    `SELECT DISTINCT metadata->>'clock' AS clock FROM healthkit_metrics
+      WHERE user_id = $1 AND metric_type = 'cpap.usage_hours'
+      ORDER BY 1`,
+    [personId],
+  )
+  return { clocks: rows.flatMap((r) => (r.clock === null ? [] : [r.clock])), unrecorded: rows.some((r) => r.clock === null) }
+}
+
 export async function listDeviceKeys(db: Queryable, personId: string): Promise<DeviceKeySummary[]> {
   const { rows } = await db.query<DeviceKeySummary>(
     `SELECT id, label, key_prefix, created_at, last_used_at, revoked_at
