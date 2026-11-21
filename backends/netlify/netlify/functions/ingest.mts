@@ -6,7 +6,7 @@ import { personForDeviceKey, replaceMergedHours, upsertDeviceRows } from '../../
 export default (req: Request) =>
   guarded('ingest', () =>
     handleIngest(req, {
-      authenticate: (key) => personForDeviceKey(sharedPool(), key),
+      authenticate: (key) => personForDeviceKey(sharedPool(), key, 'write'),
       upsertDeviceRows: (rows) => upsertDeviceRows(sharedPool(), rows),
       replaceMergedHours: (userId, rows) => replaceMergedHours(sharedPool(), userId, rows),
     }),
