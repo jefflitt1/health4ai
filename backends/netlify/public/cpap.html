@@ -59,7 +59,7 @@
           <thead><tr><th>Night</th><th>Hours</th><th>Sessions</th><th>Events</th></tr></thead>
           <tbody id="nights"></tbody>
         </table>
-        <p class="muted">The most recent Nights. Uploading the same card again, or a later card that overlaps it, replaces those Nights rather than adding them twice.</p>
+        <p class="muted">The most recent Nights. Uploading the same card again, or a later card that overlaps it, overwrites the matching Samples rather than adding them twice.</p>
         <button id="upload-btn">Upload</button>
         <progress id="progress" value="0" max="1" hidden></progress>
         <p id="upload-status" class="muted" role="status" hidden></p>
@@ -114,6 +114,7 @@
     const files = new Map([...$('folder').files].map((f) => [f.webkitRelativePath || f.name, f]))
     const picked = pickCardFiles([...files.keys()])
     if (!picked.str) {
+      $('reading').hidden = true
       showError('panel-error', new Error('No STR.edf in that folder. Pick the SD card\'s top folder.'))
       return
     }

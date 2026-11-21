@@ -94,3 +94,17 @@ test('while a later folder is being read, nothing from the earlier one can be up
   await f.get('upload-btn').onclick!()
   expect(f.uploaded).toEqual([[{ name: 'card B' }]])
 })
+
+test('a folder without STR.edf picked while another is being read clears the reading status', async () => {
+  const f = fixture()
+  const a = file('A/STR.edf', 'card A', true)
+  const first = f.pick(a)
+  expect(f.get('reading').hidden).toBe(false)
+  await f.pick(file('B/notes.txt', 'not a card'))
+  expect(f.get('reading').hidden).toBe(true)
+  expect(f.get('panel-error').hidden).toBe(false)
+  a.release(); await first
+  expect(f.get('reading').hidden).toBe(true)
+  expect(f.get('panel-error').textContent).toContain('No STR.edf')
+  expect(f.get('result').hidden).toBe(true)
+})
