@@ -39,8 +39,9 @@ account. Vocabulary: [GLOSSARY.md](GLOSSARY.md).
      pnpm install
      pnpm run setup-secret
      ```
-3. Open the site, unlock it with the secret, and issue a Device key for your phone. Paste the site
-   URL and key into the app (Connection → Your Netlify site).
+3. Open the site, unlock it with the secret, and issue a Device key for your phone, with the
+   default Write scope. Paste the site URL and key into the app (Connection → Your Netlify site).
+   A Read key cannot send data, and nothing in this backend accepts one yet.
 4. For the MCP server, copy the person ID into `HEALTHKIT_USER_ID`, and the connection string from
    Data & Storage → Database into `DATABASE_URL`.
 

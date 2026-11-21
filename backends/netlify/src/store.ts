@@ -29,21 +29,24 @@ export async function setupSecret(db: Queryable): Promise<string> {
   return made
 }
 
+/** A Device key writes (a phone, accepted by /api/ingest) or reads (for a reader such as a dashboard). */
+export type KeyScope = 'write' | 'read'
+
 /**
- * The person a Device key belongs to, or null. Records when the key was last used, at most once an
- * hour: a backfill sends thousands of batches, and rewriting the key's row on each one would only
- * churn it.
+ * The person an active Device key of `scope` belongs to, or null, so a key of the other scope is
+ * refused like an unknown one. Records when the key was last used, at most once an hour: a backfill
+ * sends thousands of batches, and rewriting the key's row on each one would only churn it.
  */
-export async function personForDeviceKey(db: Queryable, plaintext: string): Promise<string | null> {
+export async function personForDeviceKey(db: Queryable, plaintext: string, scope: KeyScope): Promise<string | null> {
   const { rows } = await db.query<{ person_id: string }>(
     `WITH k AS (
-       SELECT id, person_id FROM device_keys WHERE key_hash = $1 AND revoked_at IS NULL
+       SELECT id, person_id FROM device_keys WHERE key_hash = $1 AND scope = $2 AND revoked_at IS NULL
      ), touched AS (
        UPDATE device_keys d SET last_used_at = now() FROM k
         WHERE d.id = k.id AND (d.last_used_at IS NULL OR d.last_used_at < now() - interval '1 hour')
      )
      SELECT person_id FROM k`,
-    [hashDeviceKey(plaintext)],
+    [hashDeviceKey(plaintext), scope],
   )
   return rows[0]?.person_id ?? null
 }
@@ -88,24 +91,25 @@ export type DeviceKeySummary = {
   id: string
   label: string
   key_prefix: string
+  scope: KeyScope
   created_at: string
   last_used_at: string | null
   revoked_at: string | null
 }
 
-export async function issueDeviceKey(db: Queryable, personId: string, label: string) {
+export async function issueDeviceKey(db: Queryable, personId: string, label: string, scope: KeyScope = 'write') {
   const key = generateDeviceKey()
   const { rows } = await db.query<{ id: string }>(
-    `INSERT INTO device_keys (person_id, key_hash, key_prefix, label)
-     VALUES ($1, $2, $3, $4) RETURNING id`,
-    [personId, key.hash, key.displayPrefix, label],
+    `INSERT INTO device_keys (person_id, key_hash, key_prefix, label, scope)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [personId, key.hash, key.displayPrefix, label, scope],
   )
-  return { id: rows[0].id, key: key.plaintext, key_prefix: key.displayPrefix, label }
+  return { id: rows[0].id, key: key.plaintext, key_prefix: key.displayPrefix, label, scope }
 }
 
 export async function listDeviceKeys(db: Queryable, personId: string): Promise<DeviceKeySummary[]> {
   const { rows } = await db.query<DeviceKeySummary>(
-    `SELECT id, label, key_prefix, created_at, last_used_at, revoked_at
+    `SELECT id, label, key_prefix, scope, created_at, last_used_at, revoked_at
        FROM device_keys WHERE person_id = $1 ORDER BY created_at DESC`,
     [personId],
   )

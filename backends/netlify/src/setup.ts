@@ -1,10 +1,11 @@
 // Setup API behind the setup secret: shows the Owner's person ID and issues, lists and revokes
-// the Owner's Device keys. It never returns the database connection string, so a leaked setup
-// secret lets someone write to this Deployment but not read the health data in it.
+// the Owner's Device keys. It never returns the database connection string or health data, but a
+// leaked setup secret lets someone issue a write key, and a read key for whatever accepts one.
 //
 //   GET  /api/setup                    -> { person_id }
 //   GET  /api/setup/keys               -> { keys: [...] }
-//   POST /api/setup/keys {label}       -> { id, key, key_prefix, label }   (key shown once)
+//   POST /api/setup/keys {label, scope} -> { id, key, key_prefix, label, scope }   (key shown once;
+//                                         scope "write" (a phone, the default) or "read")
 //   POST /api/setup/keys/:id/revoke    -> 204, or 404 if no such active key
 
 import { json } from './http.ts'
@@ -40,14 +41,17 @@ export async function handleSetup(req: Request, getDb: () => Queryable): Promise
 
   if (path === '/api/setup/keys' && req.method === 'POST') {
     let label = ''
+    let scope: unknown = 'write'
     try {
       const body = await req.json()
       if (body && typeof body.label === 'string') label = body.label.trim()
+      if (body && 'scope' in body) scope = body.scope
     } catch {
       return json({ error: 'Body must be JSON: {"label": "..."}' }, 400)
     }
     if (label.length > MAX_LABEL) return json({ error: `Label exceeds ${MAX_LABEL} characters` }, 400)
-    return json(await issueDeviceKey(db, ownerId, label), 201)
+    if (scope !== 'write' && scope !== 'read') return json({ error: 'scope must be "write" or "read"' }, 400)
+    return json(await issueDeviceKey(db, ownerId, label, scope), 201)
   }
 
   const revoke = path.match(/^\/api\/setup\/keys\/([^/]+)\/revoke$/)

@@ -82,11 +82,11 @@ describe('owner and device keys', () => {
     expect(rows[0].key_hash).toBe(hashDeviceKey(issued.key))
     expect(JSON.stringify(rows)).not.toContain(issued.key)
 
-    expect(await personForDeviceKey(pool, issued.key)).toBe(owner)
-    expect(await personForDeviceKey(pool, issued.key + 'x')).toBeNull()
+    expect(await personForDeviceKey(pool, issued.key, 'write')).toBe(owner)
+    expect(await personForDeviceKey(pool, issued.key + 'x', 'write')).toBeNull()
 
     expect(await revokeDeviceKey(pool, owner, issued.id)).toBe(true)
-    expect(await personForDeviceKey(pool, issued.key)).toBeNull()
+    expect(await personForDeviceKey(pool, issued.key, 'write')).toBeNull()
     expect(await revokeDeviceKey(pool, owner, issued.id)).toBe(false)
   })
 
@@ -94,10 +94,10 @@ describe('owner and device keys', () => {
     const owner = await ensureOwner(pool)
     const issued = await issueDeviceKey(pool, owner, 'iPhone')
     await pool.query(`UPDATE device_keys SET last_used_at = '2026-01-01T00:00:00Z'`)
-    await personForDeviceKey(pool, issued.key)
+    await personForDeviceKey(pool, issued.key, 'write')
     const first = (await listDeviceKeys(pool, owner))[0].last_used_at
     expect(new Date(first!).getTime()).toBeGreaterThan(Date.parse('2026-01-01T00:00:01Z'))
-    await personForDeviceKey(pool, issued.key)
+    await personForDeviceKey(pool, issued.key, 'write')
     const second = (await listDeviceKeys(pool, owner))[0].last_used_at
     expect(new Date(second!).getTime()).toBe(new Date(first!).getTime())
   })
@@ -105,7 +105,7 @@ describe('owner and device keys', () => {
   test('using a key records last_used_at', async () => {
     const owner = await ensureOwner(pool)
     const issued = await issueDeviceKey(pool, owner, 'iPhone')
-    await personForDeviceKey(pool, issued.key)
+    await personForDeviceKey(pool, issued.key, 'write')
     const [listed] = await listDeviceKeys(pool, owner)
     expect(listed.last_used_at).not.toBeNull()
   })
@@ -161,7 +161,7 @@ describe('ingest end to end against the database', () => {
         ] }),
       }),
       {
-        authenticate: (k) => personForDeviceKey(pool, k),
+        authenticate: (k) => personForDeviceKey(pool, k, 'write'),
         upsertDeviceRows: (rows) => upsertDeviceRows(pool, rows),
         replaceMergedHours: (u, rows) => replaceMergedHours(pool, u, rows),
       },
@@ -190,7 +190,7 @@ describe('a merged hour of 0 or less against the database', () => {
         body: JSON.stringify({ samples }),
       }),
       {
-        authenticate: (k) => personForDeviceKey(pool, k),
+        authenticate: (k) => personForDeviceKey(pool, k, 'write'),
         upsertDeviceRows: (rows) => upsertDeviceRows(pool, rows),
         replaceMergedHours: (u, rows) => replaceMergedHours(pool, u, rows),
       },
