@@ -22,6 +22,18 @@ if (!card || (!site && !opts['dry-run'])) {
   console.error('Usage: H4A_SETUP_SECRET=<secret> node scripts/cpap-import.mjs <card folder> <site URL> [--tz <zone>] [--dry-run]')
   process.exit(2)
 }
+// The setup secret and the Samples go in the request, so only over HTTPS, except to this machine
+// (netlify dev). Checked before the card is read.
+/** @type {URL | undefined} */
+let base
+if (site) {
+  try { base = new URL(site) } catch { /* refused below */ }
+  const local = base?.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(base.hostname)
+  if (!base || (base.protocol !== 'https:' && !local)) {
+    console.error(`The site URL must start with https:// (or http:// for localhost): ${site}`)
+    process.exit(2)
+  }
+}
 
 // Paths as the page sees them: relative to the picked folder's parent, '/'-separated.
 const root = basename(card)
@@ -46,7 +58,6 @@ if (!secret) {
   process.exit(2)
 }
 
-const base = new URL(site)
 const headers = { 'X-Setup-Secret': secret, 'Content-Type': 'application/json' }
 const { inserted, batches } = await uploadSamples(samples, {
   post: (batch) => fetch(new URL('/api/setup/samples', base), { method: 'POST', headers, body: JSON.stringify({ samples: batch }) }),
