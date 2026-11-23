@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "vitest run && python3 scripts/test_verify_deploy.py",
+    "test:cpap": "vitest run cpap/ --disableConsoleIntercept",
     "typecheck": "tsc --noEmit",
     "setup-secret": "node scripts/setup-secret.ts"
   },
