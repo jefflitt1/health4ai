@@ -1,6 +1,6 @@
 // The CPAP import page's script, run against stand-in elements and a stand-in card reader. Expected
-// behaviour: only the folder picked last may fill the preview, show errors, or be uploaded, however
-// the reads of earlier picks finish.
+// behaviour: only the current card and clock may fill the preview, show errors, or be uploaded,
+// regardless of when earlier reads and clock checks finish.
 
 import { expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -29,7 +29,14 @@ function file(path: string, text: string, held = false) {
   }
 }
 
-function fixture(stored: { clocks: string[]; unrecorded: boolean } | null = { clocks: [], unrecorded: false }) {
+type StoredClocks = { clocks: string[]; unrecorded: boolean }
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((r) => { resolve = r })
+  return { promise, resolve }
+}
+
+function fixture(stored: StoredClocks | null | (() => Promise<StoredClocks | null>) = { clocks: [], unrecorded: false }) {
   const elements = new Map<string, Element>()
   const get = (id: string) => {
     if (!elements.has(id)) elements.set(id, new Element())
@@ -40,11 +47,14 @@ function fixture(stored: { clocks: string[]; unrecorded: boolean } | null = { cl
     .replace(/^\s*import .* from '\.\/cpap\.js'\s*$/m, '')
   vm.runInNewContext(script, {
     document: { getElementById: get, createElement: () => new Element() },
-    setTimeout, Uint8Array, TextDecoder,
+    setTimeout, Uint8Array, TextDecoder, AbortSignal,
     // This computer's zone, whatever the machine running the tests is set to.
     Intl: { DateTimeFormat: () => ({ resolvedOptions: () => ({ timeZone: 'America/Toronto' }) }) },
     // GET /api/setup/cpap-clock answers with the clocks earlier imports used.
-    fetch: async (url: string) => (stored ? { ok: url === '/api/setup/cpap-clock', status: 200, json: async () => stored } : { ok: false, status: 429, json: async () => ({}) }),
+    fetch: async (url: string) => {
+      const response = typeof stored === 'function' ? await stored() : stored
+      return { ok: url === '/api/setup/cpap-clock' && response !== null, json: async () => response }
+    },
     STUB_MINUTES: 5,
     pickCardFiles: (paths: string[]) => ({ str: paths.find((p) => p.endsWith('STR.edf')) ?? null,
       settings: paths.find((p) => p.endsWith('CurrentSettings.json')) ?? null, events: [], leaks: [] }),
@@ -54,7 +64,7 @@ function fixture(stored: { clocks: string[]; unrecorded: boolean } | null = { cl
       if (text === 'bad') throw new Error('The card\'s TimeZoneOffset is not ±HH:MM ("bad")')
       return text || null
     },
-    wallToInstant: (_wall: number, clock: string) => { if (clock === 'Nowhere') throw new RangeError('Invalid time zone'); return 0 },
+    wallToInstant: (_wall: number, clock: string) => { if (!clock || clock === 'Nowhere') throw new RangeError('Invalid time zone'); return 0 },
     readLeakFile: () => { throw new Error('no leak files here') },
     // The card's "STR.edf" text names it; each card reads as one Sample carrying that name.
     readCard: (card: { str: Uint8Array }) => {
@@ -66,7 +76,15 @@ function fixture(stored: { clocks: string[]; unrecorded: boolean } | null = { cl
     uploadSamples: async (samples: unknown[]) => { uploaded.push(samples); return { inserted: samples.length, batches: 1 } },
   })
   const pick = (...files: ReturnType<typeof file>[]) => { get('folder').files = files; return get('folder').onchange!() }
-  return { get, uploaded, pick }
+  const typeClock = (clock: string) => {
+    get('zone').value = clock
+    get('zone').oninput!()
+  }
+  const changeClock = (clock: string) => {
+    typeClock(clock)
+    return get('zone').onchange!()
+  }
+  return { get, uploaded, pick, typeClock, changeClock }
 }
 
 test('a folder picked while an earlier one is still being read is the one previewed and uploaded', async () => {
@@ -185,7 +203,6 @@ test.each([
 ])('earlier imports on %s are warned about before Upload', async (_name, stored, named) => {
   const f = fixture(stored)
   await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
-  await new Promise((r) => setTimeout(r, 0))
   expect(f.get('clock-warning').hidden).toBe(false)
   expect(f.get('clock-warning').textContent).toContain(named)
 })
@@ -193,7 +210,6 @@ test.each([
 test('earlier imports on the same clock bring no warning', async () => {
   const f = fixture({ clocks: ['-05:00'], unrecorded: false })
   await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
-  await new Promise((r) => setTimeout(r, 0))
   expect(f.get('clock-warning').hidden).toBe(true)
 })
 
@@ -215,15 +231,109 @@ test('the note follows a clock typed after picking', async () => {
 test('a clock check that fails says so instead of showing nothing', async () => {
   const f = fixture(null)
   await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
-  await new Promise((r) => setTimeout(r, 0))
   expect(f.get('clock-warning').hidden).toBe(false)
   expect(f.get('clock-warning').textContent).toContain('Could not check')
+  expect(f.get('upload-btn').disabled).toBe(false)
 })
 
 test('the warning says what uploading does, and promises no removal the page cannot do', async () => {
   const f = fixture({ clocks: ['America/Toronto'], unrecorded: false })
   await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
-  await new Promise((r) => setTimeout(r, 0))
   expect(f.get('clock-warning').textContent).toContain('a second time')
   expect(f.get('clock-warning').textContent).not.toContain('will be removed')
+})
+
+
+test('Upload stays disabled until the clock check warns about earlier imports', async () => {
+  const response = deferred<StoredClocks>()
+  const started = deferred<void>()
+  const f = fixture(() => { started.resolve(); return response.promise })
+  const pending = f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
+  await started.promise
+  expect(f.get('result').hidden).toBe(false)
+  expect(f.get('clock-check-status').hidden).toBe(false)
+  expect(f.get('upload-btn').disabled).toBe(true)
+  await f.get('upload-btn').onclick!()
+  expect(f.uploaded).toEqual([])
+
+  response.resolve({ clocks: ['+01:00'], unrecorded: false })
+  await pending
+  expect(f.get('clock-check-status').hidden).toBe(true)
+  expect(f.get('clock-warning').textContent).toContain('this one uses -05:00')
+  expect(f.get('upload-btn').disabled).toBe(false)
+  await f.get('upload-btn').onclick!()
+  expect(f.uploaded).toEqual([[{ name: 'card A' }]])
+})
+
+test.each([false, true])('only the current preview can enable Upload (older check completes first: %s)', async (olderFirst) => {
+  const a = deferred<StoredClocks>()
+  const b = deferred<StoredClocks>()
+  const started = deferred<void>()
+  let calls = 0
+  const f = fixture(() => {
+    if (++calls === 1) { started.resolve(); return a.promise }
+    return b.promise
+  })
+  const first = f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', '-05:00'))
+  await started.promise
+  const second = f.changeClock('+01:00')
+  expect(calls).toBe(2)
+  if (olderFirst) {
+    a.resolve({ clocks: ['-05:00'], unrecorded: false })
+    await first
+    expect(f.get('clock-check-status').hidden).toBe(false)
+    expect(f.get('clock-warning').hidden).toBe(true)
+    expect(f.get('upload-btn').disabled).toBe(true)
+    await f.get('upload-btn').onclick!()
+    expect(f.uploaded).toEqual([])
+  }
+  b.resolve({ clocks: ['-05:00'], unrecorded: false })
+  await second
+  if (!olderFirst) {
+    a.resolve({ clocks: ['-05:00'], unrecorded: false })
+    await first
+  }
+  expect(f.get('clock-check-status').hidden).toBe(true)
+  expect(f.get('clock-warning').hidden).toBe(false)
+  expect(f.get('clock-warning').textContent).toContain('this one uses +01:00')
+  expect(f.get('upload-btn').disabled).toBe(false)
+})
+
+test('editing the clock without committing it prevents uploading the old preview', async () => {
+  const f = fixture()
+  await f.pick(file('A/STR.edf', 'card A'))
+  f.typeClock('+01:00')
+  expect(f.get('upload-btn').disabled).toBe(true)
+  await f.get('upload-btn').onclick!()
+  expect(f.uploaded).toEqual([])
+  f.typeClock('America/Toronto')
+  expect(f.get('upload-btn').disabled).toBe(false)
+})
+
+test.each([
+  ['-05:00', '-05:00', 'from the card'],
+  ['', 'America/Toronto', 'does not record'],
+])('clearing a clock after picking the card restores the default (%j)', async (settings, expected, note) => {
+  const f = fixture({ clocks: ['+01:00'], unrecorded: false })
+  await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', settings))
+  await f.changeClock('+01:00')
+  await f.changeClock('')
+  expect(f.get('zone').value).toBe(expected)
+  expect(f.get('zone-note').textContent).toContain(note)
+  expect(f.get('panel-error').hidden).toBe(true)
+  expect(f.get('result').hidden).toBe(false)
+  expect(f.get('clock-warning').textContent).toContain(`this one uses ${expected}`)
+  expect(f.get('upload-btn').disabled).toBe(false)
+})
+
+test('clearing an override on an unreadable card requires a clock again', async () => {
+  const f = fixture()
+  await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', 'bad'))
+  await f.changeClock('-05:00')
+  expect(f.get('upload-btn').disabled).toBe(false)
+  await f.changeClock('')
+  expect(f.get('zone').value).toBe('')
+  expect(f.get('result').hidden).toBe(true)
+  expect(f.get('panel-error').textContent).toContain('Type the machine\'s clock')
+  expect(f.get('upload-btn').disabled).toBe(true)
 })
