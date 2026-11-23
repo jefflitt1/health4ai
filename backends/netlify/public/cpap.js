@@ -446,10 +446,11 @@ export function readLeakTrace(bytes) {
   const unit = signal.unit.trim().toLowerCase()
   const toLpm = unit === 'l/s' ? 60 : unit === 'l/min' ? 1 : null
   if (toLpm === null) throw new Error(`${signal.label} is in an unknown unit (${unit || 'none'})`)
-  // Declared empty, as the device writes it, or an unknown count with nothing after the header. A
-  // file whose declared records were cut off is not empty but damaged, and falls through to the
-  // no-readings error below.
-  if (edf.declaredRecords === 0 || (edf.declaredRecords < 0 && edf.recordCount === 0)) return null
+  // Declared empty, as the device writes it, or an unknown count with not a byte after the header. A
+  // file whose records were cut off is not empty but damaged, and falls through to the no-readings
+  // error below.
+  const headerOnly = bytes.length === 256 * (edf.signals.length + 1)
+  if (edf.declaredRecords === 0 || (edf.declaredRecords < 0 && headerOnly)) return null
   const step = edf.recordSeconds / signal.samplesPerRecord * 1000
   /** @type {Map<number, { sum: number, n: number }>} by clock minute, as wall-clock ms */
   const minutes = new Map()

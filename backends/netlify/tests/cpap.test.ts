@@ -293,6 +293,13 @@ describe('leak from a PLD file', () => {
     expect(readLeakTrace(buildEdf({ startDate: '10.01.24', startTime: '23.00.30', recordSeconds: 60, declaredRecords: -1,
       signals: [press, leak()], records: [] }))).toBeNull()
   })
+
+  test('a file with an unknown record count cut off inside its first record is an error, not an empty file', () => {
+    const whole = buildEdf({ startDate: '10.01.24', startTime: '23.00.30', recordSeconds: 60, declaredRecords: -1, signals: [press, leak()],
+      records: [[Array(30).fill(500), [...fifteen(10), ...fifteen(10)]]] })
+    // The 768-byte header (256 + 2 signals x 256), then 30 of the record's 120 bytes.
+    expect(() => readLeakTrace(whole.slice(0, 768 + 30))).toThrow('Leak.2s has no readings')
+  })
 })
 
 describe('reading a card', () => {
