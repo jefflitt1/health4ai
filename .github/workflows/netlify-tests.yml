@@ -1,0 +1,43 @@
+name: Netlify backend
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: netlify-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  netlify:
+    name: Netlify backend tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backends/netlify
+    env:
+      # Real-card acceptance is private and separate; CI uses synthetic fixtures.
+      CPAP_CARD: ''
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.22.2'
+      - name: Install locked dependencies
+        run: |
+          npm install --global pnpm@12.17.0
+          pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Full backend and deploy-verifier suite
+        run: pnpm test
+      - name: Record coverage boundary
+        run: |
+          echo 'Netlify suite includes CPAP synthetic parser/UI/API tests. Private SD-card and physical-device acceptance are not covered.' >> "$GITHUB_STEP_SUMMARY"
