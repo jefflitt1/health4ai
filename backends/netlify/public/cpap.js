@@ -433,8 +433,9 @@ export function readLeakFile(path, bytes) {
  * a reading that is not a number is skipped. A minute's value is the mean of the readings that fall
  * in it, so a session's first and last minutes, only partly recorded, count the readings they have.
  * Returns null for a file with no records, which the device writes for a session that ends within
- * seconds. Throws on a file that is not EDF, has no leak signal, has records but no readings, or
- * gives leak in another unit.
+ * seconds: its header declares 0 records, or an unknown count (-1) and none follow. Throws on a file
+ * that is not EDF, has no leak signal, has no readings although its header declares records (a copy
+ * cut off before them), or gives leak in another unit.
  * @param {Uint8Array} bytes
  * @returns {LeakTrace | null}
  */
@@ -445,9 +446,10 @@ export function readLeakTrace(bytes) {
   const unit = signal.unit.trim().toLowerCase()
   const toLpm = unit === 'l/s' ? 60 : unit === 'l/min' ? 1 : null
   if (toLpm === null) throw new Error(`${signal.label} is in an unknown unit (${unit || 'none'})`)
-  // Declared empty, as the device writes it. A file whose declared records were cut off is not
-  // empty but damaged, and falls through to the no-readings error below.
-  if (edf.declaredRecords === 0) return null
+  // Declared empty, as the device writes it, or an unknown count with nothing after the header. A
+  // file whose declared records were cut off is not empty but damaged, and falls through to the
+  // no-readings error below.
+  if (edf.declaredRecords === 0 || (edf.declaredRecords < 0 && edf.recordCount === 0)) return null
   const step = edf.recordSeconds / signal.samplesPerRecord * 1000
   /** @type {Map<number, { sum: number, n: number }>} by clock minute, as wall-clock ms */
   const minutes = new Map()

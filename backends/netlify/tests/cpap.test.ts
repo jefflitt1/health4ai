@@ -287,6 +287,12 @@ describe('leak from a PLD file', () => {
       records: [[Array(30).fill(500), [...fifteen(10), ...fifteen(10)]]] })
     expect(() => readLeakTrace(whole.slice(0, 768))).toThrow('Leak.2s has no readings')
   })
+
+  test('a file with an unknown record count (-1) and no records after the header is empty', () => {
+    // EDF writes -1 while a recording is still open; nothing was recorded yet.
+    expect(readLeakTrace(buildEdf({ startDate: '10.01.24', startTime: '23.00.30', recordSeconds: 60, declaredRecords: -1,
+      signals: [press, leak()], records: [] }))).toBeNull()
+  })
 })
 
 describe('reading a card', () => {
