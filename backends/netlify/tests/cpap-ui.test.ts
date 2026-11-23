@@ -5,6 +5,7 @@
 import { expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
+import { sameClock } from '../public/cpap.js'
 
 class Element {
   hidden = false; disabled = false; value = 'UTC'; textContent = ''
@@ -73,7 +74,7 @@ function fixture(stored: StoredClocks | null | (() => Promise<StoredClocks | nul
       return { nights: [{ date: name, usageHours: 1, sessions: 1, events: 0 }], samples: [{ name }],
         stats: { nights: 1, events: 0, leakMinutes: 0, stubSessions: 0, droppedEvents: 0, droppedLeakFiles: 0, unreadable: [], skippedSummaries: [] } }
     },
-    sameClock: (a: string, b: string) => a === b || (['+00:00', '-00:00'].includes(a) && ['+00:00', '-00:00'].includes(b)),
+    sameClock,
     uploadSamples: async (samples: unknown[]) => { uploaded.push(samples); return { inserted: samples.length, batches: 1 } },
   })
   const pick = (...files: ReturnType<typeof file>[]) => { get('folder').files = files; return get('folder').onchange!() }
@@ -358,4 +359,15 @@ test('a folder without STR.edf takes the last card\'s clock away with it', async
   await f.pick(file('B/notes.txt', 'not a card'))
   expect(f.get('zone').value).toBe('America/Toronto')
   expect(f.get('zone-note').textContent).not.toContain('+09:00')
+})
+
+test.each([
+  ['+09:00', 'the card\'s clock, UTC+09:00'],
+  ['', 'this computer\'s time zone (America/Toronto)'],
+])('an emptied field, before it is left, says what leaving it empty will use (card clock %j)', async (settings, use) => {
+  const f = fixture()
+  await f.pick(file('A/STR.edf', 'card A'), file('A/SETTINGS/CurrentSettings.json', settings))
+  f.typeClock('-05:00')
+  f.typeClock('')
+  expect(f.get('zone-note').textContent).toBe(`Leave the field empty to use ${use}.`)
 })

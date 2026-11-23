@@ -144,11 +144,14 @@ describe('device wall clock to UTC', () => {
 })
 
 describe('whether two clocks are the same', () => {
-  // +00:00 and -00:00 are both UTC (ISO 8601 spells the same offset either way); -05:00 and
-  // America/Toronto differ in daylight time, so they are not one clock.
+  // +00:00 and -00:00 are both UTC (ISO 8601 spells the same offset either way), as are UTC, Etc/UTC
+  // and GMT; US/Eastern is the IANA alias of America/New_York. -05:00 and America/Toronto differ in
+  // daylight time, so they are not one clock.
   test.each([
     ['+00:00', '-00:00', true], ['-05:00', '-05:00', true], ['America/Toronto', 'America/Toronto', true],
-    ['-05:00', '+05:00', false], ['-05:00', 'America/Toronto', false], ['+00:00', 'UTC', false], ['+99:00', '-99:00', false],
+    ['+00:00', 'UTC', true], ['Etc/UTC', '-00:00', true], ['GMT', 'UTC', true], ['US/Eastern', 'America/New_York', true],
+    ['-05:00', '+05:00', false], ['-05:00', 'America/Toronto', false], ['America/Toronto', 'America/New_York', false],
+    ['+99:00', '-99:00', false], ['Nowhere', 'Elsewhere', false],
   ])('%s and %s: %s', (a, b, same) => {
     expect(sameClock(a, b)).toBe(same)
   })
@@ -285,7 +288,7 @@ describe('leak from a PLD file', () => {
     // One record declared; the copy stopped after the 768-byte header (256 + 2 signals x 256).
     const whole = buildEdf({ startDate: '10.01.24', startTime: '23.00.30', recordSeconds: 60, signals: [press, leak()],
       records: [[Array(30).fill(500), [...fifteen(10), ...fifteen(10)]]] })
-    expect(() => readLeakTrace(whole.slice(0, 768))).toThrow('Leak.2s has no readings')
+    expect(() => readLeakTrace(whole.slice(0, 768))).toThrow('Leak.2s is cut off before its first record')
   })
 
   test('a file with an unknown record count (-1) and no records after the header is empty', () => {
@@ -298,7 +301,7 @@ describe('leak from a PLD file', () => {
     const whole = buildEdf({ startDate: '10.01.24', startTime: '23.00.30', recordSeconds: 60, declaredRecords: -1, signals: [press, leak()],
       records: [[Array(30).fill(500), [...fifteen(10), ...fifteen(10)]]] })
     // The 768-byte header (256 + 2 signals x 256), then 30 of the record's 120 bytes.
-    expect(() => readLeakTrace(whole.slice(0, 768 + 30))).toThrow('Leak.2s has no readings')
+    expect(() => readLeakTrace(whole.slice(0, 768 + 30))).toThrow('Leak.2s is cut off before its first record')
   })
 })
 

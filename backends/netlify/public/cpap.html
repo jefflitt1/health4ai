@@ -103,6 +103,11 @@
     $('zone').value = cardClockError ? '' : cardClock ?? computerZone
   }
   function noteClock() {
+    // Emptied, and not yet left: say what leaving it empty will use.
+    if (!$('zone').value.trim() && !cardClockError) {
+      $('zone-note').textContent = `Leave the field empty to use ${cardClock ? `the card's clock, UTC${cardClock}` : `this computer's time zone (${computerZone})`}.`
+      return
+    }
     $('zone-note').textContent = typedClock
       ? `Using the clock you typed (${$('zone').value.trim()})${cardClockError ? `; the card's could not be read: ${cardClockError.message}` : cardClock ? `; the card says UTC${cardClock}` : ''}.`
       : cardClockError

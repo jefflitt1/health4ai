@@ -186,15 +186,23 @@ const zoneFormats = new Map()
 
 /**
  * Whether two Machine clocks read a card the same way: equal offsets ("+00:00" and "-00:00" are
- * one clock), or the same text for anything else.
+ * one clock), two names for one IANA zone ("US/Eastern" and "America/New_York"), or UTC by any of
+ * its names ("UTC", "Etc/UTC", "GMT") and "+00:00". A clock neither can read is only the same as
+ * its own text.
  * @param {string} a
  * @param {string} b
  */
 export function sameClock(a, b) {
   if (a === b) return true
+  /** @param {string} clock */
+  const key = (clock) => {
+    const offset = fixedOffset(clock)
+    if (offset !== null) return `offset ${offset}` // -0 prints as 0
+    const zone = new Intl.DateTimeFormat('en', { timeZone: clock }).resolvedOptions().timeZone
+    return zone === 'UTC' ? 'offset 0' : `zone ${zone}`
+  }
   try {
-    const x = fixedOffset(a), y = fixedOffset(b)
-    return x !== null && x === y
+    return key(a) === key(b)
   } catch {
     return false
   }
@@ -434,8 +442,8 @@ export function readLeakFile(path, bytes) {
  * in it, so a session's first and last minutes, only partly recorded, count the readings they have.
  * Returns null for a file with no records, which the device writes for a session that ends within
  * seconds: its header declares 0 records, or an unknown count (-1) and none follow. Throws on a file
- * that is not EDF, has no leak signal, has no readings although its header declares records (a copy
- * cut off before them), or gives leak in another unit.
+ * that is not EDF, has no leak signal, is cut off before its first whole record, has records but no
+ * readings, or gives leak in another unit.
  * @param {Uint8Array} bytes
  * @returns {LeakTrace | null}
  */
@@ -447,10 +455,10 @@ export function readLeakTrace(bytes) {
   const toLpm = unit === 'l/s' ? 60 : unit === 'l/min' ? 1 : null
   if (toLpm === null) throw new Error(`${signal.label} is in an unknown unit (${unit || 'none'})`)
   // Declared empty, as the device writes it, or an unknown count with not a byte after the header. A
-  // file whose records were cut off is not empty but damaged, and falls through to the no-readings
-  // error below.
+  // file whose records were cut off is not empty but damaged.
   const headerOnly = bytes.length === 256 * (edf.signals.length + 1)
   if (edf.declaredRecords === 0 || (edf.declaredRecords < 0 && headerOnly)) return null
+  if (edf.recordCount === 0) throw new Error(`${signal.label} is cut off before its first record`)
   const step = edf.recordSeconds / signal.samplesPerRecord * 1000
   /** @type {Map<number, { sum: number, n: number }>} by clock minute, as wall-clock ms */
   const minutes = new Map()
