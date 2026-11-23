@@ -13,7 +13,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { parseArgs } from 'node:util'
-import { pickCardFiles, readCard, readCardClock, readLeakFile, uploadSamples, wallToInstant } from '../public/cpap.js'
+import { pickCardFiles, readCard, readCardClock, readLeakFile, sameClock, uploadSamples, wallToInstant } from '../public/cpap.js'
 
 const { values: opts, positionals } = parseArgs({
   allowPositionals: true,
@@ -91,7 +91,7 @@ const headers = { 'X-Setup-Secret': /** @type {string} */ (secret), 'Content-Typ
 const clockRes = await fetch(new URL('/api/setup/cpap-clock', base), { headers, redirect: 'error' }).catch(() => null)
 const clockBody = clockRes?.ok ? await clockRes.json().catch(() => ({})) : {}
 if (!clockRes?.ok) console.warn(`Could not check the clocks of earlier imports (${clockRes ? clockRes.status : 'no response'}); uploading anyway.`)
-const otherClocks = /** @type {string[]} */ (clockBody.clocks ?? []).filter((c) => c !== timeZone)
+const otherClocks = /** @type {string[]} */ (clockBody.clocks ?? []).filter((c) => !sameClock(c, timeZone))
 if (otherClocks.length || clockBody.unrecorded) {
   const earlier = [...otherClocks, ...(clockBody.unrecorded ? ['an unrecorded clock (imports made before clocks were recorded)'] : [])]
   console.warn(`Warning: earlier imports used ${earlier.join(', ')}; this one uses ${timeZone}. ` +

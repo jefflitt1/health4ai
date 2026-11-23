@@ -8,7 +8,7 @@
 // end) is the one a real AirSense 11 card shows; every value in these files is made up.
 
 import { describe, expect, test } from 'vitest'
-import { parseEdf, pickCardFiles, readCard, readCardClock, readLeakTrace, uploadSamples, wallToInstant } from '../public/cpap.js'
+import { parseEdf, pickCardFiles, readCard, readCardClock, readLeakTrace, sameClock, uploadSamples, wallToInstant } from '../public/cpap.js'
 import { ANNOTATIONS, buildEdf, concat, tal } from './edf-builder.ts'
 
 describe('EDF', () => {
@@ -143,6 +143,17 @@ describe('device wall clock to UTC', () => {
   })
 })
 
+describe('whether two clocks are the same', () => {
+  // +00:00 and -00:00 are both UTC (ISO 8601 spells the same offset either way); -05:00 and
+  // America/Toronto differ in daylight time, so they are not one clock.
+  test.each([
+    ['+00:00', '-00:00', true], ['-05:00', '-05:00', true], ['America/Toronto', 'America/Toronto', true],
+    ['-05:00', '+05:00', false], ['-05:00', 'America/Toronto', false], ['+00:00', 'UTC', false], ['+99:00', '-99:00', false],
+  ])('%s and %s: %s', (a, b, same) => {
+    expect(sameClock(a, b)).toBe(same)
+  })
+})
+
 describe('the machine clock from the card settings', () => {
   const settings = (featureProfiles: unknown) => new TextEncoder().encode(JSON.stringify({
     FlowGenerator: { SettingProfiles: { Attributes: { AppliedDateTime: '2026-06-12T04:24:29.707Z' }, FeatureProfiles: featureProfiles } },
@@ -268,6 +279,13 @@ describe('leak from a PLD file', () => {
   test('a file with no records is no trace, not an error', () => {
     // As the AirSense 11 writes a session that ends within seconds: the header, and a record count of 0.
     expect(readLeakTrace(buildEdf({ startDate: '10.01.24', startTime: '23.00.30', recordSeconds: 60, signals: [press, leak()], records: [] }))).toBeNull()
+  })
+
+  test('a file whose declared records were cut off is an error, not an empty file', () => {
+    // One record declared; the copy stopped after the 768-byte header (256 + 2 signals x 256).
+    const whole = buildEdf({ startDate: '10.01.24', startTime: '23.00.30', recordSeconds: 60, signals: [press, leak()],
+      records: [[Array(30).fill(500), [...fifteen(10), ...fifteen(10)]]] })
+    expect(() => readLeakTrace(whole.slice(0, 768))).toThrow('Leak.2s has no readings')
   })
 })
 
@@ -534,6 +552,15 @@ describe('reading a card\'s leak traces', () => {
     expect(card.stats.leakMinutes).toBe(421)
     expect(traces.length).toBe(8)
     expect(traces.at(-1)).toMatchObject({ started_at: '2024-01-11T06:00:00.000Z', ended_at: '2024-01-11T06:01:00.000Z', metadata: { lpm: [10] } })
+  })
+
+  test('a trace whose first reading is a minute after mask-off is left out, not stored with no length', () => {
+    // UTC. One session 23:00-06:00; the file's first reading is at 06:01:00, mask-off plus a minute.
+    const card = readCard({ str: strFor([660], [1080]), events: [], leaks: [
+      { path: `${dir}20240111_060100_PLD.edf`, trace: { startWall: wall(6, 1, 0, 11), first: 0, end: 5 * 60_000, minute0: 0, lpm: Array(5).fill(80) } },
+    ] }, { timeZone: 'UTC' })
+    expect(leaks(card)).toEqual([])
+    expect(card.stats.droppedLeakFiles).toBe(1)
   })
 
   test('a file starting on the next session\'s mask-on belongs to that session, not the one just ended', () => {
