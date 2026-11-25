@@ -75,3 +75,20 @@ jobs:
           exit 1
       - name: Exercise summary writer and checker
         run: python3 scripts/tests/test_summary_sum_tolerance.py
+
+  sleep-view-drift:
+    name: Sleep view drift (repo vs live snapshot)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Start isolated local PostgreSQL
+        run: |
+          docker run -d --name jgle-test-db -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17
+          for attempt in $(seq 1 30); do
+            if docker exec jgle-test-db pg_isready -U postgres; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Rebuild v_healthkit_sleep_nightly from migrations and compare to the live snapshot
+        run: python3 scripts/tests/test_sleep_view_drift.py
