@@ -1,0 +1,48 @@
+ WITH sleep_candidates AS (
+         SELECT healthkit_metrics.user_id,
+            date_trunc('day'::text, (healthkit_metrics.started_at AT TIME ZONE 'America/New_York'::text) - '06:00:00'::interval)::date AS night_date,
+            healthkit_metrics.source_device,
+                CASE
+                    WHEN healthkit_metrics.source_device ~~* '%Oura%'::text THEN 1
+                    WHEN healthkit_metrics.source_device ~~* '%Apple Watch%'::text THEN 2
+                    ELSE 9
+                END AS source_priority,
+            healthkit_metrics.value,
+            healthkit_metrics.started_at,
+            healthkit_metrics.ended_at
+           FROM healthkit_metrics
+          WHERE healthkit_metrics.metric_type = 'HKCategoryTypeIdentifierSleepAnalysis'::text AND (healthkit_metrics.value = ANY (ARRAY[3.0, 4.0, 5.0]::double precision[])) AND healthkit_metrics.ended_at IS NOT NULL AND (healthkit_metrics.source_device ~~* '%Oura%'::text OR healthkit_metrics.source_device ~~* '%Apple Watch%'::text)
+        ), best_source_per_night AS (
+         SELECT sleep_candidates.user_id,
+            sleep_candidates.night_date,
+            min(sleep_candidates.source_priority) AS best_priority
+           FROM sleep_candidates
+          GROUP BY sleep_candidates.user_id, sleep_candidates.night_date
+        ), filtered AS (
+         SELECT c.user_id,
+            c.night_date,
+            c.source_device,
+            c.source_priority,
+            c.value,
+            c.started_at,
+            c.ended_at
+           FROM sleep_candidates c
+             JOIN best_source_per_night b ON c.user_id = b.user_id AND c.night_date = b.night_date AND c.source_priority = b.best_priority
+        )
+ SELECT user_id,
+    night_date,
+    round(sum(EXTRACT(epoch FROM ended_at - started_at) / 3600.0), 2) AS sleep_hours,
+    round(sum(
+        CASE
+            WHEN value = 4.0::double precision THEN EXTRACT(epoch FROM ended_at - started_at) / 60.0
+            ELSE 0::numeric
+        END), 1) AS deep_minutes,
+    round(sum(
+        CASE
+            WHEN value = 5.0::double precision THEN EXTRACT(epoch FROM ended_at - started_at) / 60.0
+            ELSE 0::numeric
+        END), 1) AS rem_minutes,
+    count(*) AS segment_count,
+    min(source_device) AS sleep_source
+   FROM filtered
+  GROUP BY user_id, night_date;
