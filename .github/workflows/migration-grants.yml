@@ -86,7 +86,7 @@ jobs:
         run: |
           docker run -d --name jgle-test-db -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17
           for attempt in $(seq 1 30); do
-            if docker exec jgle-test-db pg_isready -U postgres; then exit 0; fi
+            if docker exec jgle-test-db pg_isready -h 127.0.0.1 -U postgres; then exit 0; fi
             sleep 1
           done
           exit 1
