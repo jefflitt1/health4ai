@@ -15,7 +15,7 @@
   p.lede, .muted { color: var(--muted); }
   section.card { background: var(--card); border-radius: 12px; padding: 16px; margin-top: 12px; }
   label, .field-label { display: block; font-weight: 600; margin-bottom: 6px; }
-  input { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--muted); background: var(--bg); color: var(--fg); font: inherit; }
+  input, select { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--muted); background: var(--bg); color: var(--fg); font: inherit; }
   button { min-height: 44px; min-width: 44px; margin-top: 10px; padding: 9px 14px; border-radius: 8px; border: 0; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
   button.secondary { background: transparent; color: var(--fg); border: 1px solid var(--muted); }
   button:disabled { opacity: .5; cursor: wait; }
@@ -69,9 +69,15 @@
     <section class="card">
       <label for="label">Label</label>
       <input id="label" placeholder="e.g. My iPhone" maxlength="100">
+      <label for="scope" style="margin-top:12px">Scope</label>
+      <select id="scope" aria-describedby="scope-help">
+        <option value="write">Write: a phone that syncs</option>
+        <option value="read">Read: a reader such as a dashboard</option>
+      </select>
+      <p id="scope-help" class="muted">A read key cannot send data, and a write key cannot read it. The iOS app needs a write key. Nothing in this backend accepts a read key yet.</p>
       <button id="issue-btn">Issue key</button>
       <div id="new-key" hidden>
-        <p><strong>Copy this key now.</strong> It is shown once and cannot be recovered.</p>
+        <p><strong>Copy this key now.</strong> <span id="new-key-scope"></span>. It is shown once and cannot be recovered.</p>
         <div class="row"><code id="new-key-value"></code><button class="secondary" data-copy="new-key-value">Copy</button></div>
       </div>
     </section>
@@ -118,7 +124,8 @@
     tbody.replaceChildren()
     for (const k of keys) {
       const tr = document.createElement('tr')
-      for (const text of [k.label || '(no label)', k.key_prefix + '…' + (k.revoked_at ? ' (Revoked)' : ''), when(k.last_used_at)]) {
+      const marks = (k.scope === 'read' ? ' (Read)' : '') + (k.revoked_at ? ' (Revoked)' : '')
+      for (const text of [k.label || '(no label)', k.key_prefix + '…' + marks, when(k.last_used_at)]) {
         const td = document.createElement('td'); td.textContent = text; tr.append(td)
       }
       const td = document.createElement('td')
@@ -126,7 +133,8 @@
         const b = document.createElement('button')
         b.className = 'danger'; b.textContent = 'Revoke'
         b.onclick = async () => {
-          if (!confirm(`Revoke "${k.label || k.key_prefix}"? That device stops syncing until it gets a new key.`)) return
+          const loses = k.scope === 'read' ? 'That reader loses access' : 'That device stops syncing'
+          if (!confirm(`Revoke "${k.label || k.key_prefix}"? ${loses} until it gets a new key.`)) return
           b.disabled = true
           try {
             await api(`/api/setup/keys/${k.id}/revoke`, { method: 'POST' })
@@ -169,11 +177,25 @@
     if ($('issue-btn').disabled) return
     $('issue-btn').disabled = true
     try {
-      const issued = await api('/api/setup/keys', { method: 'POST', body: JSON.stringify({ label: $('label').value }) })
+      const asked = $('scope').value
+      const issued = await api('/api/setup/keys', { method: 'POST', body: JSON.stringify({ label: $('label').value, scope: asked }) })
+      // A setup API from before scopes ignores the field and issues a write key: never offer that
+      // key as the one asked for.
+      if ((issued.scope ?? 'write') !== asked) {
+        $('new-key').hidden = true; $('new-key-value').textContent = ''; issuedId = null
+        showError('panel-error', new Error(`This site issued a ${issued.scope ?? 'write'} key, not a ${asked} key. Revoke "${issued.label || issued.key_prefix}" below.`))
+        // The list shows the unwanted key to revoke; a failure to refresh it must not hide the message.
+        await loadKeys().catch(() => {})
+        $('panel-error').hidden = false
+        return
+      }
       issuedId = issued.id
       $('new-key-value').textContent = issued.key
+      $('new-key-scope').textContent = issued.scope === 'read' ? 'Read key' : 'Write key'
       $('new-key').hidden = false
       $('label').value = ''
+      // A phone's key is the common case: a Read key is asked for each time, never inherited.
+      $('scope').value = 'write'
       await loadKeys()
     } catch (e) { showError('panel-error', e) }
     finally { $('issue-btn').disabled = false }
