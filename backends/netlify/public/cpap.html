@@ -71,7 +71,7 @@
   </div>
 </main>
 <script type="module">
-  import { STUB_MINUTES, pickCardFiles, readCard, readCardClock, readLeakFile, uploadSamples, wallToInstant } from './cpap.js'
+  import { STUB_MINUTES, pickCardFiles, readCard, readCardClock, readLeakFile, sameClock, uploadSamples, wallToInstant } from './cpap.js'
 
   // The secret lives only in this variable: never stored, so closing the tab locks the page.
   let secret = ''
@@ -94,6 +94,7 @@
   let typedClock = false
   $('zone').oninput = () => {
     typedClock = $('zone').value.trim() !== ''
+    noteClock()
     updateUploadButton()
   }
   // What the picked card says about its clock, for the note under the field.
@@ -102,6 +103,11 @@
     $('zone').value = cardClockError ? '' : cardClock ?? computerZone
   }
   function noteClock() {
+    // Emptied, and not yet left: say what leaving it empty will use.
+    if (!$('zone').value.trim() && !cardClockError) {
+      $('zone-note').textContent = `Leave the field empty to use ${cardClock ? `the card's clock, UTC${cardClock}` : `this computer's time zone (${computerZone})`}.`
+      return
+    }
     $('zone-note').textContent = typedClock
       ? `Using the clock you typed (${$('zone').value.trim()})${cardClockError ? `; the card's could not be read: ${cardClockError.message}` : cardClock ? `; the card says UTC${cardClock}` : ''}.`
       : cardClockError
@@ -143,7 +149,7 @@
       if (!res.ok) return couldNot()
       const { clocks, unrecorded } = await res.json()
       if (check !== clockCheck) return
-      const others = [...clocks.filter((c) => c !== clock), ...(unrecorded ? ['an unrecorded clock (imports made before clocks were recorded)'] : [])]
+      const others = [...clocks.filter((c) => !sameClock(c, clock)), ...(unrecorded ? ['an unrecorded clock (imports made before clocks were recorded)'] : [])]
       if (!others.length) return
       $('clock-warning').textContent = `Earlier imports used ${others.join(', ')}; this one uses ${clock}. ` +
         'Uploading stores the Nights they share a second time, at other times, and this page cannot remove the earlier ones.'
@@ -174,9 +180,12 @@
     clearError()
     $('result').hidden = true
     card = null
+    // The last card's clock goes with it; the field keeps a typed clock.
     cardClock = null
     cardClockError = null
     invalidatePreview()
+    if (!typedClock) restoreClock()
+    noteClock()
     const files = new Map([...$('folder').files].map((f) => [f.webkitRelativePath || f.name, f]))
     const picked = pickCardFiles([...files.keys()])
     if (!picked.str) {

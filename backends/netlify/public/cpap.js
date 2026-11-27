@@ -31,7 +31,8 @@
  * @property {'EDF' | 'EDF+C' | 'EDF+D'} format
  * @property {number} startWall the header's start date and time, as wall-clock milliseconds
  * @property {number} recordSeconds
- * @property {number} recordCount
+ * @property {number} recordCount the records present, at most as many as the header declares
+ * @property {number} declaredRecords the header's record count (-1 for unknown)
  * @property {EdfSignal[]} signals
  * @property {number[]} recordOnsets each record's start, in seconds from the file's start time
  * @property {EdfAnnotation[]} annotations every non-empty annotation, in file order
@@ -132,7 +133,7 @@ export function parseEdf(bytes) {
 
   const format = reserved.startsWith('EDF+C') ? 'EDF+C' : reserved.startsWith('EDF+D') ? 'EDF+D' : 'EDF'
   return {
-    format, startWall, recordSeconds, recordCount, signals, recordOnsets, annotations,
+    format, startWall, recordSeconds, recordCount, declaredRecords, signals, recordOnsets, annotations,
     values(label) {
       const i = signals.findIndex((s) => s.label === label)
       if (i < 0) return null
@@ -182,6 +183,30 @@ function parseTals(bytes) {
 
 /** @type {Map<string, Intl.DateTimeFormat>} */
 const zoneFormats = new Map()
+
+/**
+ * Whether two Machine clocks read a card the same way: equal offsets ("+00:00" and "-00:00" are
+ * one clock), two names for one IANA zone ("US/Eastern" and "America/New_York"), or UTC by any of
+ * its names ("UTC", "Etc/UTC", "GMT") and "+00:00". A clock neither can read is only the same as
+ * its own text.
+ * @param {string} a
+ * @param {string} b
+ */
+export function sameClock(a, b) {
+  if (a === b) return true
+  /** @param {string} clock */
+  const key = (clock) => {
+    const offset = fixedOffset(clock)
+    if (offset !== null) return `offset ${offset}` // -0 prints as 0
+    const zone = new Intl.DateTimeFormat('en', { timeZone: clock }).resolvedOptions().timeZone
+    return zone === 'UTC' ? 'offset 0' : `zone ${zone}`
+  }
+  try {
+    return key(a) === key(b)
+  } catch {
+    return false
+  }
+}
 
 /**
  * How far `timeZone` is ahead of UTC at instant `ms`, in milliseconds. Throws a RangeError for a
@@ -416,8 +441,9 @@ export function readLeakFile(path, bytes) {
  * a reading that is not a number is skipped. A minute's value is the mean of the readings that fall
  * in it, so a session's first and last minutes, only partly recorded, count the readings they have.
  * Returns null for a file with no records, which the device writes for a session that ends within
- * seconds. Throws on a file that is not EDF, has no leak signal, has records but no readings, or
- * gives leak in another unit.
+ * seconds: its header declares 0 records, or an unknown count (-1) and none follow. Throws on a file
+ * that is not EDF, has no leak signal, is cut off before its first whole record, has records but no
+ * readings, or gives leak in another unit.
  * @param {Uint8Array} bytes
  * @returns {LeakTrace | null}
  */
@@ -428,7 +454,11 @@ export function readLeakTrace(bytes) {
   const unit = signal.unit.trim().toLowerCase()
   const toLpm = unit === 'l/s' ? 60 : unit === 'l/min' ? 1 : null
   if (toLpm === null) throw new Error(`${signal.label} is in an unknown unit (${unit || 'none'})`)
-  if (edf.recordCount === 0) return null
+  // Declared empty, as the device writes it, or an unknown count with not a byte after the header. A
+  // file whose records were cut off is not empty but damaged.
+  const headerOnly = bytes.length === 256 * (edf.signals.length + 1)
+  if (edf.declaredRecords === 0 || (edf.declaredRecords < 0 && headerOnly)) return null
+  if (edf.recordCount === 0) throw new Error(`${signal.label} is cut off before its first record`)
   const step = edf.recordSeconds / signal.samplesPerRecord * 1000
   /** @type {Map<number, { sum: number, n: number }>} by clock minute, as wall-clock ms */
   const minutes = new Map()
@@ -640,6 +670,7 @@ export function readCard(card, { timeZone }) {
     // The device can record for minutes after STR's mask-off; leak then is the mask lying off, not
     // therapy, so the trace ends where an event would stop counting.
     const end = Math.min(t.end, session.off + SESSION_SLACK_MS - fileStart)
+    if (end <= t.first) { droppedLeakFiles++; continue } // starts after its session ended
     const kept = t.lpm.slice(0, Math.max(0, Math.ceil((end - t.minute0) / 60_000)))
     for (let k = 0; k < kept.length; k += LEAK_CHUNK_MINUTES) {
       const lpm = kept.slice(k, k + LEAK_CHUNK_MINUTES)
